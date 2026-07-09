@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Gestionale — Centro Sviluppo Cognitivo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='38' cy='50' r='30' fill='%231A2744'/><circle cx='66' cy='50' r='30' fill='%23E8A13D' fill-opacity='0.85'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F4F8FA; --surface:#FFFFFF; --ink:#1A2744; --ink-soft:#5A6E8A;
+  --primary:#15B4B7; --primary-dark:#0E8E91; --primary-soft:#E0F5F5;
+  --accent:#E8A13D; --accent-soft:#FBF0DC;
+  --danger:#C24437; --danger-soft:#F9E7E4;
+  --ok:#2E7D4F; --ok-soft:#E4F2E9;
+  --warn:#c98a3a; --warn-soft:#FDF3E4;
+  --border:#D6E2EC; --shadow:0 1px 3px rgba(26,39,68,.08),0 4px 14px rgba(26,39,68,.06);
+  --radius:12px;
+  --navy:#1A2744; --teal:#15B4B7; --teal-soft:#E0F5F5; --gold:#E8A13D;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+textarea{resize:vertical;min-height:70px}
+select[multiple]{height:110px}
+.hidden{display:none!important}
+
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(circle at 15% 20%,rgba(21,180,183,.10) 0,transparent 40%),radial-gradient(circle at 85% 80%,rgba(232,161,61,.10) 0,transparent 45%),var(--bg)}
+.gate-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:40px 36px;max-width:420px;width:100%;text-align:center}
+.brandmark{width:56px;height:40px;position:relative;margin:0 auto 16px}
+.brandmark span{position:absolute;top:0;width:40px;height:40px;border-radius:50%}
+.brandmark span:first-child{left:0;background:var(--navy)}
+.brandmark span:last-child{right:0;background:var(--accent);opacity:.85;mix-blend-mode:multiply}
+.gate-card h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
+.gate-card .sub{color:var(--ink-soft);font-size:14px;margin-bottom:24px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;transition:background .15s}
+.btn.primary{background:var(--primary);color:#fff} .btn.primary:hover{background:var(--primary-dark)}
+.btn.ghost{background:transparent;color:var(--primary);border:1px solid var(--border)} .btn.ghost:hover{background:var(--primary-soft)}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.danger-o{background:transparent;color:var(--danger);border:1px solid var(--danger)} .btn.danger-o:hover{background:var(--danger-soft)}
+.btn.gold{background:var(--accent);color:#fff} .btn.gold:hover{background:#d08a2f}
+.btn.small{padding:6px 12px;font-size:13px}
+.btn-lbl{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:transparent;color:var(--primary);border:1px solid var(--border)}
+.btn-lbl:hover{background:var(--primary-soft)}
+.gate-err{margin-top:16px;background:var(--danger-soft);color:var(--danger);border-radius:8px;padding:10px 12px;font-size:13px;text-align:left}
+.spinner{width:28px;height:28px;border:3px solid var(--primary-soft);border-top-color:var(--primary);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+#app{min-height:100vh;display:flex;flex-direction:column}
+header.topbar{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:40}
+.topbar-inner{max-width:1260px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;font-size:15px}
+.brand .brandmark{width:34px;height:24px;margin:0} .brand .brandmark span{width:24px;height:24px}
+nav.tabs{display:flex;gap:2px;flex-wrap:wrap}
+nav.tabs button{background:transparent;border:none;border-radius:8px;padding:8px 13px;font-size:14px;font-weight:600;color:var(--ink-soft)}
+nav.tabs button:hover{background:var(--bg)}
+nav.tabs button.active{background:var(--teal-soft);color:var(--navy)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.userchip{display:flex;align-items:center;gap:8px;font-size:13px}
+.userchip .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+.userchip .uname{font-weight:700;line-height:1.15}
+.userchip .urole{color:var(--ink-soft);font-size:11.5px}
+main{flex:1;max-width:1260px;width:100%;margin:0 auto;padding:22px 20px 60px}
+.view-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.view-title h2{font-size:21px;font-weight:800;letter-spacing:-.02em}
+.view-title .grow{flex:1}
+.banner{border-radius:var(--radius);padding:12px 16px;font-size:13.5px;margin-bottom:16px}
+.banner.warn{background:var(--accent-soft);border:1px solid #EBCF9E}
+.banner.info{background:var(--primary-soft);border:1px solid #BEDCD7}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card .card-pad{padding:18px}
+table.list{width:100%;border-collapse:collapse;font-size:14px}
+table.list th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);padding:12px 14px;border-bottom:1px solid var(--border)}
+table.list td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.list tr:last-child td{border-bottom:none}
+table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var(--bg)}
+.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700}
+.tag.ok{background:var(--ok-soft);color:var(--ok)} .tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.off{background:#EEF0EF;color:var(--ink-soft)} .tag.danger{background:var(--danger-soft);color:var(--danger)}
+.tag.info{background:var(--primary-soft);color:var(--primary)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+.empty{padding:34px;text-align:center;color:var(--ink-soft);font-size:14px}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.toolbar select,.toolbar input{width:auto;min-width:150px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:8px;font-size:13px;font-weight:600;background:var(--bg);border:1px solid var(--border);cursor:pointer}
+.chip.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-dark)}
+.chip input[type=checkbox]{width:auto;margin:0}
+
+.cal-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cal-head .month-label{font-size:17px;font-weight:800;min-width:170px;text-align:center;text-transform:capitalize}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);text-align:center;padding:4px 0;font-weight:700}
+.cal-cell{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-height:100px;padding:5px;display:flex;flex-direction:column;gap:3px}
+.cal-cell.other{background:transparent;border-style:dashed;opacity:.55}
+.cal-cell.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cal-cell.weekend{background:#fafcfa}
+.cal-daynum{font-size:12px;font-weight:700;color:var(--ink-soft)}
+.cal-cell.today .cal-daynum{color:#9A6A16}
+.ev{border:none;text-align:left;border-radius:7px;padding:3px 6px;font-size:11px;font-weight:600;color:#fff;line-height:1.3;width:100%;overflow:hidden;cursor:pointer;margin-bottom:1px}
+.ev.cesate{background:#2B5BA0} .ev.busto{background:#2E7D4F} .ev.online{background:#8A4A7D} .ev.domicilio{background:#B65E2E}
+.ev.cancelled{opacity:.4;text-decoration:line-through}
+.ev .ep{display:block;font-size:10px;font-weight:400;opacity:.85}
+.ev .en{display:block;font-size:10px;font-weight:400;opacity:.75}
+.cal-more{font-size:11px;color:var(--primary);background:none;border:none;font-weight:700;text-align:left;padding:0 4px}
+@media(max-width:760px){.cal-grid{gap:2px}.cal-cell{min-height:70px;padding:3px}.ev{font-size:10px;padding:2px 4px}main{padding:16px 10px 60px}}
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(24,38,36,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:28px 14px;overflow:auto}
+.modal{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);max-width:700px;width:100%;padding:24px;max-height:90vh;overflow:auto}
+.modal h3{font-size:17px;font-weight:800;margin-bottom:16px;letter-spacing:-.01em}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:5px}
+.field .help{font-size:12px;color:var(--ink-soft);margin-top:3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.grid4{display:grid;grid-template-columns:1fr 100px 70px 70px;gap:8px}
+@media(max-width:560px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.modal-actions .left{margin-right:auto}
+
+.avail-day{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
+.avail-day:last-child{border-bottom:none}
+.avail-day .dname{width:50px;font-weight:700;font-size:13px;padding-top:7px}
+.avail-slots{flex:1;display:flex;flex-direction:column;gap:6px}
+.avail-slot{display:flex;gap:6px;align-items:center}
+.avail-slot input[type=time]{width:110px}
+.icon-btn{background:none;border:none;font-size:15px;line-height:1;padding:5px;border-radius:6px;color:var(--ink-soft)}
+.icon-btn:hover{background:var(--bg);color:var(--danger)}
+.add-slot{background:none;border:1px dashed var(--border);border-radius:8px;padding:5px 10px;font-size:12.5px;font-weight:700;color:var(--primary);align-self:flex-start}
+.add-slot:hover{background:var(--primary-soft)}
+
+.chat-wrap{display:flex;flex-direction:column;height:420px}
+.chat-win{flex:1;overflow-y:auto;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);margin-bottom:10px}
+.msg{padding:8px 12px;border-radius:10px;margin-bottom:8px;max-width:85%;font-size:14px;line-height:1.5;white-space:pre-wrap}
+.msg.user{background:var(--primary);color:#fff;margin-left:auto}
+.msg.assistant{background:var(--surface);border:1px solid var(--border)}
+.chat-bar{display:flex;gap:8px}
+.chat-bar input{flex:1}
+
+#toast-root{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--ink);color:#fff;border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);animation:toastin .2s ease-out}
+.toast.err{background:var(--danger)}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:14px;margin-bottom:14px}
+.kv dt{color:var(--ink-soft);font-weight:600} .kv dd{font-weight:600}
+.doc-pill{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;margin:3px 3px 3px 0}
+.cred-section{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg);margin-top:6px}
+.cred-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.cred-row input{flex:1;font-size:13px;padding:5px 8px}
+
+.cred-section{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg);margin-top:6px}
+.cred-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.cred-row input{flex:1;font-size:13px;padding:5px 8px}
+.cred-hdr{display:grid;grid-template-columns:1fr 1fr 1fr 30px 30px;gap:8px;margin-bottom:4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft)}
+.cred-line{display:grid;grid-template-columns:1fr 1fr 1fr 30px 30px;gap:8px;align-items:center;margin-bottom:6px}
+.cred-line input{font-size:13px;padding:5px 8px}
+.eye-btn{background:none;border:none;cursor:pointer;font-size:14px;padding:2px;color:var(--ink-soft);border-radius:4px}
+.eye-btn:hover{background:var(--primary-soft)}
+
+.doc-link-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.doc-link-row input{flex:1;font-size:13px;padding:5px 8px}
+.doc-link-row input.doc-label{max-width:180px}
+.doc-link-row a{font-size:12px;white-space:nowrap}
+
+.ev-malattia{background:var(--assenza-malattia,#64B5F6)!important}
+.ev-ferie{background:var(--assenza-ferie,#FF9800)!important}
+.ev-festivita{background:var(--assenza-festivita,#FFB74D)!important}
+.ev-permesso{background:var(--assenza-permesso,#FDD835)!important;color:#333!important}
+</style>
+</head>
+<body>
+<div id="screen-loading" class="gate">
+  <div class="gate-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <h1>Gestionale Sviluppo Cognitivo</h1>
+    <p class="sub" id="loading-msg">Avvio in corso…</p>
+  </div>
+</div>
+<div id="screen-login" class="gate hidden">
+  <div class="gate-card">
+    <div class="brandmark" aria-hidden="true"><span></span><span></span></div>
+    <h1>Centro Sviluppo Cognitivo</h1>
+    <p class="sub">Calendari e sessioni · BrainRx e Metodo Feuerstein</p>
+    <button class="btn primary" id="btn-login" style="width:100%;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true"><rect x="0" y="0" width="10" height="10" fill="#F25022"/><rect x="11" y="0" width="10" height="10" fill="#7FBA00"/><rect x="0" y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg>
+      Accedi con Microsoft 365
+    </button>
+    <p class="sub" style="margin:14px 0 0;font-size:12.5px">Usa il tuo account aziendale <strong>@sviluppocognitivo.it</strong></p>
+    <div class="gate-err hidden" id="login-err"></div>
+  </div>
+</div>
+<div id="screen-denied" class="gate hidden">
+  <div class="gate-card">
+    <div class="brandmark" aria-hidden="true"><span></span><span></span></div>
+    <h1>Accesso non autorizzato</h1>
+    <p class="sub" id="denied-msg">Il tuo account non risulta tra gli operatori.</p>
+    <button class="btn ghost" id="btn-denied-logout">Esci e cambia account</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><div class="brandmark" aria-hidden="true"><span></span><span></span></div><span>Sviluppo Cognitivo</span></div>
+    <nav class="tabs" id="nav-tabs" aria-label="Sezioni"></nav>
+    <div class="topbar-right">
+      <div class="userchip">
+        <div class="avatar" id="user-avatar">–</div>
+        <div><div class="uname" id="user-name">–</div><div class="urole" id="user-role">–</div></div>
+      </div>
+      <button class="btn ghost small" id="btn-logout">Esci</button>
+    </div>
+  </div>
+</header>
+<main>
+<div id="banner-root"></div>
+
+<!-- CALENDARIO -->
+<section id="view-calendario" class="hidden">
+  <div class="view-title">
+    <h2 id="cal-title">Calendario</h2>
+    <div class="grow"></div>
+    <div class="toolbar" id="cal-filters"></div>
+  </div>
+  <div class="cal-head">
+    <button class="btn ghost small" id="cal-prev">‹</button>
+    <div class="month-label" id="cal-month-label"></div>
+    <button class="btn ghost small" id="cal-next">›</button>
+    <button class="btn ghost small" id="cal-today">Oggi</button>
+    <div class="grow" style="flex:1"></div>
+    <button class="btn ghost small hidden" id="cal-new">+ Sessione</button>
+    <button class="btn ghost small hidden" id="cal-bulk">+ Bulk</button>
+    <button class="btn ghost small hidden" id="cal-send-month" title="Esporta messaggi mese">📤 Invio mese</button>
+  </div>
+  <div class="cal-grid" id="cal-grid"></div>
+  <div class="card hidden" id="cal-send-panel" style="margin-top:16px"><div class="card-pad">
+    <h3 style="font-size:15px;margin-bottom:8px">Invio calendario settimanale</h3>
+    <div class="toolbar" style="margin-bottom:10px">
+      <select id="send-ut" style="min-width:200px"></select>
+      <button class="btn ghost small" id="btn-wa">WhatsApp</button>
+      <button class="btn ghost small" id="btn-mail">📧 Email</button>
+    </div>
+  </div></div>
+</section>
+
+<!-- SESSIONI -->
+<section id="view-sessioni" class="hidden">
+  <div class="view-title"><h2>Sessioni</h2><div class="grow"></div>
+    <div class="toolbar">
+      <select id="sess-f-operatore"></select>
+      <select id="sess-f-stato"><option value="">Tutti gli stati</option><option value="proposta">Proposta</option><option value="confermata">Confermata</option><option value="eseguita">Eseguita</option><option value="assenza ingiustificata">Assenza ingiust.</option><option value="annullata">Annullata</option></select>
+      <input type="month" id="sess-f-mese">
+      <button class="btn primary small" id="sess-new">+ Nuova sessione</button>
+    </div>
+  </div>
+  <div class="card"><div id="sess-table"></div></div>
+</section>
+
+<!-- OPERATORI -->
+<section id="view-operatori" class="hidden">
+  <div class="view-title"><h2>Operatori</h2><p class="sub" style="margin:0 0 0 8px">Anagrafica, sedi e disponibilità</p><div class="grow"></div>
+    <div class="toolbar">
+      <label class="btn-lbl small"><input type="file" id="op-import" accept=".xlsx" style="display:none"> 📂 Importa Excel</label>
+      <button class="btn ghost small" id="op-tpl">📥 Scarica modello</button>
+      <button class="btn primary small" id="op-new">+ Nuovo operatore</button>
+    </div>
+  </div>
+  <div class="card"><div id="op-table"></div></div>
+</section>
+
+<!-- UTENTI -->
+<section id="view-utenti" class="hidden">
+  <div class="view-title"><h2>Utenti / Clienti</h2><p class="sub" style="margin:0 0 0 8px">Anagrafica, indirizzo e documenti</p><div class="grow"></div>
+    <div class="toolbar">
+      <input type="search" id="ut-search" placeholder="Cerca per nome…">
+      <label class="btn-lbl small"><input type="file" id="ut-import" accept=".xlsx" style="display:none"> 📂 Importa Excel</label>
+      <button class="btn ghost small" id="ut-tpl">📥 Scarica modello</button>
+      <button class="btn primary small" id="ut-new">+ Nuovo utente</button>
+    </div>
+  </div>
+  <div class="card"><div id="ut-table"></div></div>
+</section>
+
+<!-- PROGETTI -->
+<section id="view-progetti" class="hidden">
+  <div class="view-title"><h2>Progetti</h2><p class="sub" style="margin:0 0 0 8px">Percorsi con monte ore e frequenza</p><div class="grow"></div>
+    <button class="btn primary small" id="pr-new">+ Nuovo progetto</button>
+  </div>
+  <div class="card"><div id="pr-table"></div></div>
+</section>
+
+<!-- GENERA CALENDARIO -->
+<section id="view-chiusure" class="hidden">
+  <div class="view-title"><h2>📅 Chiusure Centro</h2></div>
+  <p>Gestisci le chiusure del centro (festività nazionali, chiusure per ferie). L'algoritmo non genera sessioni in questi giorni.</p>
+  <div class="toolbar" style="margin-top:10px">
+    <select id="chiusure-anno" style="max-width:120px"></select>
+    <button class="btn primary small" id="btn-add-chiusura">+ Aggiungi chiusura</button>
+    <button class="btn ghost small" id="btn-load-festivita">🇮🇹 Carica festività italiane</button>
+  </div>
+  <div id="chiusure-list" style="margin-top:12px"></div>
+</section>
+<section id="view-genera" class="hidden">
+  <div class="view-title"><h2>Genera calendario</h2></div>
+  <div class="card"><div class="card-pad">
+    <p style="font-size:13.5px;color:var(--ink-soft);margin-bottom:14px">Genera automaticamente le sessioni del mese rispettando: operatori assegnati, aule per sede (Cesate: 6 aule — Blu, Verde, Gialla, Rosa, Arancione, Viola; Busto: 2 aule — Grande, Piccola), disponibilità e eccezioni, orari 09:00–19:30, gap di 5 min tra sessioni consecutive, operatore mantiene la stessa aula per tutta la giornata, sessione online in sede = aula occupata.</p>
+    <div class="grid2" style="max-width:500px">
+      <div class="field"><label>Mese</label><input type="month" id="gen-month"></div>
+      <div class="field"><label>Ambito</label><select id="gen-scope"><option value="all">Tutti i progetti attivi</option><option value="single">Singolo progetto</option><option value="byname">Per nome progetto</option></select></div>
+    </div>
+    <div class="field hidden" id="gen-proj-wrap"><label>Progetto</label><select id="gen-proj-sel"></select></div>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="btn primary" id="btn-gen">🗓 Genera con algoritmo</button>
+      <button class="btn gold" id="btn-gen-ai">🤖 Genera con IA</button>
+      <button class="btn danger-o small" id="btn-clear-gen">🗑 Svuota proposte del mese</button>
+    </div>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:8px"><strong>Algoritmo</strong>: istantaneo, deterministico. <strong>IA (Claude)</strong>: ragiona sui casi complessi, tiene conto delle tue indicazioni, impiega qualche secondo.</p>
+    <div class="field" id="gen-ai-notes-wrap" style="margin-top:12px;display:none"><label>Istruzioni aggiuntive per l'IA (opzionale)</label><textarea id="gen-ai-notes" placeholder="Es: &quot;Elisa preferisce lavorare di pomeriggio&quot;, &quot;Non mettere sessioni il venerdì per Marco&quot;, ecc." style="min-height:60px"></textarea></div>
+    <div id="gen-results" style="margin-top:16px"></div>
+  </div></div>
+</section>
+
+<!-- DISPONIBILITÀ (operatore) -->
+<section id="view-disponibilita" class="hidden">
+  <div class="view-title"><h2>Le mie disponibilità</h2><div class="grow"></div>
+    <button class="btn primary small" id="avail-save">💾 Salva disponibilità</button>
+  </div>
+  <div class="banner info">L'amministrazione vede queste fasce orarie quando programma le sessioni.</div>
+  <div class="card"><div class="card-pad">
+    <h3 style="font-size:15px;margin-bottom:8px">Disponibilità settimanale</h3>
+    <div id="avail-week"></div>
+  </div></div>
+  <div class="card" style="margin-top:16px"><div class="card-pad">
+    <h3 style="font-size:15px;margin-bottom:8px">Eccezioni per data specifica</h3>
+    <div id="avail-exceptions"></div>
+    <button class="add-slot" id="avail-add-exc" style="margin-top:10px">+ Aggiungi eccezione</button>
+  </div></div>
+</section>
+
+<!-- ASSISTENTE AI -->
+<section id="view-assistente" class="hidden">
+  <div class="view-title"><h2>💬 Assistente</h2><div class="grow"></div>
+    <button class="btn ghost small" id="chat-clear">🗑 Pulisci chat</button>
+  </div>
+  <div class="card"><div class="card-pad">
+    <div class="chat-wrap">
+      <div class="chat-win" id="chat-win"></div>
+      <div class="chat-bar">
+        <input type="text" id="chat-in" placeholder="Scrivi una domanda sull'organizzazione del centro…">
+        <button class="btn primary small" id="chat-send">Invia</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+</main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<script>
+if (location.protocol === 'http:' && location.hostname !== 'localhost') {
+  location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+}
+</script>
+<script>
+(function(){
+  var urls = [
+    'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.js',
+    'https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.js',
+    'https://alcdn.msauth.net/browser/3.6.0/js/msal-browser.js',
+    'https://alcdn.msauth.net/browser/3.2.0/js/msal-browser.js',
+    'https://alcdn.msauth.net/browser/2.30.0/js/msal-browser.js'
+  ];
+  var i = 0;
+  function tryNext(){
+    if(i >= urls.length){
+      document.getElementById('loading-msg').textContent = 'Errore: impossibile caricare MSAL da nessun CDN.';
+      console.error('MSAL load failed. Tried:', urls);
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = urls[i]; s.crossOrigin = 'anonymous';
+    s.onload = function(){
+      if(typeof msal !== 'undefined' && msal.PublicClientApplication){
+        console.log('MSAL loaded from:', urls[i]);
+        window.dispatchEvent(new Event('msal-ready'));
+      } else { console.warn('No msal global from:', urls[i]); i++; tryNext(); }
+    };
+    s.onerror = function(){ console.warn('Failed:', urls[i]); i++; tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+})();
+</script>
+<script>
+/* ============================================================
+   PIANO B v2 — Gestionale Centro Sviluppo Cognitivo
+   Auth: MSAL + Entra ID | DB: SharePoint Lists via Graph API
+   ============================================================ */
+
+const CFG = {
+  clientId: '87706ad1-bb17-406a-8fcc-99472a21903a',
+  tenantId: 'da2cae71-8782-45b6-b259-47e7cb68f1b5',
+  spHost:   'centrosviluppocognitivo.sharepoint.com',
+  lists: { operatori:'Gestionale_Operatori', utenti:'Gestionale_Utenti', progetti:'Gestionale_Progetti', sessioni:'Gestionale_Sessioni', chiusure:'Gestionale_Chiusure' },
+  adminEmails: ['amministratore@centrosviluppocognitivo.onmicrosoft.com'],
+  claudeProxy: 'https://csc-claude-proxy.azurewebsites.net/api/claude-proxy'
+};
+
+const SCOPES = ['User.Read','Sites.ReadWrite.All'];
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const GIORNI = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+const GIORNI_FULL = {1:'Lunedì',2:'Martedì',3:'Mercoledì',4:'Giovedì',5:'Venerdì',6:'Sabato',7:'Domenica'};
+const SEDI = ['Cesate','Busto Arsizio','Online','Domicilio'];
+const AULE_CESATE = ['Blu','Verde','Gialla','Rosa','Arancione','Viola'];
+const AULE_BUSTO = ['Grande','Piccola'];
+const AULE = [...AULE_CESATE,...AULE_BUSTO];
+const TIPI_PROG = ['BrainRx','Metodo Feuerstein','Valutazione','Altro'];
+const STATI_SESS = ['proposta','confermata','eseguita','assenza ingiustificata','annullata'];
+const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const COUNTRIES=['Afghanistan','Albania','Algeria','Andorra','Angola','Antigua e Barbuda','Arabia Saudita','Argentina','Armenia','Australia','Austria','Azerbaijan','Bahamas','Bahrain','Bangladesh','Barbados','Belgio','Belize','Benin','Bhutan','Bielorussia','Bolivia','Bosnia ed Erzegovina','Botswana','Brasile','Brunei','Bulgaria','Burkina Faso','Burundi','Cambogia','Camerun','Canada','Capo Verde','Ciad','Cile','Cina','Cipro','Colombia','Comore','Congo','Corea del Nord','Corea del Sud','Costa Rica','Costa d\'Avorio','Croazia','Cuba','Danimarca','Dominica','Ecuador','Egitto','El Salvador','Emirati Arabi Uniti','Eritrea','Estonia','Eswatini','Etiopia','Figi','Filippine','Finlandia','Francia','Gabon','Gambia','Georgia','Germania','Ghana','Giamaica','Giappone','Gibuti','Giordania','Grecia','Grenada','Guatemala','Guinea','Guinea-Bissau','Guinea Equatoriale','Guyana','Haiti','Honduras','India','Indonesia','Iran','Iraq','Irlanda','Islanda','Israele','Italia','Kazakhstan','Kenya','Kirghizistan','Kiribati','Kuwait','Laos','Lesotho','Lettonia','Libano','Liberia','Libia','Liechtenstein','Lituania','Lussemburgo','Madagascar','Malawi','Maldive','Malesia','Mali','Malta','Marocco','Mauritania','Mauritius','Messico','Micronesia','Moldavia','Monaco','Mongolia','Montenegro','Mozambico','Myanmar','Namibia','Nauru','Nepal','Nicaragua','Niger','Nigeria','Norvegia','Nuova Zelanda','Oman','Paesi Bassi','Pakistan','Palau','Palestina','Panama','Papua Nuova Guinea','Paraguay','Perù','Polonia','Portogallo','Qatar','Regno Unito','Rep. Ceca','Rep. Centrafricana','Rep. Dominicana','Romania','Ruanda','Russia','Saint Kitts e Nevis','Saint Lucia','Saint Vincent e Grenadine','Samoa','San Marino','São Tomé e Príncipe','Senegal','Serbia','Seychelles','Sierra Leone','Singapore','Siria','Slovacchia','Slovenia','Somalia','Spagna','Sri Lanka','Stati Uniti','Sudafrica','Sudan','Sudan del Sud','Suriname','Svezia','Svizzera','Tagikistan','Tanzania','Thailandia','Timor Est','Togo','Tonga','Trinidad e Tobago','Tunisia','Turchia','Turkmenistan','Tuvalu','Ucraina','Uganda','Ungheria','Uruguay','Uzbekistan','Vanuatu','Vaticano','Venezuela','Vietnam','Yemen','Zambia','Zimbabwe'];
+
+/* Festività italiane — pre-caricate */
+const FESTIVITA_IT=[
+{m:1,d:1,nome:"Capodanno"},{m:1,d:6,nome:"Epifania"},
+{m:4,d:25,nome:"Festa della Liberazione"},{m:5,d:1,nome:"Festa dei Lavoratori"},
+{m:6,d:2,nome:"Festa della Repubblica"},{m:8,d:15,nome:"Ferragosto"},
+{m:11,d:1,nome:"Tutti i Santi"},{m:12,d:8,nome:"Immacolata Concezione"},
+{m:12,d:25,nome:"Natale"},{m:12,d:26,nome:"Santo Stefano"}
+];
+function getPasqua(y){let a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mm=Math.floor((h+l-7*m+114)/31),dd=(h+l-7*m+114)%31+1;return{m:mm,d:dd};}
+function getFestivita(y){const list=[...FESTIVITA_IT];const p=getPasqua(y);list.push({m:p.m,d:p.d,nome:"Pasqua"});const lun=new Date(y,p.m-1,p.d+1);list.push({m:lun.getMonth()+1,d:lun.getDate(),nome:"Lunedì dell'Angelo"});return list;}
+
+/* Tipologie assenza operatore */
+const ASSENZA_TIPI=['Malattia','Permesso visita medica','Permesso studio','Ferie'];
+const ASSENZA_COLORI={disponibile:'#2E7D4F',sessione:'#2E7D4F',malattia:'#64B5F6',ferie:'#FF9800',festivita:'#FFB74D',permesso:'#FDD835'};
+
+const OP_COLORS = ['#3b7dd8','#2E7D4F','#8A4A7D','#B65E2E','#14655F','#A4692B','#456B8C','#7D3B3B','#5B7A2E','#6B4FA0','#1F7A8C','#96562F'];
+
+const state = {
+  account:null, role:null, me:null, siteId:null, listIds:{},
+  data:{operatori:[],utenti:[],progetti:[],sessioni:[]},
+  cal:{year:0,month:0,filterOp:'',filterSede:''},
+  availDraft:null, bootstrap:false
+};
+
+/* ---------- Utility ---------- */
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad2=n=>String(n).padStart(2,'0');
+function todayISO(){const d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function fmtDate(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return parseInt(d)+'/'+parseInt(m)+'/'+y;}
+function monthLabel(y,m){return MESI[m]+' '+y;}
+function tmin(t){const[h,m]=(t||'00:00').split(':').map(Number);return h*60+m;}
+function mtime(m){return pad2(Math.floor(m/60))+':'+pad2(m%60);}
+function dname(d){return GIORNI[(d.getDay()+6)%7];}
+function rfree(busy,f,t){return!busy.some(b=>f<b.to&&t>b.from);}
+function sortN(arr){return[...arr].sort((a,b)=>((a.cognome||'')+(a.nome||'')).localeCompare((b.cognome||'')+(b.nome||''),'it'));}
+function toast(msg,isErr){const el=document.createElement('div');el.className='toast'+(isErr?' err':'');el.textContent=msg;$('#toast-root').appendChild(el);setTimeout(()=>el.remove(),3200);}
+function initials(name){return String(name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();}
+function fullName(r){return((r.nome||'')+(r.cognome?' '+r.cognome:'')).trim()||'—';}
+function splitName(n){const p=(n||'').trim().split(/\s+/);if(p.length<=1)return{nome:p[0]||'',cognome:''};return{nome:p[0],cognome:p.slice(1).join(' ')};}
+function fullRef(r){return((r.refNome||r.referente||'')+(r.refCognome?' '+r.refCognome:'')).trim();}
+function opById(id){return state.data.operatori.find(o=>o.id===id)||null;}
+function utById(id){return state.data.utenti.find(u=>u.id===id)||null;}
+function prById(id){return state.data.progetti.find(p=>p.id===id)||null;}
+function opColor(op){return(op&&op.colore)||'#5C6C6A';}
+function sedeClass(s){if(!s)return'online';const l=s.toLowerCase();if(l.includes('cesate'))return'cesate';if(l.includes('busto'))return'busto';if(l.includes('domicilio'))return'domicilio';return'online';}
+function statoTag(st){const m={'proposta':'info','confermata':'warn','eseguita':'ok','assenza ingiustificata':'danger','annullata':'off'};return m[st]||'off';}
+function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00'))/60,0);}
+function effRng(ent,ds,dn){
+  const ov=(ent.eccezioni||ent.availOverrides||{}); 
+  if(typeof ov==='object'&&!Array.isArray(ov)&&ov[ds])return ov[ds]==='off'?[]:ov[ds];
+  if(Array.isArray(ov)){const ex=ov.find(e=>e.data===ds);if(ex){if(ex.tipo==='assente')return[];return[{from:ex.da,to:ex.a}].filter(r=>r.from&&r.to);}}
+  const avail=ent.disponibilita||ent.avail||{};
+  return avail[dn]||avail[GIORNI.indexOf(dn)+1]||[];
+}
+
+/* ============================================================
+   MSAL
+   ============================================================ */
+let msalApp;
+async function initMsal(){
+  if(typeof msal==='undefined'||!msal.PublicClientApplication)throw new Error('La libreria MSAL non si è caricata.');
+  msalApp=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:'https://login.microsoftonline.com/'+CFG.tenantId,redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:true}});
+  if(typeof msalApp.initialize==='function')await msalApp.initialize();
+  const rr=await msalApp.handleRedirectPromise();
+  if(rr&&rr.account){msalApp.setActiveAccount(rr.account);return rr.account;}
+  const accs=msalApp.getAllAccounts();
+  if(accs.length){msalApp.setActiveAccount(accs[0]);return accs[0];}
+  return null;
+}
+async function doLogin(){
+  if(!msalApp)throw new Error('MSAL non inizializzato.');
+  try{const r=await msalApp.loginPopup({scopes:SCOPES,prompt:'select_account'});msalApp.setActiveAccount(r.account);return r.account;}
+  catch(e){if(e.errorCode==='popup_window_error'||e.errorCode==='empty_window_error'){await msalApp.loginRedirect({scopes:SCOPES});return null;}if(e.errorCode==='user_cancelled')return null;throw e;}
+}
+async function doLogout(){try{await msalApp.logoutPopup({account:msalApp.getActiveAccount()});}catch{await msalApp.logoutRedirect();}}
+async function getToken(){
+  const acc=msalApp.getActiveAccount();if(!acc)throw new Error('Sessione scaduta.');
+  try{return(await msalApp.acquireTokenSilent({scopes:SCOPES,account:acc})).accessToken;}
+  catch{return(await msalApp.acquireTokenPopup({scopes:SCOPES})).accessToken;}
+}
+
+/* ============================================================
+   Graph API / SharePoint
+   ============================================================ */
+async function gfetch(path,options={}){
+  const token=await getToken();
+  const res=await fetch(path.startsWith('http')?path:GRAPH+path,{...options,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})}});
+  if(res.status===204)return null;
+  const body=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error('Graph '+res.status+': '+(body?.error?.message||res.statusText));
+  return body;
+}
+async function resolveSite(){
+  const root=await gfetch('/sites/'+CFG.spHost).catch(()=>null);
+  if(root){const ok=await tryResolveLists(root.id);if(ok){state.siteId=root.id;return;}}
+  const sr=await gfetch('/sites?search=*&$top=50').catch(()=>({value:[]}));
+  for(const site of(sr.value||[])){const ok=await tryResolveLists(site.id);if(ok){state.siteId=site.id;return;}}
+  throw new Error('Liste SharePoint non trovate. Verifica i nomi: '+Object.values(CFG.lists).join(', '));
+}
+async function tryResolveLists(siteId){
+  try{const lists=await gfetch('/sites/'+siteId+'/lists?$select=id,name,displayName&$top=200');const all=lists.value||[];const found={};
+  for(const[key,listName]of Object.entries(CFG.lists)){const ew=key.charAt(0).toUpperCase()+key.slice(1);
+    const m=all.find(l=>{const dn=(l.displayName||'').toLowerCase(),nm=(l.name||'').toLowerCase(),tgt=listName.toLowerCase();
+    if(dn===tgt||nm===tgt)return true;return(dn.includes('gestionale')&&dn.includes(ew.toLowerCase()))||(nm.includes('gestionale')&&nm.includes(ew.toLowerCase()));});
+    if(!m)return false;found[key]=m.id;}
+  state.listIds=found;return true;}catch{return false;}
+}
+async function loadListRecords(key){
+  const listId=state.listIds[key];let url='/sites/'+state.siteId+'/lists/'+listId+'/items?expand=fields(select=Title,Data)&$top=500';const records=[];
+  while(url){const page=await gfetch(url);for(const item of(page.value||[])){const f=item.fields||{};let p={};try{p=f.Data?JSON.parse(f.Data):{};}catch{p={};}records.push({...p,id:p.id||f.Title||item.id,_spId:item.id});}url=page['@odata.nextLink']||null;}
+  return records;
+}
+async function loadAll(){const keys=['operatori','utenti','progetti','sessioni','chiusure'];const results=await Promise.all(keys.map(loadListRecords));keys.forEach((k,i)=>{if(k==='chiusure'){const cr=results[i];state.data.chiusure=(cr&&cr[0]&&cr[0].chiusure)||[];}else{state.data[k]=results[i];}});
+  // Migration: split nome->nome+cognome for old records
+  try{
+  let migrated=false;
+  for(const o of state.data.operatori){if(o.nome&&!o.hasOwnProperty('cognome')){const s=splitName(o.nome);o.nome=s.nome;o.cognome=s.cognome;migrated=true;}}
+  for(const u of state.data.utenti){
+    if(u.nome&&!u.hasOwnProperty('cognome')){const s=splitName(u.nome);u.nome=s.nome;u.cognome=s.cognome;migrated=true;}
+    if((u.referente||u.referenteNome)&&!u.hasOwnProperty('refNome')){const s=splitName(u.referente||u.referenteNome||'');u.refNome=s.nome;u.refCognome=s.cognome;delete u.referente;delete u.referenteNome;migrated=true;}
+  }
+  if(migrated){for(const o of state.data.operatori)await saveRecord('operatori',o);for(const u of state.data.utenti)await saveRecord('utenti',u);console.log('Migration: nomi divisi in nome+cognome');}
+  }catch(e){console.warn('Migration skipped:',e);}
+}
+async function saveRecord(key,record){
+  const listId=state.listIds[key];const{_spId,...payload}=record;const fields={Title:payload.id,Data:JSON.stringify(payload)};
+  if(_spId){await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items/'+_spId+'/fields',{method:'PATCH',body:JSON.stringify(fields)});const arr=state.data[key];const i=arr.findIndex(r=>r._spId===_spId);if(i>=0)arr[i]={...payload,_spId};return arr[i];}
+  else{const created=await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items',{method:'POST',body:JSON.stringify({fields})});const rec={...payload,_spId:created.id};state.data[key].push(rec);return rec;}
+}
+async function deleteRecord(key,record){if(!record._spId)return;await gfetch('/sites/'+state.siteId+'/lists/'+state.listIds[key]+'/items/'+record._spId,{method:'DELETE'});state.data[key]=state.data[key].filter(r=>r._spId!==record._spId);}
+
+function resolveRole(account){
+  const claims=account.idTokenClaims||{};const azureRoles=claims.roles||[];const email=(account.username||'').toLowerCase();
+  const me=state.data.operatori.find(o=>(o.email||'').toLowerCase()===email)||null;
+  if(azureRoles.includes('Admin')||(me&&me.ruolo==='Admin'))return{role:'Admin',me};
+  if(CFG.adminEmails.some(e=>e.toLowerCase()===email))return{role:'Admin',me};
+  if(azureRoles.includes('Operatore')||me)return{role:'Operatore',me};
+  if(state.data.operatori.length===0)return{role:'Admin',me:null,bootstrap:true};
+  return{role:null,me:null};
+}
+
+/* ============================================================
+   Navigazione
+   ============================================================ */
+const TABS={
+  Admin:[{id:'calendario',label:'Calendario'},{id:'sessioni',label:'Sessioni'},{id:'utenti',label:'Utenti'},{id:'progetti',label:'Progetti'},{id:'operatori',label:'Operatori'},{id:'chiusure',label:'📅 Chiusure'},{id:'genera',label:'Genera'},{id:'assistente',label:'💬 Assistente'}],
+  Operatore:[{id:'calendario',label:'Il mio calendario'},{id:'sessioni',label:'Le mie sessioni'},{id:'disponibilita',label:'Disponibilità'}]
+};
+function buildNav(){const nav=$('#nav-tabs');nav.innerHTML='';for(const t of TABS[state.role]){const b=document.createElement('button');b.textContent=t.label;b.dataset.tab=t.id;b.addEventListener('click',()=>showTab(t.id));nav.appendChild(b);}}
+function showTab(id){$$('#nav-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));$$('main section').forEach(s=>s.classList.add('hidden'));$('#view-'+id).classList.remove('hidden');
+  if(id==='calendario'){renderCalendar();refreshSendSel();}
+  if(id==='sessioni')renderSessioni();if(id==='operatori')renderOperatori();if(id==='utenti')renderUtenti();if(id==='chiusure'&&$('#chiusure-anno'))initChiusureTab();
+  if(id==='progetti')renderProgetti();if(id==='disponibilita')renderDisponibilita();
+  if(id==='genera')refreshGenSel();if(id==='assistente')$('#chat-in').focus();
+}
+
+/* ============================================================
+   Calendario
+   ============================================================ */
+function sessioniVisibili(){
+  let list=state.data.sessioni;
+  if(state.role==='Operatore'){const myId=state.me?state.me.id:'__none__';list=list.filter(s=>s.operatoreId===myId);}
+  else{if(state.cal.filterOp)list=list.filter(s=>s.operatoreId===state.cal.filterOp);if(state.cal.filterSede)list=list.filter(s=>(s.sede||'').includes(state.cal.filterSede));}
+  return list;
+}
+function renderCalFilters(){
+  const box=$('#cal-filters');if(state.role!=='Admin'){box.innerHTML='';return;}
+  const ops=state.data.operatori.filter(o=>o.attivo!==false);
+  box.innerHTML='<select id="cal-f-op"><option value="">Tutti gli operatori</option>'+ops.map(o=>'<option value="'+o.id+'" '+(state.cal.filterOp===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select><select id="cal-f-sede"><option value="">Tutte le sedi</option>'+SEDI.map(s=>'<option '+(state.cal.filterSede===s?'selected':'')+'>'+s+'</option>').join('')+'</select>';
+  $('#cal-f-op').addEventListener('change',e=>{state.cal.filterOp=e.target.value;renderCalendar();});
+  $('#cal-f-sede').addEventListener('change',e=>{state.cal.filterSede=e.target.value;renderCalendar();});
+}
+function renderCalendar(){
+  $('#cal-title').textContent=state.role==='Admin'?'Calendario del centro':'Il mio calendario';
+  const isAdmin=state.role==='Admin';
+  $('#cal-new').classList.toggle('hidden',!isAdmin);$('#cal-bulk').classList.toggle('hidden',!isAdmin);$('#cal-send-month').classList.toggle('hidden',!isAdmin);$('#cal-send-panel').classList.toggle('hidden',!isAdmin);
+  renderCalFilters();
+  const{year,month}=state.cal;$('#cal-month-label').textContent=monthLabel(year,month);
+  const sessions=sessioniVisibili();const byDay={};
+  for(const s of sessions){if(!s.data)continue;(byDay[s.data]=byDay[s.data]||[]).push(s);}
+  Object.values(byDay).forEach(a=>a.sort((x,y)=>(x.oraInizio||x.ora_inizio||'').localeCompare(y.oraInizio||y.ora_inizio||'')));
+  const first=new Date(year,month,1);const startOffset=(first.getDay()+6)%7;const daysInMonth=new Date(year,month+1,0).getDate();
+  const grid=$('#cal-grid');grid.innerHTML=GIORNI.map(d=>'<div class="cal-dow">'+d+'</div>').join('');
+  const totalCells=Math.ceil((startOffset+daysInMonth)/7)*7;const today=todayISO();
+  for(let i=0;i<totalCells;i++){
+    const dayNum=i-startOffset+1;const cell=document.createElement('div');
+    if(dayNum<1||dayNum>daysInMonth){cell.className='cal-cell other';grid.appendChild(cell);continue;}
+    const iso=year+'-'+pad2(month+1)+'-'+pad2(dayNum);const dow=(new Date(year,month,dayNum).getDay()+6)%7;
+    cell.className='cal-cell'+(iso===today?' today':'')+(dow>=5?' weekend':'');
+    cell.innerHTML='<div class="cal-daynum">'+dayNum+'</div>';
+    const daySessions=byDay[iso]||[];
+    daySessions.slice(0,3).forEach(s=>{cell.appendChild(evChip(s));});
+    if(daySessions.length>3){const more=document.createElement('button');more.className='cal-more';more.textContent='+ altre '+(daySessions.length-3);more.addEventListener('click',()=>openDayModal(iso,daySessions));cell.appendChild(more);}
+    if(isAdmin)cell.addEventListener('dblclick',()=>openSessionModal({data:iso}));
+    grid.appendChild(cell);
+  }
+}
+function evChip(s){
+  const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);
+  const b=document.createElement('div');
+  b.className='ev '+sedeClass(s.sede)+(s.stato==='annullata'?' cancelled':'');
+  const ora=s.oraInizio||s.ora_inizio||'';
+  b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullName(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':'')+'</span>';
+  b.style.cursor='pointer';b.addEventListener('click',e=>{e.stopPropagation();openSessionDetail(s);});
+  return b;
+}
+function openDayModal(iso,sessions){openModal('<h3>Sessioni del '+fmtDate(iso)+'</h3><div id="day-list"></div><div class="modal-actions"><button class="btn ghost" data-close>Chiudi</button></div>');const box=$('#day-list');sessions.forEach(s=>{const chip=evChip(s);chip.style.marginBottom='6px';box.appendChild(chip);});}
+
+/* ============================================================
+   Sessioni — dettaglio e editor
+   ============================================================ */
+function renderSessioni(){
+  const isAdmin=state.role==='Admin';$('#sess-new').classList.toggle('hidden',!isAdmin);
+  const fOp=$('#sess-f-operatore');
+  if(isAdmin){fOp.classList.remove('hidden');if(!fOp.dataset.ready){fOp.innerHTML='<option value="">Tutti gli operatori</option>'+state.data.operatori.map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('');fOp.dataset.ready='1';}}else fOp.classList.add('hidden');
+  let list=sessioniVisibili().slice();if(isAdmin&&fOp.value)list=list.filter(s=>s.operatoreId===fOp.value);
+  const st=$('#sess-f-stato').value;if(st)list=list.filter(s=>(s.stato||'proposta')===st);
+  const mese=$('#sess-f-mese').value;if(mese)list=list.filter(s=>(s.data||'').startsWith(mese));
+  list.sort((a,b)=>(b.data+(b.oraInizio||b.ora_inizio||'')).localeCompare(a.data+(a.oraInizio||a.ora_inizio||'')));
+  const box=$('#sess-table');
+  if(!list.length){box.innerHTML='<div class="empty">Nessuna sessione trovata.</div>';return;}
+  box.innerHTML='<table class="list"><thead><tr><th>Data</th><th>Orario</th><th>Utente</th><th>Progetto</th><th>Operatore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(s=>{
+    const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const stato=s.stato||'proposta';
+    return'<tr class="rowlink" data-id="'+s.id+'"><td>'+fmtDate(s.data)+'</td><td>'+esc(s.oraInizio||s.ora_inizio||'')+(s.oraFine||s.ora_fine?'–'+esc(s.oraFine||s.ora_fine):'')+'</td><td>'+esc(ut?fullName(ut):'—')+'</td><td>'+esc(pr?pr.nome:'—')+'</td><td>'+esc(op?fullName(op):'—')+'</td><td>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</td><td><span class="tag '+statoTag(stato)+'">'+esc(stato)+'</span></td></tr>';
+  }).join('')+'</tbody></table>';
+  $$('#sess-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const s=state.data.sessioni.find(x=>x.id===tr.dataset.id);if(s)openSessionDetail(s);}));
+}
+function openSessionDetail(s){
+  const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const isAdmin=state.role==='Admin';
+  openModal('<h3>'+esc(ut?fullName(ut):'?')+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd><dt>Stato</dt><dd><span class="tag '+statoTag(s.stato||'proposta')+'">'+esc(s.stato||'proposta')+'</span></dd>'+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl><div class="field"><label>Note operatore</label><textarea id="sd-note-op">'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button><button class="btn primary" id="sd-save-note">Salva note</button></div>');
+  $('#sd-save-note').addEventListener('click',async()=>{s.noteOperatore=$('#sd-note-op').value.trim();await withBusy(()=>saveRecord('sessioni',s),'Note salvate');closeModal();refreshCurrent();});
+  if(isAdmin){$('#sd-edit').addEventListener('click',()=>{closeModal();openSessionModal(s);});
+  $('#sd-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('sessioni',s),'Eliminata');closeModal();refreshCurrent();});}
+}
+function openSessionModal(s={}){
+  const isNew=!s.id;const ops=state.data.operatori.filter(o=>o.attivo!==false);const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));
+  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(s.sede===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((s.sede==='Cesate'||s.sede==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((s.sede==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  function fillProj(){const uid_=$('#se-utente').value;const prs=state.data.progetti.filter(p=>!uid_||p.utenteId===uid_);$('#se-progetto').innerHTML='<option value="">— Nessuno —</option>'+prs.map(p=>'<option value="'+p.id+'" '+(s.progettoId===p.id?'selected':'')+'>'+esc(p.nome)+'</option>').join('');}
+  fillProj();$('#se-utente').addEventListener('change',fillProj);
+  $('#se-sede').addEventListener('change',e=>{const v=e.target.value;$('#se-aw').style.display=(v==='Cesate'||v==='Busto Arsizio')?'':'none';const al=$('#se-aula');const opts=v==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE;al.innerHTML='<option value="">—</option>'+opts.map(a=>'<option>'+a+'</option>').join('');});
+  $('#se-save').addEventListener('click',async()=>{
+    const rec={...s,id:s.id||uid(),data:$('#se-data').value,oraInizio:$('#se-inizio').value,oraFine:$('#se-fine').value,utenteId:$('#se-utente').value,progettoId:$('#se-progetto').value,operatoreId:$('#se-operatore').value,sede:$('#se-sede').value,aula:($('#se-sede').value==='Cesate'||$('#se-sede').value==='Busto Arsizio')?($('#se-aula').value||null):null,stato:$('#se-stato').value,note:$('#se-note').value.trim(),noteOperatore:s.noteOperatore||''};
+    if(!rec.data||!rec.oraInizio||!rec.utenteId||!rec.operatoreId){$('#se-warn').innerHTML='<div class="banner warn">Compila i campi obbligatori.</div>';return;}
+    await withBusy(()=>saveRecord('sessioni',rec),isNew?'Sessione creata':'Aggiornata');closeModal();refreshCurrent();
+  });
+}
+
+/* ============================================================
+   Operatori
+   ============================================================ */
+function renderOperatori(){
+  const box=$('#op-table');const list=sortN(state.data.operatori);
+  if(!list.length){box.innerHTML='<div class="empty">Nessun operatore. Aggiungili con "+ Nuovo operatore".</div>';return;}
+  box.innerHTML='<table class="list"><thead><tr><th>Operatore</th><th>Email M365</th><th>Sedi</th><th>Ruolo</th><th>Stato</th></tr></thead><tbody>'+list.map(o=>'<tr class="rowlink" data-id="'+o.id+'"><td><span class="dot" style="background:'+opColor(o)+'"></span><strong>'+esc(fullName(o))+'</strong></td><td>'+esc(o.email||'—')+'</td><td>'+esc((o.sedi||[]).join(', ')||'—')+'</td><td><span class="tag '+(o.ruolo==='Admin'?'warn':'off')+'">'+esc(o.ruolo||'Operatore')+'</span></td><td><span class="tag '+(o.attivo!==false?'ok':'off')+'">'+(o.attivo!==false?'attivo':'off')+'</span></td></tr>').join('')+'</tbody></table>';
+  $$('#op-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const o=opById(tr.dataset.id);if(o)openOperatoreModal(o);}));
+}
+function openOperatoreModal(o={}){
+  const isNew=!o.id;const color=o.colore||OP_COLORS[state.data.operatori.length%OP_COLORS.length];
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  renderAvailEditor('oe-av',o.disponibilita||o.avail||{});
+  $('#oe-contratto').addEventListener('change',e=>{$('#oe-assunto-wrap').style.display=e.target.value==='Assunto'?'':'none';});
+  $('#oe-tipo-contr').addEventListener('change',e=>{$('#oe-det-wrap').style.display=e.target.value==='Determinato'?'':'none';});
+  buildCredUI('oe-cred',o.credenziali||[]);
+  $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>ch.classList.toggle('on'));});
+  $('#oe-save').addEventListener('click',async()=>{
+    const nome=$('#oe-nome').value.trim(),cognome=$('#oe-cognome').value.trim(),email=$('#oe-email').value.trim().toLowerCase();
+    if(!nome||!cognome||!email){$('#oe-warn').innerHTML='<div class="banner warn">Nome ed email obbligatori.</div>';return;}
+    const sedi=Array.from($$('#oe-sedi input:checked')).map(i=>i.value);
+    const rec={...o,id:o.id||uid(),nome,cognome,email,telefono:$('#oe-tel').value.trim(),tipoContratto:$('#oe-contratto').value,oreSettimanali:parseInt($('#oe-ore-sett').value)||0,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value||null,tempoCasa:parseInt($('#oe-tempo-casa').value)||0,tempoBusto:parseInt($('#oe-tempo-busto').value)||0,sedi,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value==='1',disponibilita:readAvailEditor('oe-av'),eccezioni:o.eccezioni||[],credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():(o.credenziali||[]),note:$('#oe-note').value.trim()};
+    await withBusy(()=>saveRecord('operatori',rec),isNew?'Creato':'Aggiornato');closeModal();renderOperatori();
+  });
+  if(!isNew)$('#oe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('operatori',o),'Eliminato');closeModal();renderOperatori();});
+}
+
+/* ============================================================
+   Utenti
+   ============================================================ */
+function renderUtenti(){
+  const box=$('#ut-table');const q=($('#ut-search').value||'').toLowerCase();
+  let list=sortN(state.data.utenti);if(q)list=list.filter(u=>fullName(u).toLowerCase().includes(q)||fullRef(u).toLowerCase().includes(q));
+  if(!list.length){box.innerHTML='<div class="empty">'+(q?'Nessun risultato.':'Nessun utente.')+'</div>';return;}
+  box.innerHTML='<table class="list"><thead><tr><th>Utente</th><th>Referente</th><th>Contatti</th><th>Indirizzo</th><th>Progetti</th><th>Stato</th></tr></thead><tbody>'+list.map(u=>{
+    const nProg=state.data.progetti.filter(p=>p.utenteId===u.id&&(p.stato||'attivo')==='attivo').length;
+    const addr=[u.via,u.comune,u.provincia].filter(Boolean).join(', ');
+    return'<tr class="rowlink" data-id="'+u.id+'"><td><strong>'+esc(u.nome)+'</strong></td><td>'+esc(u.referente||u.referenteNome||'—')+'</td><td>'+esc([u.telefono,u.email].filter(Boolean).join(' · ')||'—')+'</td><td>'+esc(addr||'—')+'</td><td>'+nProg+'</td><td><span class="tag '+(u.attivo!==false?'ok':'off')+'">'+(u.attivo!==false?'attivo':'archiviato')+'</span></td></tr>';
+  }).join('')+'</tbody></table>';
+  $$('#ut-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const u=utById(tr.dataset.id);if(u)openUtenteModal(u);}));
+}
+function openUtenteModal(u={}){
+  const isNew=!u.id;
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' utente</h3><div class="grid2"><div class="field"><label>Nome (ragazzo/a) *</label><input id="ue-nome" value="'+esc(u.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="ue-cognome" value="'+esc(u.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Nome referente</label><input id="ue-ref-nome" value="'+esc(u.refNome||'')+'"></div><div class="field"><label>Cognome referente</label><input id="ue-ref-cognome" value="'+esc(u.refCognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="ue-tel" value="'+esc(u.telefono||'')+'"></div><div class="field"><label>Email</label><input id="ue-email" type="email" value="'+esc(u.email||'')+'"></div></div><div class="field"><label>Via e numero</label><input id="ue-via" value="'+esc(u.via||'')+'" placeholder="Via Roma 12"></div><div class="grid3"><div class="field"><label>Comune</label><input id="ue-comune" value="'+esc(u.comune||'')+'"></div><div class="field"><label>Provincia</label><input id="ue-prov" value="'+esc(u.provincia||'')+'" maxlength="2" placeholder="MI"></div><div class="field"><label>CAP</label><input id="ue-cap" value="'+esc(u.cap||'')+'" maxlength="5"></div></div><div class="field"><label>Paese di provenienza</label><select id="ue-paese"><option value="">— Seleziona —</option>'+COUNTRIES.map(c=>'<option '+(c===(u.paese||'')?'selected':'')+'>'+c+'</option>').join('')+'</select></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="ue-cred"></div></div><div class="field"><label>📁 Documenti (OneDrive / SharePoint)</label><div id="ue-docs"></div></div><div class="field"><label>Note</label><textarea id="ue-note">'+esc(u.note||'')+'</textarea></div><div class="grid2"><div class="field"><label>Stato</label><select id="ue-attivo"><option value="1" '+(u.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(u.attivo===false?'selected':'')+'>Archiviato</option></select></div><div></div></div><div id="ue-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="ue-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="ue-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  buildCredUI('ue-cred',u.credenziali||[]);
+  buildDocsUI('ue-docs',u.documenti||[]);
+  $('#ue-save').addEventListener('click',async()=>{
+    const nome=$('#ue-nome').value.trim(),cognome=$('#ue-cognome').value.trim();if(!nome||!cognome){$('#ue-warn').innerHTML='<div class="banner warn">Nome e cognome obbligatori.</div>';return;}
+    const rec={...u,id:u.id||uid(),nome,cognome,refNome:$('#ue-ref-nome').value.trim(),refCognome:$('#ue-ref-cognome').value.trim(),telefono:$('#ue-tel').value.trim(),email:$('#ue-email').value.trim(),via:$('#ue-via').value.trim(),comune:$('#ue-comune').value.trim(),provincia:$('#ue-prov').value.trim().toUpperCase(),cap:$('#ue-cap').value.trim(),paese:$('#ue-paese').value,credenziali:$('#ue-cred')._getCreds?$('#ue-cred')._getCreds():(u.credenziali||[]),documenti:$('#ue-docs')._getDocs?$('#ue-docs')._getDocs():(u.documenti||[]),note:$('#ue-note').value.trim(),attivo:$('#ue-attivo').value==='1'};
+    await withBusy(()=>saveRecord('utenti',rec),isNew?'Creato':'Aggiornato');closeModal();renderUtenti();
+  });
+  if(!isNew)$('#ue-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('utenti',u),'Eliminato');closeModal();renderUtenti();});
+}
+
+/* ============================================================
+   Progetti
+   ============================================================ */
+function renderProgetti(){
+  const box=$('#pr-table');const list=[...state.data.progetti].sort((a,b)=>{const na=utById(a.utenteId)?.nome||'',nb=utById(b.utenteId)?.nome||'';return na.localeCompare(nb,'it')||a.nome.localeCompare(b.nome,'it');});
+  if(!list.length){box.innerHTML='<div class="empty">Nessun progetto.</div>';return;}
+  box.innerHTML='<table class="list"><thead><tr><th>Utente</th><th>Progetto</th><th>Frequenza</th><th>Monte ore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(p=>{
+    const ut=utById(p.utenteId);const ore=oreErog(p.id).toFixed(1);
+    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullName(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+esc(p.monteOre)+' h':'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
+  }).join('')+'</tbody></table>';
+  $$('#pr-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const p=prById(tr.dataset.id);if(p)openProgettoModal(p);}));
+}
+function openProgettoModal(p={}){
+  const isNew=!p.id;const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));const ops=sortN(state.data.operatori.filter(o=>o.attivo!==false));
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  renderAvailEditor('pe-av',p.disponibilita||p.avail||{});
+  const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
+  const domWrap=$('#pe-domicilio-wrap');if(domWrap)$('#pe-sede').addEventListener('change',e=>{domWrap.style.display=e.target.value==='Domicilio'?'':'none';});
+  /* Chip-based operator selection */
+  const peOpsDD=$('#pe-ops-dd'),peOpsChips=$('#pe-ops-chips');
+  function refreshOpDD(){const sel=Array.from(peOpsChips.querySelectorAll('[data-oid]')).map(c=>c.dataset.oid);peOpsDD.innerHTML='<option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!sel.includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(o.nome)+'</option>').join('');}
+  function addOpChip(oid){const ox=opById(oid);if(!ox)return;const ch=document.createElement('span');ch.className='chip on';ch.dataset.oid=oid;ch.innerHTML=esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button>';ch.querySelector('button').addEventListener('click',()=>{ch.remove();refreshOpDD();});peOpsChips.appendChild(ch);refreshOpDD();}
+  peOpsDD.addEventListener('change',()=>{const v=peOpsDD.value;if(v){addOpChip(v);}});
+  peOpsChips.querySelectorAll('.icon-btn').forEach(btn=>btn.addEventListener('click',()=>{btn.closest('[data-oid]').remove();refreshOpDD();}));
+  $('#pe-save').addEventListener('click',async()=>{
+    const nome=$('#pe-nome').value.trim(),utenteId=$('#pe-utente').value;
+    if(!nome||!utenteId){$('#pe-warn').innerHTML='<div class="banner warn">Nome e utente obbligatori.</div>';return;}
+    const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value,frequenza:parseInt($('#pe-freq').value)||3,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,disponibilita:readAvailEditor('pe-av'),eccezioni:p.eccezioni||{}};
+    await withBusy(()=>saveRecord('progetti',rec),isNew?'Creato':'Aggiornato');closeModal();renderProgetti();
+  });
+  if(!isNew)$('#pe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('progetti',p),'Eliminato');closeModal();renderProgetti();});
+}
+
+/* ============================================================
+   Disponibilità — editor riutilizzabile
+   ============================================================ */
+function renderAvailEditor(containerId,avail){
+  const box=$('#'+containerId);if(!box)return;
+  box.innerHTML=GIORNI.map((g,i)=>{
+    const key=avail[g]?g:(avail[i+1]?(i+1):g);const slots=avail[key]||[];
+    return'<div class="avail-day"><div class="dname">'+g+'</div><div class="avail-slots" data-day="'+g+'">'+slots.map((sl,si)=>'<div class="avail-slot"><input type="time" value="'+esc(sl.from||sl.da||'')+'" data-f="'+si+'"> → <input type="time" value="'+esc(sl.to||sl.a||'')+'" data-t="'+si+'"><button class="icon-btn" data-rm="'+si+'">✕</button></div>').join('')+'<button class="add-slot" data-add="'+g+'">+ fascia</button></div></div>';
+  }).join('');
+  box.querySelectorAll('[data-add]').forEach(btn=>btn.addEventListener('click',()=>{
+    const day=btn.dataset.add;const slotsDiv=btn.parentElement;
+    const idx=slotsDiv.querySelectorAll('.avail-slot').length;
+    const el=document.createElement('div');el.className='avail-slot';
+    el.innerHTML='<input type="time" value="09:00" data-f="'+idx+'"> → <input type="time" value="13:00" data-t="'+idx+'"><button class="icon-btn" data-rm="'+idx+'">✕</button>';
+    el.querySelector('[data-rm]').addEventListener('click',()=>el.remove());
+    slotsDiv.insertBefore(el,btn);
+  }));
+  box.querySelectorAll('[data-rm]').forEach(btn=>btn.addEventListener('click',()=>btn.closest('.avail-slot').remove()));
+}
+function readAvailEditor(containerId){
+  const box=$('#'+containerId);if(!box)return{};const result={};
+  box.querySelectorAll('.avail-day').forEach(row=>{
+    const day=row.querySelector('.avail-slots').dataset.day;const slots=[];
+    row.querySelectorAll('.avail-slot').forEach(sl=>{
+      const from=sl.querySelector('input[data-f]')?.value;const to=sl.querySelector('input[data-t]')?.value;
+      if(from&&to)slots.push({from,to});
+    });
+    if(slots.length)result[day]=slots;
+  });
+  return result;
+}
+
+/* Disponibilità operatore (vista Operatore) */
+function renderDisponibilita(){
+  if(!state.me){$('#avail-week').innerHTML='<div class="empty">Account non collegato a un operatore.</div>';return;}
+  if(!state.availDraft)state.availDraft={settimana:JSON.parse(JSON.stringify(state.me.disponibilita||state.me.avail||{})),eccezioni:JSON.parse(JSON.stringify(state.me.eccezioni||[]))};
+  renderAvailEditor('avail-week',state.availDraft.settimana);
+  renderAvailExceptions();
+}
+function renderAvailExceptions(){
+  const box=$('#avail-exceptions');if(!state.availDraft)return;
+  const list=state.availDraft.eccezioni;
+  if(!list.length){box.innerHTML='<div class="empty" style="padding:14px">Nessuna eccezione.</div>';return;}
+  box.innerHTML='';list.forEach((exc,i)=>{
+    const el=document.createElement('div');el.className='avail-slot';el.style.marginBottom='8px';
+    el.innerHTML='<input type="date" value="'+esc(exc.data||'')+'" style="width:150px"><select style="width:150px"><option value="assente" '+(exc.tipo!=='disponibile'?'selected':'')+'>Assente</option><option value="disponibile" '+(exc.tipo==='disponibile'?'selected':'')+'>Disponibile extra</option></select><input type="time" value="'+esc(exc.da||'')+'" style="width:105px"><input type="time" value="'+esc(exc.a||'')+'" style="width:105px"><input type="text" value="'+esc(exc.note||'')+'" placeholder="nota" style="flex:1;min-width:100px"><button class="icon-btn">✕</button>';
+    const[inD,,inDa,inA,inN]=el.querySelectorAll('input');const sel=el.querySelector('select');
+    inD.addEventListener('change',()=>{exc.data=inD.value;});sel.addEventListener('change',()=>{exc.tipo=sel.value;});
+    inDa.addEventListener('change',()=>{exc.da=inDa.value;});inA.addEventListener('change',()=>{exc.a=inA.value;});
+    inN.addEventListener('change',()=>{exc.note=inN.value;});
+    el.querySelector('button').addEventListener('click',()=>{list.splice(i,1);renderAvailExceptions();});
+    box.appendChild(el);
+  });
+}
+async function saveDisponibilita(){
+  if(!state.me||!state.availDraft)return;
+  state.availDraft.settimana=readAvailEditor('avail-week');
+  state.availDraft.eccezioni=state.availDraft.eccezioni.filter(e=>e.data);
+  state.me.disponibilita=state.availDraft.settimana;state.me.eccezioni=state.availDraft.eccezioni;
+  await withBusy(()=>saveRecord('operatori',state.me),'Disponibilità salvate');renderDisponibilita();
+}
+
+/* ============================================================
+   Generatore automatico calendario
+   ============================================================ */
+function refreshGenSel(){
+  const sel=$('#gen-proj-sel');if(!sel)return;
+  const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
+  sel.innerHTML=att.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullName(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
+}
+function sdComp(sede,sedi){if(sede==='Online')return(sedi||[]).includes('Online');if(sede==='Presenza+Online')return true;return(sedi||[]).includes(sede);}
+
+function calcStrettezza(p){
+  const freq=p.frequenza||1;const dur=p.durataSessione||60;
+  let totalMin=0;const avail=p.disponibilita||p.avail||{};
+  GIORNI.forEach(g=>{const slots=avail[g]||[];slots.forEach(s=>{const f=tmin(s.from||s.da),t=tmin(s.to||s.a);totalMin+=Math.max(0,t-f);});});
+  if(totalMin===0)return 999;return totalMin/(freq*dur);
+}
+async function generateMonth(ms,spid,nameFilter){
+  const GAP=5; // 5 min gap between consecutive sessions
+  const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
+  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita');
+  const newS=[],anom=[];const opB={},prB={},auB={},opRoom={};
+  // Pre-populate busy from existing confirmed/executed sessions
+  keep.filter(s=>s.data.startsWith(ms)).forEach(s=>{
+    const pk=s.progettoId||s.utenteId;
+    (opB[s.operatoreId]=opB[s.operatoreId]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});
+    (prB[pk]=prB[pk]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});
+    if(s.aula)(auB[s.aula]=auB[s.aula]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});
+    // Track room assignments per operator per day
+    if(s.aula&&s.operatoreId){const dk=s.operatoreId+'|'+s.data;if(!opRoom[dk])opRoom[dk]=s.aula;}
+  });
+  let target=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
+  if(spid)target=state.data.progetti.filter(p=>p.id===spid);
+  else target=target.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
+  if(nameFilter)target=target.filter(p=>(p.nome||'').toLowerCase().includes(nameFilter));
+  // Priorità: indice di strettezza = ore disponibili / (freq * durata). Più basso = prima
+  target.sort((a,b)=>{
+    const ai=calcStrettezza(a),bi=calcStrettezza(b);
+    if(ai!==bi)return ai-bi;
+    // A parità, in presenza prima di online
+    const sa=a.sede==='Online'?1:0,sb=b.sede==='Online'?1:0;return sa-sb;
+  });
+  // Chiusure del centro
+  const chiusureDates=new Set((state.data.chiusure||[]).map(c=>c.data));
+
+  for(const p of target){
+    const freq=p.frequenza||0;if(!freq)continue;
+    const maxDay=p.maxSessioniGiorno||1;
+    const u=utById(p.utenteId);const lbl=(u?fullName(u):'?')+' — '+p.nome;
+    const pool=(p.operatoriAmmessi||[]).map(id=>opById(id)).filter(Boolean);
+    if(!pool.length){anom.push({lbl,msg:'Nessun operatore assegnato.'});continue;}
+    const allPU=state.data.progetti.filter(x=>x.utenteId===p.utenteId).map(x=>x.id);
+    let wk=1;
+    while(wk<=days){
+      const we=Math.min(wk+6,days);let placed=0;
+      for(let d=wk;d<=we&&placed<freq;d++){
+        const dt=new Date(Y,M-1,d);const dn=dname(dt);if(dn==='Dom')continue;
+        const ds=Y+'-'+pad2(M)+'-'+pad2(d);
+        if(chiusureDates.has(ds))continue;  // Skip chiusure centro
+        // Check how many sessions already placed today for this project
+        const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===ds).length;
+        if(todayPlaced>=maxDay)continue;
+        const pRng=effRng(p,ds,dn);
+        for(const ur of pRng){
+          if(placed>=freq)break;
+          const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+          if(rT-rF<(p.durataSessione||60))continue;
+          for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+            const en=st+(p.durataSessione||60);
+            // Check user not busy across all their projects
+            const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
+            if(!rfree(uBN,st,en))continue;
+            let chosen=null,cAula=null;
+            for(const op of pool){
+              // Cesate implica anche Online per operatori
+              const opSedi=[...(op.sedi||[])];if(opSedi.includes('Cesate')&&!opSedi.includes('Online'))opSedi.push('Online');
+              if(!sdComp(p.sede,opSedi))continue;
+              const opRng=effRng(op,ds,dn);
+              if(!opRng.some(r=>tmin(r.from||r.da)<=st&&tmin(r.to||r.a)>=en))continue;
+              // Check operator busy with GAP
+              const opBusy=(opB[op.id]||[]).filter(b=>b.date===ds);
+              if(!rfree(opBusy,st-GAP,en+GAP)&&!rfree(opBusy,st,en))continue;
+              if(!rfree(opBusy,st,en))continue;
+              // Travel time based on sede transitions
+              const opDaySess=[...newS,...keep].filter(sx=>sx.operatoreId===op.id&&sx.data===ds);
+              let travelMin=0;
+              if(sed==='Busto Arsizio'||opDaySess.some(sx=>sx.sede==='Busto Arsizio'))travelMin=Math.max(travelMin,op.tempoBusto||0);
+              if(sed==='Domicilio')travelMin=Math.max(travelMin,p.domicilioTempo||0);
+              const diffSede=opDaySess.some(sx=>sx.sede&&sx.sede!==sed);
+              if(travelMin>0&&diffSede&&!rfree(opBusy,st-travelMin,en+travelMin))continue;
+              // Determine effective sede
+              const sed=p.sede==='Presenza+Online'?((op.sedi||[]).includes('Cesate')?'Cesate':((op.sedi||[]).includes('Busto Arsizio')?'Busto Arsizio':'Online')):p.sede;
+              if(sed==='Cesate'||sed==='Busto Arsizio'){
+                const auList=sed==='Cesate'?AULE_CESATE:AULE_BUSTO;
+                const halfDay2=st<tmin('13:30')?'AM':'PM';
+                const dkH2=op.id+'|'+ds+'|'+halfDay2;
+                // Prefer the room already assigned to this operator this half-day
+                const prefRoom=opRoom[dkH2]||null;
+                let al=null;
+                if(prefRoom&&auList.includes(prefRoom)&&rfree((auB[prefRoom]||[]).filter(b=>b.date===ds),st,en)){al=prefRoom;}
+                else{al=auList.find(a=>rfree((auB[a]||[]).filter(b=>b.date===ds),st,en));}
+                if(!al)continue;
+                chosen=op;cAula=al;
+                // Track room for operator per half-day (morning vs afternoon)
+                const halfDay=st<tmin('13:30')?'AM':'PM';
+                const dkH=op.id+'|'+ds+'|'+halfDay;
+                if(!opRoom[dkH])opRoom[dkH]=al;
+                break;
+              }
+              // For Online sessions: if operator is at Cesate or Busto (has sessions in-sede same day within GAP), keep their room occupied
+              if(sed==='Online'){
+                const dk=op.id+'|'+ds;
+                const assignedRoom=opRoom[dk]||null;
+                if(assignedRoom){
+                  // Check if operator has sessions close in time (within GAP*3=15min) at the sede
+                  const opDaySess=(opB[op.id]||[]).filter(b=>b.date===ds);
+                  const hasNearby=opDaySess.some(b=>(Math.abs(b.to-st)<=GAP*3)||(Math.abs(en-b.from)<=GAP*3));
+                  if(hasNearby){
+                    // Room stays occupied — mark it busy for this slot too
+                    (auB[assignedRoom]=auB[assignedRoom]||[]).push({date:ds,from:st,to:en});
+                  }
+                }
+              }
+              chosen=op;break;
+            }
+            if(chosen){
+              // Contract hour check for Assunti
+              if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                const wkStart=new Date(Y,M-1,d);wkStart.setDate(wkStart.getDate()-wkStart.getDay()+1);
+                const wkEnd=new Date(wkStart);wkEnd.setDate(wkEnd.getDate()+6);
+                const wkS=wkStart.toISOString().slice(0,10),wkE=wkEnd.toISOString().slice(0,10);
+                const wkMin=((opB[chosen.id]||[]).filter(b=>b.date>=wkS&&b.date<=wkE).reduce((s,b)=>s+(b.to-b.from),0))+(p.durataSessione||60);
+                if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullName(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+              }
+              const sed=p.sede==='Presenza+Online'?((chosen.sedi||[]).includes('Cesate')?'Cesate':((chosen.sedi||[]).includes('Busto Arsizio')?'Busto Arsizio':'Online')):p.sede;
+              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:''};
+              newS.push(sess);
+              (opB[chosen.id]=opB[chosen.id]||[]).push({date:ds,from:st,to:en});
+              (prB[p.id]=prB[p.id]||[]).push({date:ds,from:st,to:en});
+              if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:ds,from:st,to:en});
+              placed++;break;
+            }
+          }
+        }
+      }
+      if(placed<freq)anom.push({lbl,msg:'Settimana '+wk+'/'+M+': '+placed+'/'+freq+' incontri.'});
+      wk+=7;
+    }
+  }
+  // Save all new sessions to SharePoint
+  state.data.sessioni=[...keep.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita'),...state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='eseguita'),...newS];
+  for(const sess of newS)await saveRecord('sessioni',sess);
+  return{count:newS.length,anom};
+}
+
+
+/* ============================================================
+   Generatore con IA (Claude)
+   ============================================================ */
+async function generateMonthAI(ms, spid, userNotes){
+  const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
+  const meseLabel=MESI[M-1]+' '+Y;
+  // Collect data for the prompt
+  let target=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
+  if(spid)target=state.data.progetti.filter(p=>p.id===spid);
+  else target=target.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
+  if(nameFilter)target=target.filter(p=>(p.nome||'').toLowerCase().includes(nameFilter));
+  // Priorità: indice di strettezza = ore disponibili / (freq * durata). Più basso = prima
+  target.sort((a,b)=>{
+    const ai=calcStrettezza(a),bi=calcStrettezza(b);
+    if(ai!==bi)return ai-bi;
+    // A parità, in presenza prima di online
+    const sa=a.sede==='Online'?1:0,sb=b.sede==='Online'?1:0;return sa-sb;
+  });
+  // Chiusure del centro
+  const chiusureDates=new Set((state.data.chiusure||[]).map(c=>c.data));
+  if(!target.length)throw new Error('Nessun progetto attivo da calendarizzare.');
+
+  // Build structured data
+  const opsData=state.data.operatori.filter(o=>o.attivo!==false).map(o=>({
+    id:o.id, nome:o.nome, sedi:(o.sedi||[]).join(', '),
+    disponibilita:Object.entries(o.disponibilita||{}).map(([g,slots])=>g+': '+slots.map(s=>(s.from||s.da)+'-'+(s.to||s.a)).join(', ')).join('; '),
+    eccezioni:(o.eccezioni||[]).filter(e=>e.data&&e.data.startsWith(ms.slice(0,7))).map(e=>e.data+' '+e.tipo+(e.da?' '+e.da+'-'+e.a:'')).join('; ')||'nessuna'
+  }));
+  const projData=target.map(p=>{
+    const ut=utById(p.utenteId);const ops=(p.operatoriAmmessi||[]).map(id=>{const o=opById(id);return o?o.nome:'?';});
+    return{
+      id:p.id, utente:ut?ut.nome:'?', progetto:p.nome, sede:p.sede,
+      frequenza:p.frequenza, durataMin:p.durataSessione||60,
+      maxSessioniGiorno:p.maxSessioniGiorno||1,
+      operatoriFisso:p.operatoreFisso?'sì (usa solo il primo)':'no',
+      operatoriAmmessi:ops.join(', '),
+      disponibilita:Object.entries(p.disponibilita||p.avail||{}).map(([g,slots])=>g+': '+slots.map(s=>(s.from||s.da)+'-'+(s.to||s.a)).join(', ')).join('; ')||'segue disponibilità operatori'
+    };
+  });
+  // Existing sessions to keep
+  const existing=state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&s.stato==='eseguita').map(s=>{
+    const op=opById(s.operatoreId);return{data:s.data,ora:s.oraInizio||s.ora_inizio,fine:s.oraFine||s.ora_fine,operatore:op?op.nome:'?',sede:s.sede,aula:s.aula||'—'};
+  });
+
+  const prompt=`Sei il motore di calendarizzazione del Centro Sviluppo Cognitivo (BrainRx e Metodo Feuerstein).
+Devi generare le sessioni per ${meseLabel} (${days} giorni).
+
+VINCOLI INDEROGABILI:
+- Orari centro: 09:00–19:30. Nessuna sessione fuori da questi orari.
+- Gap di 5 minuti tra sessioni consecutive dello stesso operatore.
+- Nessuna sovrapposizione: un operatore non può avere 2 sessioni contemporanee, un utente nemmeno.
+- Domenica: centro chiuso.
+- Aule Cesate (max 6 contemporanee): Blu, Verde, Gialla, Rosa, Arancione, Viola.
+- Aule Busto Arsizio (max 2 contemporanee): Grande, Piccola.
+- Un operatore che lavora in sede (Cesate o Busto) deve mantenere la STESSA aula per tutta la giornata.
+- Se un operatore fa una sessione online ma è in sede (ha sessioni in presenza prima o dopo entro 15 minuti), l'aula resta occupata.
+- Rispetta la frequenza settimanale di ciascun progetto.
+- Rispetta le disponibilità orarie e le eccezioni per data.
+- Max sessioni/giorno per progetto come indicato.
+
+OPERATORI:
+${JSON.stringify(opsData, null, 1)}
+
+PROGETTI DA CALENDARIZZARE:
+${JSON.stringify(projData, null, 1)}
+
+${existing.length ? 'SESSIONI GIÀ ESEGUITE (non modificare):\n'+JSON.stringify(existing, null, 1) : ''}
+
+${userNotes ? 'ISTRUZIONI AGGIUNTIVE DELL\'AMMINISTRAZIONE:\n'+userNotes : ''}
+
+Rispondi SOLO con un array JSON (senza markdown, senza backtick, senza testo prima o dopo). Ogni elemento deve avere esattamente questi campi:
+{"progettoId":"...","data":"YYYY-MM-DD","oraInizio":"HH:MM","oraFine":"HH:MM","operatoreId":"...","sede":"...","aula":"...oppure null"}
+
+Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, genera comunque il massimo possibile.`;
+
+  const res=await fetch(CFG.claudeProxy,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4096,messages:[{role:'user',content:prompt}]})
+  });
+  const data=await res.json();
+  const txt=(data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');
+  // Parse JSON — strip any markdown fences just in case
+  const clean=txt.replace(/```json|```/g,'').trim();
+  let sessions;
+  try{sessions=JSON.parse(clean);}catch(e){throw new Error('L\'IA non ha restituito un JSON valido. Riprovare o usare l\'algoritmo.\n\nRisposta:\n'+txt.slice(0,500));}
+  if(!Array.isArray(sessions))throw new Error('Formato risposta IA non valido (non è un array).');
+
+  // Validate and save sessions
+  const newS=[];const anom=[];
+  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms.slice(0,7))||s.stato==='eseguita');
+  for(const sess of sessions){
+    if(!sess.data||!sess.oraInizio||!sess.oraFine||!sess.progettoId||!sess.operatoreId){
+      anom.push({lbl:'Sessione incompleta',msg:JSON.stringify(sess).slice(0,120)});continue;
+    }
+    const pr=prById(sess.progettoId);const op=opById(sess.operatoreId);
+    if(!pr){anom.push({lbl:'Progetto non trovato',msg:sess.progettoId});continue;}
+    if(!op){anom.push({lbl:'Operatore non trovato',msg:sess.operatoreId});continue;}
+    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sess.sede||pr.sede,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:''};
+    newS.push(rec);
+  }
+  state.data.sessioni=[...keep,...state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&s.stato==='eseguita'),...newS];
+  for(const sess of newS)await saveRecord('sessioni',sess);
+  return{count:newS.length,anom};
+}
+
+
+/* Alert scadenza contratti */
+function checkContractAlerts(){
+  if(state.role!=='Admin')return;
+  const today=new Date();const alerts=[];
+  for(const op of state.data.operatori){
+    if(op.tipoContratto!=='Assunto'||op.tipoContrattoSpec!=='Determinato'||!op.scadenzaContratto)continue;
+    const scad=new Date(op.scadenzaContratto);const diffDays=Math.floor((scad-today)/(1000*60*60*24));
+    if(diffDays<=0)alerts.push({op:fullName(op),msg:'Contratto <strong>scaduto</strong> il '+fmtDate(op.scadenzaContratto)+'!',urgency:'danger'});
+    else if(diffDays<=60)alerts.push({op:fullName(op),msg:'Contratto scade il '+fmtDate(op.scadenzaContratto)+' (<strong>'+diffDays+' giorni</strong>). Necessario il rinnovo.',urgency:'danger'});
+    else if(diffDays<=120)alerts.push({op:fullName(op),msg:'Contratto scade il '+fmtDate(op.scadenzaContratto)+' ('+diffDays+' giorni).',urgency:'warn'});
+  }
+  if(alerts.length){const h=alerts.map(a=>'<div class="banner '+a.urgency+'">⚠️ <strong>'+esc(a.op)+'</strong>: '+a.msg+'</div>').join('');
+  const wrap=document.createElement('div');wrap.innerHTML=h;wrap.style.cssText='margin-bottom:16px';const main=$('main');if(main.firstChild)main.insertBefore(wrap,main.firstChild);else main.appendChild(wrap);}
+}
+/* Ore straordinarie — calcolo per operatori assunti */
+function calcStraordinari(opId,mese){
+  const op=opById(opId);if(!op||op.tipoContratto!=='Assunto')return null;
+  const sess=state.data.sessioni.filter(s=>s.operatoreId===opId&&s.data.startsWith(mese)&&(s.stato==='confermata'||s.stato==='eseguita'));
+  const totMin=sess.reduce((s,se)=>{const f=tmin(se.oraInizio||se.ora_inizio),t=tmin(se.oraFine||se.ora_fine);return s+(t-f);},0);
+  const settimane=4.33;const previste=op.oreSettimanali*settimane;
+  return{totOre:Math.round(totMin/60*10)/10,previste:Math.round(previste*10)/10,extra:Math.max(0,Math.round((totMin/60-previste)*10)/10)};
+}
+
+/* ============================================================
+   Invio comunicazioni
+   ============================================================ */
+function refreshSendSel(){const sel=$('#send-ut');if(!sel)return;sel.innerHTML=sortN(state.data.utenti).map(u=>'<option value="'+u.id+'">'+esc(fullName(u))+'</option>').join('')||'<option value="">—</option>';}
+function mkWeekMsg(uid_){
+  const u=utById(uid_);if(!u)return'';
+  const now=new Date();const mon=new Date(now);mon.setDate(now.getDate()+((8-now.getDay())%7||7));const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  const ms=mon.toISOString().slice(0,10),ss=sun.toISOString().slice(0,10);
+  const sess=state.data.sessioni.filter(s=>s.utenteId===uid_&&s.data>=ms&&s.data<=ss&&s.stato!=='annullata').sort((a,b)=>a.data.localeCompare(b.data));
+  const ref=fullRef(u)||fullName(u);
+  if(!sess.length)return'Buongiorno '+ref+',\n\nnon ci sono appuntamenti per la settimana prossima.\n\nCordiali saluti,\nCentro Sviluppo Cognitivo';
+  const lines=sess.map(s=>{const op=opById(s.operatoreId),pr=prById(s.progettoId),gg=['Dom','Lun','Mar','Mer','Gio','Ven','Sab'][new Date(s.data).getDay()],DD=parseInt(s.data.split('-')[2]),MM=parseInt(s.data.split('-')[1]);return gg+' '+DD+'/'+MM+': '+(s.oraInizio||s.ora_inizio)+'–'+(s.oraFine||s.ora_fine)+' | '+s.sede+(s.aula?' ('+s.aula+')':'')+(op?' | '+op.nome:'')+(pr?' | '+pr.nome:'');}).join('\n');
+  return'Buongiorno '+ref+',\n\necco gli appuntamenti di '+fullName(u)+' per la settimana prossima:\n\n'+lines+'\n\nPer variazioni contattateci.\nCordiali saluti,\nCentro Sviluppo Cognitivo';
+}
+
+/* ============================================================
+   Assistente AI
+   ============================================================ */
+let chatH=[];
+function bCtx(){return"Sei l'assistente interno del Centro Sviluppo Cognitivo, cooperativa sociale (training cognitivo: Feuerstein, BrainRx, ecc.) con sedi a Cesate, Busto Arsizio e online. Aiuti l'addetta amministrativa.\n\nDATI: Operatori ("+state.data.operatori.length+"): "+sortN(state.data.operatori).map(o=>fullName(o)).join(', ')+"\nUtenti ("+state.data.utenti.length+"): "+sortN(state.data.utenti).map(u=>fullName(u)).join(', ')+"\nProgetti attivi: "+state.data.progetti.filter(p=>(p.stato||'attivo')==='attivo').length+"\n\nRispondi in italiano, in modo conciso e pratico.";}
+function rChat(){const w=$('#chat-win');w.innerHTML=chatH.map(m=>'<div class="msg '+m.role+'">'+esc(m.content)+'</div>').join('');w.scrollTop=w.scrollHeight;}
+async function sendChat(){
+  const inp=$('#chat-in');const txt=inp.value.trim();if(!txt)return;inp.value='';
+  chatH.push({role:'user',content:txt});rChat();
+  const w=$('#chat-win');const ld=document.createElement('div');ld.className='msg assistant';ld.textContent='…';w.appendChild(ld);w.scrollTop=w.scrollHeight;
+  try{const msgs=chatH.map((m,i)=>i===0?{role:'user',content:bCtx()+'\n\n---\n\n'+m.content}:{role:m.role,content:m.content});
+    const res=await fetch(CFG.claudeProxy,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:msgs})});
+    const data=await res.json();const rep=(data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n')||'Nessuna risposta.';
+    ld.remove();chatH.push({role:'assistant',content:rep});rChat();
+  }catch(e){ld.remove();chatH.push({role:'assistant',content:'Errore: '+e.message});rChat();}
+}
+
+/* ============================================================
+   Excel import/export
+   ============================================================ */
+function c2r(v){return String(v||'').split(',').map(s=>{const[f,t]=s.trim().split('-').map(x=>x?.trim());return f&&t?{from:f,to:t}:null;}).filter(Boolean);}
+async function handleImport(file,kind){
+  const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}).slice(1).filter(r=>r.some(c=>String(c).trim()));
+  let added=0;
+  if(kind==='op'){for(const r of rows){const nome=String(r[0]||'').trim();if(!nome)continue;const cognome=String(r[1]||'').trim();const sedi=String(r[4]||'').split(';').map(s=>s.trim()).filter(s=>SEDI.includes(s));const avail={};GIORNI.forEach((g,i)=>{const rs=c2r(r[5+i]);if(rs.length)avail[g]=rs;});
+    const ei=state.data.operatori.findIndex(o=>(o.nome+' '+o.cognome).toLowerCase()===(nome+' '+cognome).toLowerCase());
+    const obj={id:ei>=0?state.data.operatori[ei].id:uid(),nome,cognome,telefono:String(r[2]||'').trim(),email:String(r[3]||'').trim(),sedi,disponibilita:avail,eccezioni:[],colore:OP_COLORS[state.data.operatori.length%OP_COLORS.length],ruolo:'Operatore',attivo:true};
+    await saveRecord('operatori',obj);added++;}}
+  else{for(const r of rows){const nome=String(r[0]||'').trim();if(!nome)continue;
+    const obj={id:uid(),nome,cognome:String(r[1]||'').trim(),refNome:String(r[2]||'').trim(),refCognome:String(r[3]||'').trim(),telefono:String(r[4]||'').trim(),email:String(r[5]||'').trim(),via:String(r[6]||'').trim(),comune:String(r[7]||'').trim(),provincia:String(r[8]||'').trim().toUpperCase(),cap:String(r[9]||'').trim(),paese:String(r[10]||'').trim(),note:String(r[11]||'').trim(),attivo:true};
+    await saveRecord('utenti',obj);added++;}}
+  toast(added+' importati.');if(kind==='op')renderOperatori();else renderUtenti();
+}
+
+
+
+/* ============================================================
+   Documenti OneDrive/SharePoint — helper
+   ============================================================ */
+function buildDocsUI(containerId, docList){
+  const wrap=$('#'+containerId);if(!wrap)return;
+  let docs=JSON.parse(JSON.stringify(docList||[]));
+  function render(){
+    wrap.innerHTML='<div class="cred-section"><div id="'+containerId+'-list">'+docs.map((dc,i)=>'<div class="doc-link-row" data-di="'+i+'"><input type="text" class="doc-label" value="'+esc(dc.label||'')+'" placeholder="Etichetta…"><span style="flex:2;display:flex;align-items:center;gap:6px;min-width:0"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="'+esc(dc.url||'')+'">'+esc(dc.name||dc.url||'Nessun file')+'</span>'+(dc.url?'<a href="'+esc(dc.url)+'" target="_blank" rel="noopener" class="btn ghost small" style="padding:3px 7px;font-size:11px">Apri ↗</a>':'')+'</span><button type="button" class="btn ghost small doc-browse" style="padding:3px 8px;font-size:11.5px;white-space:nowrap" data-idx="'+i+'">📂 Sfoglia</button><button type="button" class="icon-btn" title="Rimuovi">✕</button></div>').join('')+'</div><button type="button" class="add-slot" id="'+containerId+'-add" style="margin-top:8px">+ Aggiungi documento</button></div>';
+    wrap.querySelectorAll('.icon-btn').forEach(btn=>{btn.addEventListener('click',()=>{const di=parseInt(btn.closest('.doc-link-row').dataset.di);docs.splice(di,1);render();});});
+    wrap.querySelectorAll('.doc-browse').forEach(btn=>{btn.addEventListener('click',async()=>{
+      const idx=parseInt(btn.dataset.idx);
+      try{const file=await browseOneDrive();if(file){docs[idx].url=file.webUrl;docs[idx].name=file.name;if(!docs[idx].label)docs[idx].label=file.name.replace(/\.[^.]+$/,'');render();}}
+      catch(e){toast('Errore sfoglia: '+e.message,true);}
+    });});
+    const addBtn=$('#'+containerId+'-add');if(addBtn)addBtn.addEventListener('click',()=>{docs.push({label:'',url:'',name:''});render();});
+  }
+  render();
+  wrap._getDocs=()=>{return docs.map((dc,i)=>{const row=wrap.querySelectorAll('.doc-link-row')[i];if(!row)return dc;return{label:row.querySelector('.doc-label').value.trim(),url:dc.url||'',name:dc.name||''};}).filter(d=>d.label||d.url);};
+}
+
+/* OneDrive/SharePoint file browser via Graph API */
+async function browseOneDrive(){
+  return new Promise(async(resolve,reject)=>{
+    try{
+      const token=await getToken();
+      let currentPath='/me/drive/root/children';
+      let breadcrumb=[{label:'OneDrive',path:'/me/drive/root/children'}];
+      let spDrives=[];
+      // Also get SharePoint drives
+      try{
+        if(state.siteId){const dr=await gfetch('/sites/'+state.siteId+'/drives');spDrives=(dr.value||[]).map(d=>({id:d.id,name:d.name||'Documenti SharePoint'}));}
+      }catch(e){console.warn('No SP drives:',e);}
+
+      async function loadItems(path){
+        const data=await gfetch(path+'?$top=200&$orderby=name');
+        return(data.value||[]).map(item=>({id:item.id,name:item.name,isFolder:!!item.folder,webUrl:item.webUrl,size:item.size,driveId:item.parentReference?.driveId}));
+      }
+
+      async function renderBrowser(){
+        const items=await loadItems(currentPath);
+        const bc=breadcrumb.map((b,i)=>'<button class="btn ghost small fb-bc" data-bi="'+i+'" style="padding:3px 8px;font-size:12px">'+esc(b.label)+'</button>').join(' › ');
+        const spBtns=spDrives.length?'<div style="margin-top:8px;margin-bottom:4px"><strong style="font-size:11px;color:var(--ink-soft)">SHAREPOINT:</strong> '+spDrives.map(d=>'<button class="btn ghost small fb-sp" data-did="'+d.id+'" data-dn="'+esc(d.name)+'" style="padding:3px 8px;font-size:12px;margin-left:6px">📁 '+esc(d.name)+'</button>').join('')+'</div>':'';
+        const list=items.map(it=>'<div class="fb-item" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer" data-id="'+it.id+'" data-folder="'+(it.isFolder?'1':'0')+'" data-url="'+esc(it.webUrl||'')+'" data-name="'+esc(it.name)+'" data-driveid="'+(it.driveId||'')+'"><span style="font-size:16px">'+(it.isFolder?'📁':'📄')+'</span><span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+'</span>'+(it.isFolder?'':'<button class="btn primary small fb-sel" style="padding:3px 10px;font-size:11px">Seleziona</button>')+'</div>').join('');
+        const h='<h3>📂 Sfoglia file</h3><div style="margin-bottom:8px">'+bc+'</div>'+spBtns+'<div style="max-height:350px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">'+(list||'<div class="empty" style="padding:16px">Cartella vuota</div>')+'</div><div class="modal-actions"><button class="btn ghost" id="fb-cancel">Annulla</button></div>';
+        closeModal();openModal(h);
+        // Event handlers
+        $$('.fb-bc').forEach(b=>b.addEventListener('click',()=>{const bi=parseInt(b.dataset.bi);breadcrumb=breadcrumb.slice(0,bi+1);currentPath=breadcrumb[bi].path;renderBrowser();}));
+        $$('.fb-sp').forEach(b=>b.addEventListener('click',()=>{const did=b.dataset.did,dn=b.dataset.dn;currentPath='/drives/'+did+'/root/children';breadcrumb=[{label:dn,path:currentPath}];renderBrowser();}));
+        $$('.fb-item').forEach(el=>{
+          if(el.dataset.folder==='1'){el.addEventListener('dblclick',()=>{const did=el.dataset.driveid;const fid=el.dataset.id;currentPath=did?'/drives/'+did+'/items/'+fid+'/children':'/me/drive/items/'+fid+'/children';breadcrumb.push({label:el.dataset.name,path:currentPath});renderBrowser();});
+          el.addEventListener('click',()=>{el.style.background='var(--primary-soft)';});}
+        });
+        $$('.fb-sel').forEach(b=>b.addEventListener('click',(e)=>{e.stopPropagation();const el=b.closest('.fb-item');closeModal();resolve({webUrl:el.dataset.url,name:el.dataset.name});}));
+        // Folders — also allow selecting entire folder with a single click on a select button
+        $$('.fb-item[data-folder="1"]').forEach(el=>{
+          const selBtn=document.createElement('button');selBtn.className='btn ghost small';selBtn.style.cssText='padding:3px 10px;font-size:11px';selBtn.textContent='Seleziona cartella';
+          selBtn.addEventListener('click',(e)=>{e.stopPropagation();closeModal();resolve({webUrl:el.dataset.url,name:'📁 '+el.dataset.name});});
+          el.appendChild(selBtn);
+        });
+        $('#fb-cancel').addEventListener('click',()=>{closeModal();resolve(null);});
+      }
+      await renderBrowser();
+    }catch(e){reject(e);}
+  });
+}
+
+/* ============================================================
+   Credenziali piattaforme — helper
+   ============================================================ */
+function buildCredUI(containerId, credList){
+  const wrap=$('#'+containerId);if(!wrap)return;
+  let creds=JSON.parse(JSON.stringify(credList||[]));
+  function render(){
+    wrap.innerHTML='<div class="cred-section"><div class="cred-hdr"><span>Piattaforma</span><span>ID / Username</span><span>Password</span><span></span><span></span></div><div id="'+containerId+'-list">'+creds.map((cr,i)=>'<div class="cred-line" data-ci="'+i+'"><input type="text" class="cr-plat" value="'+esc(cr.piattaforma||'')+'" placeholder="es. BrainRx, Zoom…"><input type="text" class="cr-id" value="'+esc(cr.uid||'')+'" placeholder="username / ID"><input type="password" class="cr-pw" value="'+esc(cr.password||'')+'" placeholder="password"><button type="button" class="eye-btn" title="Mostra/nascondi">👁</button><button type="button" class="icon-btn" title="Rimuovi">✕</button></div>').join('')+'</div><button type="button" class="add-slot" id="'+containerId+'-add" style="margin-top:8px">+ Aggiungi credenziali</button></div>';
+    wrap.querySelectorAll('.eye-btn').forEach(btn=>{btn.addEventListener('click',()=>{const inp=btn.parentElement.querySelector('.cr-pw');inp.type=inp.type==='password'?'text':'password';});});
+    wrap.querySelectorAll('.icon-btn').forEach(btn=>{btn.addEventListener('click',()=>{const ci=parseInt(btn.closest('.cred-line').dataset.ci);creds.splice(ci,1);render();});});
+    const addBtn=$('#'+containerId+'-add');if(addBtn)addBtn.addEventListener('click',()=>{creds.push({piattaforma:'',uid:'',password:''});render();});
+  }
+  render();
+  wrap._getCreds=()=>{return creds.map((cr,i)=>{const row=wrap.querySelectorAll('.cred-line')[i];if(!row)return cr;return{piattaforma:row.querySelector('.cr-plat').value.trim(),uid:row.querySelector('.cr-id').value.trim(),password:row.querySelector('.cr-pw').value.trim()};}).filter(c=>c.piattaforma||c.uid||c.password);};
+}
+
+/* ============================================================
+   Modal, feedback, init
+   ============================================================ */
+function openModal(html){closeModal();const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModal));$('#modal-root').appendChild(wrap);document.addEventListener('keydown',escClose);}
+function closeModal(){$('#modal-root').innerHTML='';document.removeEventListener('keydown',escClose);}
+function escClose(e){if(e.key==='Escape')closeModal();}
+async function withBusy(fn,okMsg){try{await fn();if(okMsg)toast(okMsg);}catch(e){console.error(e);toast('Errore: '+e.message,true);throw e;}}
+function refreshCurrent(){const active=$('#nav-tabs button.active');if(active)showTab(active.dataset.tab);}
+function showScreen(id){['screen-loading','screen-login','screen-denied','app'].forEach(s=>$('#'+s).classList.toggle('hidden',s!==id));}
+
+async function afterLogin(account){
+  state.account=account;showScreen('screen-loading');$('#loading-msg').textContent='Connessione a SharePoint…';
+  try{await resolveSite();$('#loading-msg').textContent='Caricamento dati…';await loadAll();}
+  catch(e){console.error(e);showScreen('screen-login');const err=$('#login-err');err.textContent='Errore SharePoint: '+e.message;err.classList.remove('hidden');return;}
+  const{role,me,bootstrap}=resolveRole(account);
+  if(!role){$('#denied-msg').textContent='L\'account '+account.username+' non risulta tra gli operatori.';showScreen('screen-denied');return;}
+  state.role=role;state.me=me;state.bootstrap=!!bootstrap;state.availDraft=null;
+  const displayName=(me&&me.nome)||account.name||account.username;
+  $('#user-name').textContent=displayName;$('#user-role').textContent=role==='Admin'?'Amministrazione':'Operatore';$('#user-avatar').textContent=initials(displayName);if(me)$('#user-avatar').style.background=opColor(me);
+  $('#banner-root').innerHTML=state.bootstrap?'<div class="banner warn"><strong>Primo avvio.</strong> Vai in Operatori e aggiungi te stessa con ruolo Admin (email: '+esc(account.username)+').</div>':'';
+  buildNav();const now=new Date();state.cal.year=now.getFullYear();state.cal.month=now.getMonth();
+  showScreen('app');showTab('calendario');
+}
+
+async function init(){
+  try{if(window.location.protocol==='file:'){showScreen('screen-login');const err=$('#login-err');err.textContent='Apri dal sito pubblicato (https://…), non come file locale.';err.classList.remove('hidden');return;}
+  const account=await initMsal();if(account)await afterLogin(account);else showScreen('screen-login');
+  }catch(e){console.error(e);showScreen('screen-login');const err=$('#login-err');err.textContent='Errore: '+e.message;err.classList.remove('hidden');}
+}
+
+/* ---------- Eventi globali ---------- */
+$('#btn-login').addEventListener('click',async()=>{$('#login-err').classList.add('hidden');try{const acc=await doLogin();if(acc)await afterLogin(acc);}catch(e){const err=$('#login-err');err.textContent='Accesso non riuscito: '+e.message;err.classList.remove('hidden');}});
+$('#btn-logout').addEventListener('click',doLogout);
+$('#btn-denied-logout').addEventListener('click',doLogout);
+$('#cal-prev').addEventListener('click',()=>{state.cal.month--;if(state.cal.month<0){state.cal.month=11;state.cal.year--;}renderCalendar();});
+$('#cal-next').addEventListener('click',()=>{state.cal.month++;if(state.cal.month>11){state.cal.month=0;state.cal.year++;}renderCalendar();});
+$('#cal-today').addEventListener('click',()=>{const now=new Date();state.cal.year=now.getFullYear();state.cal.month=now.getMonth();renderCalendar();});
+$('#cal-new').addEventListener('click',()=>openSessionModal());
+$('#sess-new').addEventListener('click',()=>openSessionModal());
+$('#sess-f-operatore').addEventListener('change',renderSessioni);
+$('#sess-f-stato').addEventListener('change',renderSessioni);
+$('#sess-f-mese').addEventListener('change',renderSessioni);
+$('#op-new').addEventListener('click',()=>openOperatoreModal());
+$('#ut-new').addEventListener('click',()=>openUtenteModal());
+$('#ut-search').addEventListener('input',renderUtenti);
+$('#pr-new').addEventListener('click',()=>openProgettoModal());
+$('#avail-save').addEventListener('click',saveDisponibilita);
+$('#avail-add-exc').addEventListener('click',()=>{if(!state.availDraft)return;state.availDraft.eccezioni.push({data:todayISO(),tipo:'assente',da:'',a:'',note:''});renderAvailExceptions();});
+$('#gen-scope').addEventListener('change',e=>{$('#gen-proj-wrap').classList.toggle('hidden',e.target.value!=='single');if(e.target.value==='single')refreshGenSel();});
+
+/* ============================================================
+   Chiusure Centro
+   ============================================================ */
+function renderChiusure(){
+  if(!state.data.chiusure)state.data.chiusure=[];
+  const anno=parseInt($('#chiusure-anno').value)||new Date().getFullYear();
+  const list=state.data.chiusure.filter(c=>c.data&&c.data.startsWith(anno+'')).sort((a,b)=>a.data.localeCompare(b.data));
+  const h=list.length?list.map(c=>{
+    const dt=new Date(c.data+'T00:00');const lbl=fmtDate(c.data);
+    const tagClass=c.tipo==='festivita'?'warn':'danger';
+    return'<div class="card" style="margin-bottom:6px"><div class="card-pad" style="display:flex;align-items:center;gap:12px"><span class="tag '+tagClass+'">'+esc(c.tipo==='festivita'?'Festività':'Chiusura ferie')+'</span><strong>'+lbl+'</strong><span style="flex:1;color:var(--ink-soft)">'+esc(c.nome||'')+'</span><button class="btn ghost small btn-del-chiusura" data-cid="'+esc(c.id)+'">✕</button></div></div>';
+  }).join(''):'<div class="empty">Nessuna chiusura per il '+anno+'.</div>';
+  $('#chiusure-list').innerHTML=h;
+  $$('.btn-del-chiusura').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.cid;state.data.chiusure=state.data.chiusure.filter(c=>c.id!==id);await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});renderChiusure();}));
+}
+function initChiusureTab(){
+  const sel=$('#chiusure-anno');const y=new Date().getFullYear();
+  sel.innerHTML=[y-1,y,y+1,y+2].map(a=>'<option'+(a===y?' selected':'')+'>'+a+'</option>').join('');
+  sel.addEventListener('change',renderChiusure);
+  $('#btn-load-festivita').addEventListener('click',async()=>{
+    const anno=parseInt($('#chiusure-anno').value);const fest=getFestivita(anno);let added=0;
+    for(const f of fest){const ds=anno+'-'+pad2(f.m)+'-'+pad2(f.d);if(!state.data.chiusure.some(c=>c.data===ds)){state.data.chiusure.push({id:uid(),data:ds,tipo:'festivita',nome:f.nome});added++;}}
+    if(added){await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});toast(added+' festività caricate per il '+anno);}else{toast('Tutte le festività del '+anno+' sono già presenti.');}
+    renderChiusure();
+  });
+  $('#btn-add-chiusura').addEventListener('click',()=>{
+    const anno=$('#chiusure-anno').value;
+    openModal('<h3>Nuova chiusura</h3><div class="field"><label>Data</label><input id="ch-data" type="date" value="'+anno+'-01-01"></div><div class="field"><label>Tipo</label><select id="ch-tipo"><option value="festivita">Festività</option><option value="ferie" selected>Chiusura ferie</option></select></div><div class="field"><label>Descrizione</label><input id="ch-nome" placeholder="es. Chiusura estiva"></div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="ch-save">Salva</button></div>');
+    $('#ch-save').addEventListener('click',async()=>{const d=$('#ch-data').value;if(!d){toast('Inserisci una data.',true);return;}state.data.chiusure.push({id:uid(),data:d,tipo:$('#ch-tipo').value,nome:$('#ch-nome').value.trim()});await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});closeModal();renderChiusure();});
+  });
+  renderChiusure();
+}
+
+$('#btn-gen').addEventListener('click',async()=>{
+  const ms=$('#gen-month').value;if(!ms){toast('Seleziona il mese.',true);return;}
+  const scope=$('#gen-scope').value;let spid=scope==='single'?$('#gen-proj-sel').value:null;const projNameFilter=scope==='byname'?$('#gen-proj-name').value.trim().toLowerCase():null;
+  $('#gen-results').innerHTML='<div class="banner info">Generazione in corso…</div>';
+  try{const res=await generateMonth(ms,spid,projNameFilter);
+  let html='<div class="card"><div class="card-pad"><h3>'+res.count+' sessioni create</h3>';
+  if(res.anom.length)html+='<div style="margin-top:8px">'+res.anom.map(a=>'<p><strong>'+esc(a.lbl)+'</strong>: '+esc(a.msg)+'</p>').join('')+'</div>';
+  else html+='<span class="tag ok">✓ Tutte le frequenze soddisfatte</span>';
+  html+='<p style="margin-top:10px;color:var(--ink-soft)">Vai al Calendario per verificare.</p></div></div>';
+  $('#gen-results').innerHTML=html;}catch(e){$('#gen-results').innerHTML='<div class="banner warn">Errore: '+esc(e.message)+'</div>';}
+});
+$('#btn-gen-ai').addEventListener('click',async()=>{
+  const notesWrap=$('#gen-ai-notes-wrap');
+  if(notesWrap.style.display==='none'){notesWrap.style.display='';return;}
+  const ms=$('#gen-month').value;if(!ms){toast('Seleziona il mese.',true);return;}
+  const scope=$('#gen-scope').value;let spid=scope==='single'?$('#gen-proj-sel').value:null;const projNameFilter=scope==='byname'?$('#gen-proj-name').value.trim().toLowerCase():null;
+  const notes=$('#gen-ai-notes').value.trim();
+  $('#gen-results').innerHTML='<div class="banner info">🤖 L\'IA sta analizzando operatori, progetti, disponibilità e vincoli… Questo può richiedere 10–30 secondi.</div>';
+  try{const res=await generateMonthAI(ms,spid,notes);
+  let h='<div class="card"><div class="card-pad"><h3>🤖 '+res.count+' sessioni create con IA</h3>';
+  if(res.anom.length)h+='<div style="margin-top:8px"><strong>Note:</strong>'+res.anom.map(a=>'<p>'+esc(a.lbl)+': '+esc(a.msg)+'</p>').join('')+'</div>';
+  else h+='<span class="tag ok">✓ Generazione completata senza anomalie</span>';
+  h+='<p style="margin-top:10px;color:var(--ink-soft)">Le sessioni sono state salvate come <strong>proposte</strong>. Vai al Calendario per verificare e confermare.</p></div></div>';
+  $('#gen-results').innerHTML=h;}catch(e){$('#gen-results').innerHTML='<div class="banner warn">Errore IA: '+esc(e.message)+'</div>';}
+});
+$('#btn-clear-gen').addEventListener('click',async()=>{
+  const ms=$('#gen-month').value;if(!ms||!confirm('Eliminare tutte le proposte (non eseguite) di '+ms+'?'))return;
+  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato!=='eseguita');
+  for(const s of toRemove)await deleteRecord('sessioni',s);
+  toast(toRemove.length+' proposte eliminate.');
+});
+$('#btn-wa').addEventListener('click',()=>{const uid_=$('#send-ut').value;const u=utById(uid_);if(!u)return;const num=(u.telefono||'').replace(/\D/g,'');window.open('https://wa.me/'+(num?'39'+num:'')+'?text='+encodeURIComponent(mkWeekMsg(uid_)));});
+$('#btn-mail').addEventListener('click',()=>{const uid_=$('#send-ut').value;const u=utById(uid_);if(!u)return;window.open('mailto:'+encodeURIComponent(u.email||'')+'?subject='+encodeURIComponent('Appuntamenti — '+fullName(u))+'&body='+encodeURIComponent(mkWeekMsg(uid_)));});
+$('#chat-send').addEventListener('click',sendChat);
+$('#chat-in').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
+$('#chat-clear').addEventListener('click',()=>{chatH=[];rChat();});
+$('#op-tpl').addEventListener('click',()=>{const hdr=['Nome','Cognome','Telefono','Email','Sedi (separate da ;)',...GIORNI.map(g=>g+' (es: 09:00-12:00, 14:00-18:00)')];const ws=XLSX.utils.aoa_to_sheet([hdr]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Operatori');XLSX.writeFile(wb,'modello_operatori.xlsx');});
+$('#ut-tpl').addEventListener('click',()=>{const hdr=['Nome','Cognome','Nome referente','Cognome referente','Telefono','Email','Via','Comune','Provincia','CAP','Paese','Note'];const ws=XLSX.utils.aoa_to_sheet([hdr]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Utenti');XLSX.writeFile(wb,'modello_utenti.xlsx');});
+$('#op-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'op');e.target.value='';});
+$('#ut-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'ut');e.target.value='';});
+
+if(typeof msal!=='undefined'&&msal.PublicClientApplication){init();}
+else{window.addEventListener('msal-ready',function(){init();},{once:true});setTimeout(function(){if(!state.account&&typeof msal==='undefined')$('#loading-msg').textContent='Caricamento libreria Microsoft…';},5000);}
+</script>
+</body>
+</html>
