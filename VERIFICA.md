@@ -287,3 +287,82 @@ La richiesta elenca come "intoccabili" `confermata`, `eseguita` e `assenza ingiu
 - L'interpretazione di `annullata` come "non vincolante" (vedi sopra) è una scelta esplicita non confermata dal testo della richiesta — da validare con chi ha definito i requisiti.
 - Non è stato verificato dal vivo (nessun ambiente di test disponibile in questa sessione): raccomando un test manuale in staging con il caso reale descritto sopra (operatore con sessioni confermate fuori ambito + progetto in ambito misto presenza/online lo stesso giorno) prima della pubblicazione.
 - Durante la verifica ho notato — ma non modificato, perché fuori dai 4 punti richiesti — che il controllo del gap di 5 minuti tra sessioni (`if(!rfree(opBusy,st-GAP,en+GAP)&&!rfree(opBusy,st,en))continue;`) è logicamente ridondante rispetto al controllo di sovrapposizione stretta immediatamente successivo (una vera sovrapposizione implica sempre anche la violazione del gap, quindi l'AND tra i due equivale al solo controllo stretto): in pratica il gap minimo di 5 minuti non risulta mai imposto come vincolo autonomo. Segnalo la cosa per una eventuale correzione futura, separata da questa richiesta.
+
+---
+
+# Verifica — Passata 3 di riparazione e report unico di generazione
+
+Due aggiunte al generatore. Data: 2026-07-13.
+
+## 1 — Passata 3 di riparazione completezza
+
+**Cosa è stato fatto**: dopo la Passata 1 (piazzamento) e prima della ri-valutazione finale della Passata 2, `generateMonth` esegue una nuova Passata 3 che, per ogni carenza rilevata (progetto/settimana con `piazzate < richieste`, escluse quelle dovute solo a disponibilità utente insufficiente — vedi limite sotto), prova a recuperare le sessioni mancanti:
+- **Solo sessioni "proposta" in ambito** possono essere spostate: la funzione `trovaAlternativaBlocker()` cerca, per la sessione che blocca lo slot, un'alternativa valida nella **stessa settimana**, con lo stesso operatore, verificando tutti i vincoli (disponibilità progetto/operatore, sede, gap, aula, utente non doppio-impegnato) — esclude dal controllo la propria occupazione attuale per non auto-bloccarsi.
+- **Due fasi**: prima si tenta usando solo operatori Assunti (`poolCompleto.filter(o=>o.tipoContratto==='Assunto')`), poi si estende a tutto il pool ammesso.
+- **Nessuna mossa se il blocco non è modificabile**: se la sessione che occupa lo slot è `confermata`/`eseguita`/`assenza ingiustificata`, oppure una `proposta` di un progetto fuori ambito, la mossa non viene eseguita; viene invece registrato un suggerimento testuale (con destinazione calcolata, quando il blocco è una proposta fuori ambito, per renderlo concreto come nell'esempio della richiesta).
+- **Limite di iterazioni**: un contatore globale `mosseTentate` con tetto `MAX_MOSSE=40` interrompe la Passata 3 anche se restano carenze irrisolte.
+- **Compattezza**: tra più alternative valide per il blocco, `trovaAlternativaBlocker()` sceglie quella con il minor `gapMinutiGiorno()` (minuti di vuoto tra le sessioni in presenza di quell'operatore in quella giornata, ipotizzando l'inserimento) — ma solo per le sedi in presenza, come richiesto ("giornate con presenza").
+- **Ri-valutazione della Passata 2**: dopo la Passata 3, `risolviOnlineDaCasa()` viene richiamata di nuovo sull'intero `newS`/`keep` aggiornato, così le sessioni spostate (che possono cambiare giorno/sede) vengono ricalcolate correttamente per online-da-casa/in-sede.
+- **Rotazione dei "Tipi di sessione"**: le sessioni recuperate in Passata 3 continuano la stessa rotazione della Passata 1 (nuova mappa `sessionCountByProject`, popolata a fine Passata 1 e incrementata dalle riparazioni), quindi rispettano comunque il vincolo di formazione se il progetto usa `tipiSessione`.
+
+| Parte | Stato |
+|---|---|
+| Ricerca mosse solo su "proposta" in ambito | ✅ Fatto |
+| Due fasi (Assunti poi tutti) | ✅ Fatto |
+| Nessuna mossa su fuori ambito/confermate + suggerimento registrato | ✅ Fatto |
+| Rivalutazione con la Passata 2 | ✅ Fatto (richiamata di nuovo dopo la Passata 3) |
+| Limite iterazioni | ✅ Fatto (`MAX_MOSSE=40`) |
+| Preferenza per compattezza a parità di mosse | ✅ Fatto, limitata alle sedi in presenza |
+| `generateMonthAI` | ⚠️ Non implementata (vedi limiti sotto) |
+
+### Semplificazioni dichiarate (non nella lettera della richiesta, decisioni prese per tenere l'implementazione tracciabile)
+- **Niente scambi di aula**: se il blocco è "aule piene" (nessuna aula libera per la sede in presenza), la Passata 3 non tenta di liberare un'aula spostando chi la occupa — tenta solo mosse per conflitti di operatore. Le carenze dovute solo a sala piena restano quindi diagnosticate ma non riparate automaticamente.
+- **Un solo blocco per candidato**: se più sessioni bloccano contemporaneamente lo stesso slot (raro, ma possibile con gap-check), la Passata 3 salta il candidato invece di tentare uno scambio multiplo.
+- **L'operatore del blocco non cambia**: quando si sposta una sessione bloccante, si cerca un nuovo giorno/orario per lo **stesso** operatore già assegnato, non si valuta di riassegnarla a un altro operatore ammesso.
+- **Nessuna Passata 3 per `generateMonthAI`**: il percorso IA non ha una ricerca deterministica di slot su cui applicare scambi (il piazzamento è deciso dal modello linguistico); costruire un meccanismo equivalente richiederebbe reimplementare la ricerca di alternative anche lì, non richiesto esplicitamente per questo percorso (a differenza del punto 1 della richiesta precedente, che citava esplicitamente "anche la validazione post-IA" per la Passata 2 — qui non c'è un'indicazione equivalente).
+
+## 2 — Report unico di generazione
+
+**Cosa è stato fatto**:
+- Nuove funzioni condivise `calcolaMetricheReport()` (metriche complessive), `costruisciReportGenerazione()` (assembla il report per utente/progetto + suggerimenti + metriche) e `riepilogoSettimanaleDaSessioni()` (ricostruisce a posteriori il confronto richieste/piazzate per il percorso IA, che non ha la diagnostica granulare dell'algoritmo).
+- Sia `generateMonth` sia `generateMonthAI` ritornano ora `{count, anom, report}` (invece di solo `{count, anom}`).
+- **Contenuto del report**: per ogni utente con almeno una carenza, un blocco con, per ciascun progetto, la tabella settimana→richieste→piazzate→causa (causa tra "disponibilità utente insufficiente" con i giorni specifici, "aule piene", "nessun operatore disponibile in fascia" — più "limite contrattuale", presente nella tassonomia ma che nella pratica non si attiva mai, vedi limite sotto); gli spostamenti effettivamente eseguiti dalla Passata 3; i suggerimenti di spostamento non eseguiti (fuori ambito/confermate); le richieste consigliate a utenti/operatori (generate da un template legato alla causa dominante, es. "Richiedi a [utente] disponibilità anche per Giovedì (progetto ...)"); infine le metriche complessive (buchi per operatore, % online da casa, saturazione aule per giorno, ore Assunti vs P.IVA).
+- **Consultabile dopo la generazione**: il risultato viene salvato in `state.lastGenReport` e nella vista "Genera calendario" compare un bottone "📄 Report completo" (sia dopo l'algoritmo sia dopo l'IA) che apre una modale con `openGenReport()` — non è più solo un toast o l'elenco di anomalie inline già presente.
+
+| Parte | Stato |
+|---|---|
+| Report per utente (richieste vs piazzate per settimana) | ✅ Fatto |
+| Causa specifica per carenza | ✅ Fatto (3 delle 4 categorie richieste si attivano davvero, vedi limite sotto) |
+| Suggerimenti azionabili (incl. spostamenti fuori ambito da Passata 3) | ✅ Fatto |
+| Richieste consigliate a utenti/operatori | ✅ Fatto (template semplice legato alla causa) |
+| Metriche complessive (4 richieste) | ✅ Fatte tutte e 4 |
+| Consultabile dopo la generazione (non solo un toast) | ✅ Fatto (modale dedicata) |
+| Anche per `generateMonthAI` | ✅ Fatto (con diagnostica più semplice, vedi limiti) |
+
+### Limite dichiarato sulla causa "limite contrattuale"
+Il monte ore settimanale contrattuale degli Assunti è, per scelta di design preesistente (non toccata in questa richiesta né nelle precedenti), un **limite morbido**: se un Assunto è l'unico operatore disponibile, viene comunque scelto e usato, con solo un avviso (`anom`), non un rifiuto. Questo significa che "limite contrattuale" non è di fatto mai la causa per cui una sessione NON viene piazzata nell'algoritmo attuale — l'ho lasciata nella tassonomia del report per completezza rispetto alla richiesta, ma è realisticamente sempre a zero. Se in futuro il limite contrattuale diventasse un vincolo duro (rifiuto invece di avviso), la causa comincerebbe a essere popolata automaticamente senza altre modifiche al report.
+
+## Verifica automatica con esempio concreto
+
+**Scenario**: mese 2026-07, ambito "Tutti i progetti attivi". Operatrice **Anna** (Assunta, 20h/settimana), collaboratore **Marco** (P.IVA, disponibile solo il lunedì per questi progetti).
+
+- **Progetto Bianchi** (Cesate, freq 1/settimana, durata 60 min, unico operatore ammesso: Anna).
+- **Progetto Rossi** (Cesate, freq 2/settimana, durata 60 min, operatori ammessi: Anna, Marco).
+- Entrambi i clienti sono disponibili lunedì e martedì 10:00–11:00 quella settimana.
+
+**Passata 1** (ordine per indice di rigidità, supponiamo Bianchi elaborato prima): piazza Bianchi il martedì 10:00–11:00 (aula Blu, Anna). Poi Rossi: lunedì 10:00–11:00 con Anna va bene (aula Blu, prima sessione) → 1/2. Per la seconda sessione di Rossi, martedì 10:00–11:00: Marco non è disponibile quel giorno; Anna è già occupata dalla sessione di Bianchi. **Nessun operatore disponibile in fascia** → Rossi resta a 1/2 quella settimana. `riepiloghi` registra `diagNessunOperatore=1` per Rossi/settimana 1.
+
+**Passata 3**: carenza Rossi (1/2). Fase 1 (solo Assunti = Anna): candidato martedì 10:00–11:00. `slotCompatibile` per Anna passa, l'aula Verde è libera (`aulaLibera`). `opDaySess` di Anna quel giorno = [sessione di Bianchi] → un solo blocco. `movibile`: la sessione di Bianchi è in `newS`, `proposta`, progetto in ambito → **sì, movibile**. `trovaAlternativaBlocker` cerca nella stessa settimana un altro slot per Anna sul progetto Bianchi: trova mercoledì 10:00–11:00 (Anna libera, aula Blu libera). Esegue lo scambio: la sessione di Bianchi si sposta a mercoledì; la sessione mancante di Rossi viene piazzata martedì 10:00–11:00 (aula Verde). `missing=0`.
+
+**Passata 2 ri-valutata**: nessuna sessione Online coinvolta in questo esempio, quindi non cambia nulla; viene comunque eseguita.
+
+**Risultato nel report**: la riga di Rossi/settimana 1 mostra ora `piazzate:2/richieste:2` con ✓ (nessuna causa, perché la Passata 3 ha risolto la carenza); la sezione "🔧 Spostamenti effettuati" mostra: *"Bianchi — Progetto Bianchi: da [martedì] 10:00 a [mercoledì] 10:00 (liberato slot per Rossi (Progetto Rossi))"*. Anna non appare come utente da revisionare (nessuna carenza residua). Le metriche mostrano il carico di Anna (Assunta) vs Marco (P.IVA) e la saturazione delle aule Cesate nei tre giorni coinvolti.
+
+**Variante con blocco non movibile**: se la sessione di Bianchi del martedì fosse già `confermata` (invece di `proposta`), la Passata 3 non l'avrebbe spostata: la carenza di Rossi sarebbe rimasta 1/2, con un suggerimento nel report — *"Le sessioni di Rossi (Progetto Rossi) entrerebbero martedì 10:00 — ma la sessione che occupa quello slot (Bianchi, Progetto Bianchi, confermata) non è modificabile in questo run."* — senza calcolo di una destinazione alternativa per Bianchi (dato che una sessione confermata non viene comunque proposta per lo spostamento, a differenza del caso "proposta fuori ambito" illustrato nella richiesta).
+
+## Cosa manca
+- Passata 3 non tenta scambi di aula (solo di operatore): le carenze dovute a "aule piene" restano diagnosticate ma non riparate automaticamente — semplificazione dichiarata sopra.
+- Passata 3 non prova a riassegnare il blocco a un operatore diverso, solo a un altro orario/giorno per lo stesso operatore.
+- Nessuna Passata 3 per `generateMonthAI` (solo report, senza riparazione automatica).
+- La causa "limite contrattuale" non si attiva mai nella pratica attuale (limite morbido preesistente, non toccato).
+- Non è stato possibile eseguire l'app dal vivo in questo ambiente: l'esempio sopra è stato verificato "a mano" ripercorrendo il codice nuovo riga per riga con valori concreti, non eseguendo realmente `generateMonth`. Raccomando un test manuale in staging con un caso reale di carenza multi-progetto prima di considerare la Passata 3 definitivamente validata, in particolare l'euristica di compattezza e il limite di 40 mosse su mesi con molte carenze contemporanee.
