@@ -194,3 +194,96 @@ Tre nuove funzionalità richieste. Data: 2026-07-13.
 
 ## Limiti di questa verifica
 Come per le verifiche precedenti: analisi per lettura statica del codice, senza possibilità di eseguire l'app dal vivo né un motore JavaScript locale. Si raccomanda un test manuale in staging con un account Operatore reale per confermare visivamente: (a) l'apertura della vista cliente in sola lettura dal dettaglio sessione; (b) il salvataggio di esito e nota su una propria sessione; (c) l'impossibilità di raggiungere in qualunque modo dall'interfaccia la modale di modifica utenti.
+
+---
+
+# Verifica — Ristrutturazione a due passate di `generateMonth`
+
+Quattro interventi sull'algoritmo di generazione. Data: 2026-07-13.
+
+## 1 — Architettura a due passate
+
+**Cosa è stato fatto**: estratte 5 funzioni condivise (usate sia da `generateMonth` sia da `generateMonthAI`):
+- `determinaAmbito(spid, nameFilter)` — calcola i progetti in ambito (scope) per il run corrente.
+- `sessioniDaConservare(ms, scopeIds)` — le sessioni da NON toccare (vedi punto 4).
+- `sedePriorita(sede)` — priorità di piazzamento per sede (vedi punto 2).
+- `minutiSettimana(op, ds, opB, Y, M)` — minuti già assegnati all'operatore nella settimana ISO che contiene `ds` (fattorizzata dal calcolo che già esisteva solo per l'anomalia contrattuale, ora riusata anche per la priorità Assunti del punto 3).
+- `risolviOnlineDaCasa(ms, newS, keep)` — la Passata 2.
+
+**Passata 1** (dentro il ciclo di piazzamento di `generateMonth`, e nel ciclo di validazione della risposta IA in `generateMonthAI`): piazza tutte le sessioni (disponibilità, aule, gap 5 min, rotazione tipi, vincoli di formazione/frequenza/monte ore/orario di viaggio Cesate↔Busto) esattamente come prima, con un'unica differenza: quando la sede risolta è `Online`, non decide più nulla — il campo `onlineDaCasa` viene creato `null` e nessuna aula viene riservata in questa fase.
+
+**Passata 2** (`risolviOnlineDaCasa`, chiamata una sola volta a fine generazione, sia in `generateMonth` sia in `generateMonthAI`): raggruppa **tutte** le sessioni del mese per operatore+giorno (unendo le nuove sessioni appena piazzate e quelle conservate/fuori ambito — quindi anche sessioni di progetti non in questo run), le ordina cronologicamente, e per ogni sessione Online **appena creata** applica `decidiOnlineDaCasa()` (la stessa funzione già esistente da un intervento precedente: margine di viaggio rispetto alla presenza più vicina, con le online-in-sede già decise che contano a loro volta come presenza). Le sessioni conservate non vengono mai modificate da questa passata (nemmeno il loro `onlineDaCasa`), solo lette come contesto.
+
+| Parte | Stato |
+|---|---|
+| `generateMonth` — Passata 1 (piazzamento senza decisione online) | ✅ Fatto |
+| `generateMonth` — Passata 2 (risoluzione online cronologica, cross-progetto) | ✅ Fatto |
+| `generateMonthAI` — stessa struttura a due passate sulla validazione post-IA | ✅ Fatto |
+| Riuso della logica esistente (online-in-sede conta come presenza, riuso aula) | ✅ Invariata, richiamata da entrambe le passate 2 |
+
+## 2 — Priorità di piazzamento per sede
+
+**Cosa è stato fatto**: il criterio di ordinamento secondario (usato solo a parità di indice di rigidità) è passato da un confronto binario "online sì/no" a `sedePriorita(sede)`: `0` per Cesate/Busto Arsizio (presenza), `1` per Presenza+Online/Presenza+Domicilio (composita), `2` per Online/Domicilio (remota). Applicato sia in `generateMonth` sia in `generateMonthAI` (che lo usa per ordinare `projData` prima di passarlo all'IA). Aggiunta anche una riga informativa nel prompt IA con la stessa regola (l'IA non ha un ordinamento deterministico enforced, ma viene istruita a rispettarlo).
+
+| Parte | Stato |
+|---|---|
+| `generateMonth` | ✅ Fatto (`sedePriorita`) |
+| `generateMonthAI` | ✅ Fatto per l'ordinamento dei dati + istruzione nel prompt (non enforced deterministicamente, l'IA decide comunque l'assegnazione finale) |
+
+## 3 — Priorità agli Assunti sotto monte ore
+
+**Cosa è stato fatto**: prima di iterare il pool di operatori idonei per uno slot candidato, `generateMonth` ora ordina il pool (`poolOrdinato`) mettendo per primi gli operatori `Assunto` con `oreSettimanali>0` che non hanno ancora raggiunto quel monte ore nella settimana corrente (`minutiSettimana(...) < oreSettimanali*60`); tutti gli altri (P.IVA, o Assunti già al/sopra il monte ore) restano nell'ordine originale del pool, ma dopo. Essendo `Array.prototype.sort` stabile in JavaScript, la preferenza tra operatori altrimenti equivalenti non viene alterata arbitrariamente. Il calcolo si aggiorna dinamicamente man mano che la generazione procede (usa lo stesso `opB` che si popola progressivamente). Aggiunta anche una riga informativa nel prompt IA (non enforced).
+
+| Parte | Stato |
+|---|---|
+| `generateMonth` | ✅ Fatto (`poolOrdinato`, ricalcolato per ogni slot candidato) |
+| `generateMonthAI` | ⚠️ Solo istruzione informativa nel prompt — l'IA non ha un meccanismo di scelta operatore su cui applicare un ordinamento deterministico (decide lei stessa; non c'è nulla da validare post-hoc per questo criterio, a differenza delle regole sulla sede) |
+
+## 4 — Perimetro di intervento e sessioni confermate
+
+**Cosa è stato fatto**:
+- `determinaAmbito()` calcola `scopeIds` (i progetti selezionati: singolo/per nome/tutti gli attivi).
+- `sessioniDaConservare(ms, scopeIds)` sostituisce il vecchio `keep`: ora conserva **tutto tranne** le sessioni `proposta` di progetti in `scopeIds`. Questo significa che, a differenza di prima, le sessioni `confermata` **non vengono più cancellate/ricreate** a ogni rigenerazione (era un bug pre-esistente: il vecchio filtro considerava "da conservare" solo `eseguita`/`assenza ingiustificata`, quindi una sessione confermata dentro il mese generato veniva silenziosamente scartata e potenzialmente rimpiazzata). Le proposte di progetti fuori ambito sono ugualmente protette.
+- Tutte le sessioni conservate (tranne le `annullata`, che rappresentano uno slot liberato) pre-popolano i tracciamenti di occupazione operatore/aula **prima** che la Passata 1 inizi a piazzare — quindi occupano davvero operatore e aula durante la generazione, come richiesto.
+- **`generateMonthAI`**: stessa logica di ambito/conservazione. In più, ho aggiunto una validazione che prima non esisteva: ogni sessione proposta dall'IA viene ora scartata (con anomalia) se si sovrappone, per operatore o per aula, a una sessione protetta/fuori ambito — prima l'IA veniva informata delle sole sessioni "già eseguite" ma non c'era alcun controllo automatico di conflitto.
+- **"🗑 Svuota proposte del mese"**: ora legge anche lo scope selezionato (`#gen-scope`/`#gen-proj-sel`/`#gen-proj-name`, con lo stesso `determinaAmbito()`) ed elimina solo le sessioni `proposta` **in ambito** — prima eliminava indiscriminatamente tutto ciò che non era `eseguita`/`assenza ingiustificata` nel mese, incluse le `confermata` e le proposte di progetti non selezionati.
+
+| Parte | Stato |
+|---|---|
+| `generateMonth` (cancellazione/ricreazione solo proposte in ambito) | ✅ Fatto |
+| `generateMonthAI` (stessa regola + validazione conflitti contro vincoli attivi) | ✅ Fatto |
+| "Svuota proposte del mese" (solo proposte in ambito) | ✅ Fatto |
+| Sessioni intoccabili/fuori ambito trattate come vincoli attivi (occupano operatore/aula) | ✅ Fatto (tranne `annullata`, per scelta esplicita — vedi sotto) |
+
+### Decisione interpretativa non esplicitata dalla richiesta
+La richiesta elenca come "intoccabili" `confermata`, `eseguita` e `assenza ingiustificata`, e dice che "tutte le sessioni intoccabili e quelle fuori ambito restano vincoli attivi". Non specifica il trattamento di `annullata` (che comunque non è cancellabile, perché la regola ammette la cancellazione delle sole `proposta`). Ho scelto di **non farla contare come vincolo attivo** (un operatore/aula "annullata" sono di nuovo liberi per quello slot) ma di **conservarla comunque** (non viene cancellata). Motivazione: "annullata" significa letteralmente che l'appuntamento è stato disdetto — trattarla come se occupasse ancora l'aula sarebbe controintuitivo e impedirebbe di riutilizzare quello slot. Se l'intento reale era diverso (annullata anch'essa vincolo attivo), è una riga sola da cambiare in `generateMonth`, `risolviOnlineDaCasa` e nella pre-popolazione di `generateMonthAI` (tutte e tre usano lo stesso filtro `stato!=='annullata'`).
+
+---
+
+## Verifica automatica con esempio concreto multi-progetto
+
+**Scenario**: mese 2026-07. Operatrice **Giulia Neri**, P.IVA, `tempoCasa = 20 min`, sedi abilitate Cesate + Online.
+
+- **Progetto B — "Feuerstein BS1, cliente Bianchi"** (fuori ambito in questo run): il 2026-07-20 ha già una sessione **confermata** 09:00–10:00, sede Cesate, aula **Gialla**, con Giulia come operatrice. Creata in un run precedente.
+- **Progetto A — "BrainRx, cliente Rossi"** (unico progetto in ambito: l'admin lancia "Genera con algoritmo" scegliendo "Singolo progetto → BrainRx, cliente Rossi"): sede Online, frequenza 2/settimana, durata 30 min, unico operatore ammesso Giulia.
+
+**Esecuzione di `generateMonth('2026-07', idProgettoA, null)`**:
+
+1. `determinaAmbito(idProgettoA, null)` → `scopeIds = {A}`. Il Progetto B non è in ambito.
+2. `sessioniDaConservare('2026-07', {A})` → la sessione di B è conservata per **due motivi indipendenti**: non è `proposta`, e comunque B non è in `scopeIds`.
+3. Pre-popolazione vincoli (Passata 1): la sessione confermata di B (non annullata) occupa `opB['Giulia']` (09:00–10:00) e `auB['Gialla']` (09:00–10:00).
+4. **Passata 1** piazza per il Progetto A una sessione il 2026-07-20 alle **10:15–10:45**, sede Online (nessun conflitto con l'occupazione di Giulia 09:00-10:00, e nessun vincolo di viaggio applicabile in questa fase perché Online non richiede spostamento fisico). `onlineDaCasa` resta `null`, `aula` resta `null`.
+5. **Passata 2** (`risolviOnlineDaCasa`): raccoglie **tutte** le sessioni di Giulia del 2026-07-20 — inclusa quella del Progetto B, mai toccata da questo run — le ordina cronologicamente: [B 09:00–10:00 Cesate, A 10:15–10:45 Online]. Per la sessione online di A chiama `decidiOnlineDaCasa`: l'unica presenza della giornata è B (Cesate, aula Gialla), che finisce alle 10:00; il margine fino alle 10:15 è **15 minuti**, inferiore ai 20 minuti di `tempoCasa` di Giulia → **margine insufficiente**.
+6. Risultato sulla sessione di A: `onlineDaCasa: false`, `aula: "Gialla"` (riusata dalla sessione di B, che è nella stessa lista di aule Cesate).
+
+**Cosa dimostra**: il Progetto B non è mai stato incluso in `target`, non ha mai generato nulla, non è stato cancellato né risalvato — eppure ha correttamente **vincolato** sia la disponibilità di Giulia (Passata 1, se A avesse provato a piazzare qualcosa alle 09:30 sarebbe stato respinto) sia la decisione online/in-sede del Progetto A (Passata 2), esattamente come richiesto dal punto 4 ("tutte le sessioni intoccabili e quelle fuori ambito restano vincoli attivi"), risolto però solo nella Passata 2 come richiesto dal punto 1.
+
+### Esempi minori (punti 2 e 3, tracciati a mano sul codice)
+- **Punto 2**: due progetti con lo stesso indice di rigidità (`calcStrettezza`), uno a Cesate e uno Online. Prima: ordine indeterminato tra i due (la vecchia regola distingueva solo "online sì/no", trattando Cesate e Domicilio come equivalenti). Ora: `sedePriorita('Cesate')=0` vs `sedePriorita('Online')=2` → il progetto Cesate viene sempre piazzato per primo a parità di rigidità, quindi in caso di scarsità di slot (stesso operatore/stessa fascia) vince la sessione in presenza.
+- **Punto 3**: pool di due operatori idonei per uno slot: Marco (P.IVA) e Sara (Assunta, 20h/settimana, già a 15h quella settimana). `poolOrdinato` metterà Sara prima di Marco anche se nell'elenco `operatoriAmmessi` del progetto Marco era stato aggiunto prima — perché `15h<20h` la rende prioritaria. Se Sara avesse già raggiunto le 20h, l'ordine tornerebbe quello originale (entrambi priorità 1).
+
+## Cosa manca
+- Punto 3 non è applicabile a `generateMonthAI` in modo deterministico (solo istruzione nel prompt) — l'IA decide autonomamente l'operatore, non c'è un "pool ordinato" su cui intervenire dal codice.
+- L'interpretazione di `annullata` come "non vincolante" (vedi sopra) è una scelta esplicita non confermata dal testo della richiesta — da validare con chi ha definito i requisiti.
+- Non è stato verificato dal vivo (nessun ambiente di test disponibile in questa sessione): raccomando un test manuale in staging con il caso reale descritto sopra (operatore con sessioni confermate fuori ambito + progetto in ambito misto presenza/online lo stesso giorno) prima della pubblicazione.
+- Durante la verifica ho notato — ma non modificato, perché fuori dai 4 punti richiesti — che il controllo del gap di 5 minuti tra sessioni (`if(!rfree(opBusy,st-GAP,en+GAP)&&!rfree(opBusy,st,en))continue;`) è logicamente ridondante rispetto al controllo di sovrapposizione stretta immediatamente successivo (una vera sovrapposizione implica sempre anche la violazione del gap, quindi l'AND tra i due equivale al solo controllo stretto): in pratica il gap minimo di 5 minuti non risulta mai imposto come vincolo autonomo. Segnalo la cosa per una eventuale correzione futura, separata da questa richiesta.

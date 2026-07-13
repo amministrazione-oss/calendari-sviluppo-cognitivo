@@ -1127,6 +1127,61 @@ function refreshGenSel(){
 }
 function sdComp(sede,sedi){if(sede==='Online')return(sedi||[]).includes('Online');if(sede==='Presenza+Online'||sede==='Presenza+Domicilio')return true;return(sedi||[]).includes(sede);}
 
+// Ambito di generazione: i progetti selezionati dall'admin (singolo / per nome / tutti gli attivi), indipendentemente dal monte ore residuo
+function determinaAmbito(spid,nameFilter){
+  let scopeProjects;
+  if(spid)scopeProjects=state.data.progetti.filter(p=>p.id===spid);
+  else{
+    scopeProjects=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
+    if(nameFilter)scopeProjects=scopeProjects.filter(p=>(p.nome||'').toLowerCase().includes(nameFilter));
+  }
+  return{scopeProjects,scopeIds:new Set(scopeProjects.map(p=>p.id))};
+}
+// Sessioni da conservare intatte: tutto TRANNE le "proposta" dei progetti in ambito (le uniche cancellabili/ricreabili).
+// Confermate, eseguite, assenze ingiustificate, annullate e le proposte fuori ambito restano sempre intoccabili.
+function sessioniDaConservare(ms,scopeIds){
+  return state.data.sessioni.filter(s=>!(s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)));
+}
+// Priorità di piazzamento per sede, usata come criterio secondario a parità di indice di rigidità: presenza < composita < remota
+function sedePriorita(sede){
+  if(sede==='Cesate'||sede==='Busto Arsizio')return 0;
+  if(sede==='Presenza+Online'||sede==='Presenza+Domicilio')return 1;
+  return 2; // Online, Domicilio
+}
+// Minuti già assegnati all'operatore nella settimana ISO (lun-dom) che contiene la data ds, secondo il tracciamento opB
+function minutiSettimana(op,ds,opB,Y,M){
+  const d=parseInt(ds.split('-')[2]);
+  const wkStart=new Date(Y,M-1,d);wkStart.setDate(wkStart.getDate()-wkStart.getDay()+1);
+  const wkEnd=new Date(wkStart);wkEnd.setDate(wkEnd.getDate()+6);
+  const wkS=wkStart.toISOString().slice(0,10),wkE=wkEnd.toISOString().slice(0,10);
+  return(opB[op.id]||[]).filter(b=>b.date>=wkS&&b.date<=wkE).reduce((s,b)=>s+(b.to-b.from),0);
+}
+// PASSATA 2 (condivisa da generateMonth e generateMonthAI): risolve onlineDaCasa/aula per le sessioni Online appena create
+// (newS), osservando in ordine cronologico TUTTE le sessioni dell'operatore in quel giorno — anche quelle conservate/fuori ambito.
+function risolviOnlineDaCasa(ms,newS,keep){
+  const tutte=[...keep,...newS].filter(s=>s.data.startsWith(ms)&&s.stato!=='annullata');
+  const byOpDay={};
+  tutte.forEach(s=>{const key=s.operatoreId+'|'+s.data;(byOpDay[key]=byOpDay[key]||[]).push(s);});
+  const auB={};
+  tutte.forEach(s=>{if(s.aula)(auB[s.aula]=auB[s.aula]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});});
+  const newSet=new Set(newS);
+  Object.values(byOpDay).forEach(giorno=>{
+    giorno.sort((a,b)=>tmin(a.oraInizio||a.ora_inizio)-tmin(b.oraInizio||b.ora_inizio));
+    giorno.forEach(s=>{
+      if(s.sede!=='Online'||!newSet.has(s))return;
+      const op=opById(s.operatoreId);if(!op)return;
+      const st=tmin(s.oraInizio||s.ora_inizio),en=tmin(s.oraFine||s.ora_fine);
+      const altre=giorno.filter(x=>x!==s);
+      const{daCasa,ancora}=decidiOnlineDaCasa(op,altre,st,en);
+      s.onlineDaCasa=daCasa;
+      if(!daCasa&&ancora){
+        const auList=ancora.sede==='Cesate'?AULE_CESATE:AULE_BUSTO;
+        const aula=(ancora.aula&&auList.includes(ancora.aula))?ancora.aula:auList.find(a=>rfree((auB[a]||[]).filter(b=>b.date===s.data),st,en));
+        if(aula){s.aula=aula;(auB[aula]=auB[aula]||[]).push({date:s.data,from:st,to:en});}
+      }
+    });
+  });
+}
 function calcStrettezza(p){
   const freq=p.frequenza||1;const dur=p.durataSessione||60;
   let totalMin=0;const avail=p.disponibilita||p.avail||{};
@@ -1136,10 +1191,11 @@ function calcStrettezza(p){
 async function generateMonth(ms,spid,nameFilter){
   const GAP=5; // 5 min gap between consecutive sessions
   const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
-  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita'||s.stato==='assenza ingiustificata');
+  const{scopeProjects,scopeIds}=determinaAmbito(spid,nameFilter);
+  const keep=sessioniDaConservare(ms,scopeIds);
   const newS=[],anom=[];const opB={},prB={},auB={},opRoom={};
-  // Pre-populate busy from existing confirmed/executed sessions
-  keep.filter(s=>s.data.startsWith(ms)).forEach(s=>{
+  // Le sessioni conservate (intoccabili o fuori ambito) restano vincoli attivi e occupano operatore/aula, tranne le annullate (slot libero)
+  keep.filter(s=>s.data.startsWith(ms)&&s.stato!=='annullata').forEach(s=>{
     const pk=s.progettoId||s.utenteId;
     (opB[s.operatoreId]=opB[s.operatoreId]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});
     (prB[pk]=prB[pk]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});
@@ -1147,20 +1203,17 @@ async function generateMonth(ms,spid,nameFilter){
     // Track room assignments per operator per day
     if(s.aula&&s.operatoreId){const dk=s.operatoreId+'|'+s.data;if(!opRoom[dk])opRoom[dk]=s.aula;}
   });
-  let target=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
-  if(spid)target=state.data.progetti.filter(p=>p.id===spid);
-  else target=target.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
-  if(nameFilter)target=target.filter(p=>(p.nome||'').toLowerCase().includes(nameFilter));
-  // Priorità: indice di strettezza = ore disponibili / (freq * durata). Più basso = prima
+  let target=scopeProjects.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
+  // Priorità primaria: indice di strettezza, ore disponibili diviso freq*durata, più basso = prima. Priorità secondaria a parità: presenza > composita > remota
   target.sort((a,b)=>{
     const ai=calcStrettezza(a),bi=calcStrettezza(b);
     if(ai!==bi)return ai-bi;
-    // A parità, in presenza prima di online
-    const sa=a.sede==='Online'?1:0,sb=b.sede==='Online'?1:0;return sa-sb;
+    return sedePriorita(a.sede)-sedePriorita(b.sede);
   });
   // Chiusure del centro
   const chiusureDates=new Set((state.data.chiusure||[]).map(c=>c.data));
 
+  // PASSATA 1: piazzamento di tutte le sessioni (senza ancora decidere online da casa/in sede)
   for(const p of target){
     const freq=p.frequenza||0;if(!freq)continue;
     const maxDay=p.maxSessioniGiorno||1;
@@ -1190,8 +1243,14 @@ async function generateMonth(ms,spid,nameFilter){
             // Check user not busy across all their projects
             const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
             if(!rfree(uBN,st,en))continue;
-            let chosen=null,cAula=null,chosenSed=null,chosenOnlineDaCasa=null;
-            for(const op of pool){
+            let chosen=null,cAula=null,chosenSed=null;
+            // Priorità: a parità di idoneità, preferisci gli Assunti sotto il monte ore settimanale contrattuale (le P.IVA coprono il resto)
+            const poolOrdinato=[...pool].sort((a,b)=>{
+              const pa=(a.tipoContratto==='Assunto'&&a.oreSettimanali>0&&minutiSettimana(a,ds,opB,Y,M)<a.oreSettimanali*60)?0:1;
+              const pb=(b.tipoContratto==='Assunto'&&b.oreSettimanali>0&&minutiSettimana(b,ds,opB,Y,M)<b.oreSettimanali*60)?0:1;
+              return pa-pb;
+            });
+            for(const op of poolOrdinato){
               if(!sdComp(p.sede,op.sedi||[]))continue;
               const opRng=effRng(op,ds,dn);
               // Check time AND sede compatibility per slot (in base alla sede richiesta dal progetto)
@@ -1243,32 +1302,18 @@ async function generateMonth(ms,spid,nameFilter){
                 if(!opRoom[dkH])opRoom[dkH]=al;
                 break;
               }
-              // Sessioni Online: da casa solo se c'è margine di viaggio sufficiente rispetto alle presenze della giornata, altrimenti in sede (aula occupata)
-              let onlineDaCasa=null,onlineAula=null;
-              if(sed==='Online'){
-                const{daCasa,ancora}=decidiOnlineDaCasa(op,opDaySess,st,en);
-                onlineDaCasa=daCasa;
-                if(!daCasa&&ancora){
-                  const auList3=ancora.sede==='Cesate'?AULE_CESATE:AULE_BUSTO;
-                  const halfDay3=st<tmin('13:30')?'AM':'PM';
-                  onlineAula=(ancora.aula&&auList3.includes(ancora.aula))?ancora.aula:(opRoom[op.id+'|'+ds+'|'+halfDay3]||auList3.find(a=>rfree((auB[a]||[]).filter(b=>b.date===ds),st,en))||null);
-                  // L'occupazione dell'aula viene registrata più sotto tramite cAula, una sola volta
-                }
-              }
-              chosen=op;chosenSed=sed;chosenOnlineDaCasa=onlineDaCasa;cAula=onlineAula||cAula;break;
+              // Online/Domicilio: qui si piazza solo la sessione. Se sarà "online da casa o in sede" lo decide la Passata 2 a fine generazione.
+              chosen=op;chosenSed=sed;break;
             }
             if(chosen){
               // Contract hour check for Assunti
               if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
-                const wkStart=new Date(Y,M-1,d);wkStart.setDate(wkStart.getDate()-wkStart.getDay()+1);
-                const wkEnd=new Date(wkStart);wkEnd.setDate(wkEnd.getDate()+6);
-                const wkS=wkStart.toISOString().slice(0,10),wkE=wkEnd.toISOString().slice(0,10);
-                const wkMin=((opB[chosen.id]||[]).filter(b=>b.date>=wkS&&b.date<=wkE).reduce((s,b)=>s+(b.to-b.from),0))+(p.durataSessione||60);
+                const wkMin=minutiSettimana(chosen,ds,opB,Y,M)+(p.durataSessione||60);
                 if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullName(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
               }
               const sed=chosenSed;
               const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
-              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?sessionCount%p.tipiSessione.length:null,onlineDaCasa:sed==='Online'?chosenOnlineDaCasa:null};
+              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?sessionCount%p.tipiSessione.length:null,onlineDaCasa:null};
               newS.push(sess);
               (opB[chosen.id]=opB[chosen.id]||[]).push({date:ds,from:st,to:en});
               (prB[p.id]=prB[p.id]||[]).push({date:ds,from:st,to:en});
@@ -1282,6 +1327,8 @@ async function generateMonth(ms,spid,nameFilter){
       wk+=7;
     }
   }
+  // PASSATA 2: per ogni operatore/giornata, in ordine cronologico su TUTTE le sue sessioni (anche fuori ambito), decide onlineDaCasa e l'aula eventuale
+  risolviOnlineDaCasa(ms,newS,keep);
   // Mantieni solo le sessioni da conservare; le nuove vengono aggiunte una per una da saveRecord solo se il salvataggio su SharePoint riesce
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
@@ -1295,21 +1342,28 @@ async function generateMonth(ms,spid,nameFilter){
 async function generateMonthAI(ms, spid, userNotes, nameFilter){
   const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
   const meseLabel=MESI[M-1]+' '+Y;
-  // Collect data for the prompt
-  let target=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
-  if(spid)target=state.data.progetti.filter(p=>p.id===spid);
-  else target=target.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
-  if(nameFilter)target=target.filter(p=>(p.nome||'').toLowerCase().includes(nameFilter));
-  // Priorità: indice di strettezza = ore disponibili / (freq * durata). Più basso = prima
+  const{scopeProjects,scopeIds}=determinaAmbito(spid,nameFilter);
+  let target=scopeProjects.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre);
+  // Priorità primaria: indice di strettezza, ore disponibili diviso freq*durata, più basso = prima. Priorità secondaria a parità: presenza > composita > remota
   target.sort((a,b)=>{
     const ai=calcStrettezza(a),bi=calcStrettezza(b);
     if(ai!==bi)return ai-bi;
-    // A parità, in presenza prima di online
-    const sa=a.sede==='Online'?1:0,sb=b.sede==='Online'?1:0;return sa-sb;
+    return sedePriorita(a.sede)-sedePriorita(b.sede);
   });
   // Chiusure del centro
   const chiusureDates=new Set((state.data.chiusure||[]).map(c=>c.data));
   if(!target.length)throw new Error('Nessun progetto attivo da calendarizzare.');
+
+  // Sessioni intoccabili di questo mese: confermate, eseguite, assenze ingiustificate, e le proposte di progetti fuori ambito.
+  // Restano vincoli attivi (occupano operatore/aula) e vengono conservate; solo le "proposta" in ambito potranno essere sostituite.
+  const keep=sessioniDaConservare(ms,scopeIds);
+  const vincoli=keep.filter(s=>s.data.startsWith(ms)&&s.stato!=='annullata');
+  const opBusyKeep={},auBusyKeep={};
+  vincoli.forEach(s=>{
+    const f=tmin(s.oraInizio||s.ora_inizio),t=tmin(s.oraFine||s.ora_fine);
+    (opBusyKeep[s.operatoreId]=opBusyKeep[s.operatoreId]||[]).push({date:s.data,from:f,to:t});
+    if(s.aula)(auBusyKeep[s.aula]=auBusyKeep[s.aula]||[]).push({date:s.data,from:f,to:t});
+  });
 
   // Build structured data
   const opsData=state.data.operatori.filter(o=>o.attivo!==false).map(o=>({
@@ -1328,9 +1382,9 @@ async function generateMonthAI(ms, spid, userNotes, nameFilter){
       disponibilita:Object.entries(p.disponibilita||p.avail||{}).map(([g,slots])=>g+': '+slots.map(s=>(s.from||s.da)+'-'+(s.to||s.a)).join(', ')).join('; ')||'segue disponibilità operatori'
     };
   });
-  // Existing sessions to keep
-  const existing=state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).map(s=>{
-    const op=opById(s.operatoreId);return{data:s.data,ora:s.oraInizio||s.ora_inizio,fine:s.oraFine||s.ora_fine,operatore:op?op.nome:'?',sede:s.sede,aula:s.aula||'—'};
+  // Sessioni da non toccare/sovrapporre, mostrate all'IA come vincoli già fissi
+  const existing=vincoli.map(s=>{
+    const op=opById(s.operatoreId);return{data:s.data,ora:s.oraInizio||s.ora_inizio,fine:s.oraFine||s.ora_fine,operatore:op?op.nome:'?',sede:s.sede,aula:s.aula||'—',stato:s.stato};
   });
 
   const prompt=`Sei il motore di calendarizzazione del Centro Sviluppo Cognitivo (BrainRx e Metodo Feuerstein).
@@ -1350,6 +1404,8 @@ VINCOLI INDEROGABILI:
 - Max sessioni/giorno per progetto come indicato.
 - Se la sede di un progetto è "Presenza+Online", usa SOLO Cesate oppure Online: mai Busto Arsizio (a Busto Arsizio non si svolgono sessioni online).
 - Se la sede di un progetto è "Presenza+Domicilio", usa SOLO Cesate oppure Domicilio: mai Busto Arsizio.
+- A parità di indice di rigidità tra due progetti, dai priorità a quelli in presenza (Cesate/Busto Arsizio), poi a quelli misti (Presenza+Online/Domicilio), infine a quelli solo a distanza (Online/Domicilio).
+- Tra operatori idonei per una sessione, preferisci gli Assunti che non hanno ancora raggiunto il loro monte ore settimanale contrattuale; usa i collaboratori P.IVA per il resto.
 
 OPERATORI:
 ${JSON.stringify(opsData, null, 1)}
@@ -1357,7 +1413,7 @@ ${JSON.stringify(opsData, null, 1)}
 PROGETTI DA CALENDARIZZARE:
 ${JSON.stringify(projData, null, 1)}
 
-${existing.length ? 'SESSIONI GIÀ ESEGUITE (non modificare):\n'+JSON.stringify(existing, null, 1) : ''}
+${existing.length ? 'SESSIONI DA NON TOCCARE (confermate, già eseguite, assenze ingiustificate, o di progetti fuori ambito — occupano già operatore e aula, non generare nulla che si sovrapponga):\n'+JSON.stringify(existing, null, 1) : ''}
 
 ${userNotes ? 'ISTRUZIONI AGGIUNTIVE DELL\'AMMINISTRAZIONE:\n'+userNotes : ''}
 
@@ -1378,9 +1434,8 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
   try{sessions=JSON.parse(clean);}catch(e){throw new Error('L\'IA non ha restituito un JSON valido. Riprovare o usare l\'algoritmo.\n\nRisposta:\n'+txt.slice(0,500));}
   if(!Array.isArray(sessions))throw new Error('Formato risposta IA non valido (non è un array).');
 
-  // Validate and save sessions
+  // PASSATA 1: valida e prepara le sessioni proposte dall'IA (senza ancora decidere online da casa/in sede)
   const newS=[];const anom=[];
-  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms.slice(0,7))||s.stato==='eseguita'||s.stato==='assenza ingiustificata');
   for(const sess of sessions){
     if(!sess.data||!sess.oraInizio||!sess.oraFine||!sess.progettoId||!sess.operatoreId){
       anom.push({lbl:'Sessione incompleta',msg:JSON.stringify(sess).slice(0,120)});continue;
@@ -1392,19 +1447,19 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
     // Presenza+Online / Presenza+Domicilio: mai Busto Arsizio, anche se l'IA lo propone
     const sediAmmesse=pr.sede==='Presenza+Online'?['Cesate','Online']:pr.sede==='Presenza+Domicilio'?['Cesate','Domicilio']:null;
     if(sediAmmesse&&!sediAmmesse.includes(sedeFinale)){anom.push({lbl:'Sede non ammessa',msg:'Progetto "'+pr.nome+'" ('+pr.sede+'): la sede "'+sedeFinale+'" proposta dall\'IA non è ammessa (solo '+sediAmmesse.join(' o ')+'). Sessione scartata.'});continue;}
-    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:''};
+    // Non sovrapporre operatore o aula già occupati da un vincolo attivo (confermata/eseguita/assenza ingiustificata/fuori ambito)
+    const stF=tmin(sess.oraInizio),enF=tmin(sess.oraFine);
+    const opConflict=(opBusyKeep[sess.operatoreId]||[]).some(b=>b.date===sess.data&&stF<b.to&&enF>b.from);
+    if(opConflict){anom.push({lbl:'Conflitto operatore',msg:'Sessione del '+sess.data+' per "'+pr.nome+'" sovrapposta a un vincolo attivo dell\'operatore. Sessione scartata.'});continue;}
+    if(sess.aula){
+      const auConflict=(auBusyKeep[sess.aula]||[]).some(b=>b.date===sess.data&&stF<b.to&&enF>b.from);
+      if(auConflict){anom.push({lbl:'Conflitto aula',msg:'Sessione del '+sess.data+' per "'+pr.nome+'": aula "'+sess.aula+'" già occupata da un vincolo attivo. Sessione scartata.'});continue;}
+    }
+    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:'',onlineDaCasa:null};
     newS.push(rec);
   }
-  // Sessioni Online: determina deterministicamente da-casa/in-sede (stessa regola di generateMonth), senza fidarsi della scelta dell'IA
-  for(const sess of newS){
-    if(sess.sede!=='Online')continue;
-    const op=opById(sess.operatoreId);if(!op)continue;
-    const giorno=[...newS,...keep].filter(sx=>sx.operatoreId===sess.operatoreId&&sx.data===sess.data&&sx!==sess);
-    const st=tmin(sess.oraInizio),en=tmin(sess.oraFine);
-    const{daCasa,ancora}=decidiOnlineDaCasa(op,giorno,st,en);
-    sess.onlineDaCasa=daCasa;
-    if(!daCasa&&ancora&&ancora.aula)sess.aula=ancora.aula;
-  }
+  // PASSATA 2: per ogni operatore/giornata, in ordine cronologico su TUTTE le sue sessioni (anche fuori ambito), decide onlineDaCasa e l'aula eventuale
+  risolviOnlineDaCasa(ms,newS,keep);
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
   return{count:newS.length,anom};
@@ -1686,8 +1741,11 @@ $('#btn-gen-ai').addEventListener('click',async()=>{
   $('#gen-results').innerHTML=h;}catch(e){$('#gen-results').innerHTML='<div class="banner warn">Errore IA: '+esc(e.message)+'</div>';}
 });
 $('#btn-clear-gen').addEventListener('click',async()=>{
-  const ms=$('#gen-month').value;if(!ms||!confirm('Eliminare tutte le proposte (non eseguite) di '+ms+'?'))return;
-  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato!=='eseguita'&&s.stato!=='assenza ingiustificata');
+  const ms=$('#gen-month').value;if(!ms)return;
+  const scope=$('#gen-scope').value;const spid=scope==='single'?$('#gen-proj-sel').value:null;const projNameFilter=scope==='byname'?$('#gen-proj-name').value.trim().toLowerCase():null;
+  const{scopeIds}=determinaAmbito(spid,projNameFilter);
+  if(!confirm('Eliminare tutte le proposte in ambito di '+ms+'? Le sessioni confermate, eseguite, le assenze ingiustificate e le proposte fuori ambito non verranno toccate.'))return;
+  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId));
   for(const s of toRemove)await deleteRecord('sessioni',s);
   toast(toRemove.length+' proposte eliminate.');
 });
