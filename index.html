@@ -352,6 +352,7 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
       <div class="field"><label>Ambito</label><select id="gen-scope"><option value="all">Tutti i progetti attivi</option><option value="single">Singolo progetto</option><option value="byname">Per nome progetto</option></select></div>
     </div>
     <div class="field hidden" id="gen-proj-wrap"><label>Progetto</label><select id="gen-proj-sel"></select></div>
+    <div class="field hidden" id="gen-proj-name-wrap"><label>Nome progetto (o parte di esso)</label><input type="text" id="gen-proj-name" placeholder="Es: Feuerstein, BrainRx…"></div>
     <div class="toolbar" style="margin-top:12px">
       <button class="btn primary" id="btn-gen">🗓 Genera con algoritmo</button>
       <button class="btn gold" id="btn-gen-ai">🤖 Genera con IA</button>
@@ -598,9 +599,14 @@ async function getToken(){
 /* ============================================================
    Graph API / SharePoint
    ============================================================ */
-async function gfetch(path,options={}){
+async function gfetch(path,options={},retries=3){
   const token=await getToken();
   const res=await fetch(path.startsWith('http')?path:GRAPH+path,{...options,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})}});
+  if((res.status===429||res.status===503)&&retries>0){
+    const wait=Math.max(1,parseInt(res.headers.get('Retry-After')||'2'))*1000;
+    await new Promise(r=>setTimeout(r,wait));
+    return gfetch(path,options,retries-1);
+  }
   if(res.status===204)return null;
   const body=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error('Graph '+res.status+': '+(body?.error?.message||res.statusText));
@@ -753,7 +759,8 @@ function openSessionDetail(s){
 }
 function openSessionModal(s={}){
   const isNew=!s.id;const ops=state.data.operatori.filter(o=>o.attivo!==false);const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));
-  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(s.sede===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((s.sede==='Cesate'||s.sede==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((s.sede==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  const sedeVal=s.sede||SEDI[0];
+  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(sedeVal===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((sedeVal==='Cesate'||sedeVal==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((sedeVal==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
   function fillProj(){const uid_=$('#se-utente').value;const prs=state.data.progetti.filter(p=>!uid_||p.utenteId===uid_);$('#se-progetto').innerHTML='<option value="">— Nessuno —</option>'+prs.map(p=>'<option value="'+p.id+'" '+(s.progettoId===p.id?'selected':'')+'>'+esc(p.nome)+'</option>').join('');}
   fillProj();$('#se-utente').addEventListener('change',fillProj);
   $('#se-sede').addEventListener('change',e=>{const v=e.target.value;$('#se-aw').style.display=(v==='Cesate'||v==='Busto Arsizio')?'':'none';const al=$('#se-aula');const opts=v==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE;al.innerHTML='<option value="">—</option>'+opts.map(a=>'<option>'+a+'</option>').join('');});
@@ -788,7 +795,7 @@ function openOperatoreModal(o={}){
   function addFormChip(fn){const ch=document.createElement('span');ch.className='chip on';ch.dataset.fn=fn;ch.innerHTML=esc(fn)+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button>';ch.querySelector('button').addEventListener('click',()=>{ch.remove();refreshFormDD();});oeFormChips.appendChild(ch);refreshFormDD();}
   opForm.forEach(f=>addFormChip(f));refreshFormDD();
   oeFormDD.addEventListener('change',()=>{const v=oeFormDD.value;if(v)addFormChip(v);});
-  $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>ch.classList.toggle('on'));});
+  $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>{ch.classList.toggle('on');const bustoOn=Array.from($$('#oe-sedi input:checked')).some(i=>i.value==='Busto Arsizio');$('#oe-tempo-busto-wrap').style.display=bustoOn?'':'none';});});
   $('#oe-save').addEventListener('click',async()=>{
     const nome=$('#oe-nome').value.trim(),cognome=$('#oe-cognome').value.trim(),email=$('#oe-email').value.trim().toLowerCase();
     const dupOp=state.data.operatori.find(x=>x.id!==o.id&&(x.email||'').toLowerCase()===email);
@@ -1113,25 +1120,28 @@ async function generateMonth(ms,spid,nameFilter){
             // Check user not busy across all their projects
             const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
             if(!rfree(uBN,st,en))continue;
-            let chosen=null,cAula=null;
+            let chosen=null,cAula=null,chosenSed=null;
             for(const op of pool){
               if(!sdComp(p.sede,op.sedi||[]))continue;
               const opRng=effRng(op,ds,dn);
-              // Check time AND sede compatibility per slot
+              // Check time AND sede compatibility per slot (in base alla sede richiesta dal progetto)
               const matchSlot=opRng.find(r=>{
                 if(tmin(r.from||r.da)>st||tmin(r.to||r.a)<en)return false;
                 // If slot has sedi, check if project sede is compatible
                 if(r.sedi&&r.sedi.length){
-                  if(sed==='Online')return r.sedi.includes('Online');
-                  if(sed==='Cesate')return r.sedi.includes('Cesate');
-                  if(sed==='Busto Arsizio')return r.sedi.includes('Busto');
-                  if(sed==='Domicilio')return r.sedi.includes('Domicilio');
-                  if(sed==='Presenza+Online')return r.sedi.includes('Cesate')||r.sedi.includes('Busto')||r.sedi.includes('Online');
-                  if(sed==='Presenza+Domicilio')return r.sedi.includes('Cesate')||r.sedi.includes('Busto')||r.sedi.includes('Domicilio');
+                  if(p.sede==='Online')return r.sedi.includes('Online');
+                  if(p.sede==='Cesate')return r.sedi.includes('Cesate');
+                  if(p.sede==='Busto Arsizio')return r.sedi.includes('Busto');
+                  if(p.sede==='Domicilio')return r.sedi.includes('Domicilio');
+                  // Presenza+Online / Presenza+Domicilio: mai Busto Arsizio, solo Cesate o la modalità a distanza
+                  if(p.sede==='Presenza+Online')return r.sedi.includes('Cesate')||r.sedi.includes('Online');
+                  if(p.sede==='Presenza+Domicilio')return r.sedi.includes('Cesate')||r.sedi.includes('Domicilio');
                 }
                 return true; // No sedi info = available for all
               });
               if(!matchSlot)continue;
+              // Determine effective sede now that we know which slot matched (mai Busto Arsizio per le modalità composite)
+              const sed=p.sede==='Presenza+Online'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':'Online'):p.sede==='Presenza+Domicilio'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':'Domicilio'):p.sede;
               // Formation check: operator must have ALL formations for this session type
               const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[placed%p.tipiSessione.length]:null;
               if(sessType){const reqForms=sessType.componenti.map(c=>c.metodo).filter(Boolean);const opForms=op.formazione||[];if(!reqForms.every(rf=>opForms.includes(rf)))continue;}
@@ -1146,8 +1156,6 @@ async function generateMonth(ms,spid,nameFilter){
               if(sed==='Domicilio')travelMin=Math.max(travelMin,p.domicilioTempo||0);
               const diffSede=opDaySess.some(sx=>sx.sede&&sx.sede!==sed);
               if(travelMin>0&&diffSede&&!rfree(opBusy,st-travelMin,en+travelMin))continue;
-              // Determine effective sede
-              const sed=p.sede==='Presenza+Online'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Busto'))?'Busto Arsizio':'Online')):p.sede==='Presenza+Domicilio'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Busto'))?'Busto Arsizio':'Domicilio')):p.sede;
               if(sed==='Cesate'||sed==='Busto Arsizio'){
                 const auList=sed==='Cesate'?AULE_CESATE:AULE_BUSTO;
                 const halfDay2=st<tmin('13:30')?'AM':'PM';
@@ -1158,7 +1166,7 @@ async function generateMonth(ms,spid,nameFilter){
                 if(prefRoom&&auList.includes(prefRoom)&&rfree((auB[prefRoom]||[]).filter(b=>b.date===ds),st,en)){al=prefRoom;}
                 else{al=auList.find(a=>rfree((auB[a]||[]).filter(b=>b.date===ds),st,en));}
                 if(!al)continue;
-                chosen=op;cAula=al;
+                chosen=op;cAula=al;chosenSed=sed;
                 // Track room for operator per half-day (morning vs afternoon)
                 const halfDay=st<tmin('13:30')?'AM':'PM';
                 const dkH=op.id+'|'+ds+'|'+halfDay;
@@ -1179,7 +1187,7 @@ async function generateMonth(ms,spid,nameFilter){
                   }
                 }
               }
-              chosen=op;break;
+              chosen=op;chosenSed=sed;break;
             }
             if(chosen){
               // Contract hour check for Assunti
@@ -1190,7 +1198,7 @@ async function generateMonth(ms,spid,nameFilter){
                 const wkMin=((opB[chosen.id]||[]).filter(b=>b.date>=wkS&&b.date<=wkE).reduce((s,b)=>s+(b.to-b.from),0))+(p.durataSessione||60);
                 if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullName(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
               }
-              const sed=p.sede==='Presenza+Online'?((chosen.sedi||[]).includes('Cesate')?'Cesate':((chosen.sedi||[]).includes('Busto Arsizio')?'Busto Arsizio':'Online')):p.sede==='Presenza+Domicilio'?((chosen.sedi||[]).includes('Cesate')?'Cesate':((chosen.sedi||[]).includes('Busto Arsizio')?'Busto Arsizio':'Domicilio')):p.sede;
+              const sed=chosenSed;
               const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[placed%p.tipiSessione.length]:null;
               const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?placed%p.tipiSessione.length:null};
               newS.push(sess);
@@ -1206,8 +1214,8 @@ async function generateMonth(ms,spid,nameFilter){
       wk+=7;
     }
   }
-  // Save all new sessions to SharePoint
-  state.data.sessioni=[...keep.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita'),...state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='eseguita'),...newS];
+  // Mantieni solo le sessioni da conservare; le nuove vengono aggiunte una per una da saveRecord solo se il salvataggio su SharePoint riesce
+  state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
   return{count:newS.length,anom};
 }
@@ -1216,7 +1224,7 @@ async function generateMonth(ms,spid,nameFilter){
 /* ============================================================
    Generatore con IA (Claude)
    ============================================================ */
-async function generateMonthAI(ms, spid, userNotes){
+async function generateMonthAI(ms, spid, userNotes, nameFilter){
   const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
   const meseLabel=MESI[M-1]+' '+Y;
   // Collect data for the prompt
@@ -1272,6 +1280,8 @@ VINCOLI INDEROGABILI:
 - Rispetta la frequenza settimanale di ciascun progetto.
 - Rispetta le disponibilità orarie e le eccezioni per data.
 - Max sessioni/giorno per progetto come indicato.
+- Se la sede di un progetto è "Presenza+Online", usa SOLO Cesate oppure Online: mai Busto Arsizio (a Busto Arsizio non si svolgono sessioni online).
+- Se la sede di un progetto è "Presenza+Domicilio", usa SOLO Cesate oppure Domicilio: mai Busto Arsizio.
 
 OPERATORI:
 ${JSON.stringify(opsData, null, 1)}
@@ -1310,10 +1320,14 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
     const pr=prById(sess.progettoId);const op=opById(sess.operatoreId);
     if(!pr){anom.push({lbl:'Progetto non trovato',msg:sess.progettoId});continue;}
     if(!op){anom.push({lbl:'Operatore non trovato',msg:sess.operatoreId});continue;}
-    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sess.sede||pr.sede,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:''};
+    const sedeFinale=sess.sede||pr.sede;
+    // Presenza+Online / Presenza+Domicilio: mai Busto Arsizio, anche se l'IA lo propone
+    const sediAmmesse=pr.sede==='Presenza+Online'?['Cesate','Online']:pr.sede==='Presenza+Domicilio'?['Cesate','Domicilio']:null;
+    if(sediAmmesse&&!sediAmmesse.includes(sedeFinale)){anom.push({lbl:'Sede non ammessa',msg:'Progetto "'+pr.nome+'" ('+pr.sede+'): la sede "'+sedeFinale+'" proposta dall\'IA non è ammessa (solo '+sediAmmesse.join(' o ')+'). Sessione scartata.'});continue;}
+    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:''};
     newS.push(rec);
   }
-  state.data.sessioni=[...keep,...state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&s.stato==='eseguita'),...newS];
+  state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
   return{count:newS.length,anom};
 }
@@ -1380,15 +1394,17 @@ async function sendChat(){
 function c2r(v){return String(v||'').split(',').map(s=>{const[f,t]=s.trim().split('-').map(x=>x?.trim());return f&&t?{from:f,to:t}:null;}).filter(Boolean);}
 async function handleImport(file,kind){
   const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}).slice(1).filter(r=>r.some(c=>String(c).trim()));
-  let added=0;
+  let added=0,failed=0;
   if(kind==='op'){for(const r of rows){const nome=String(r[0]||'').trim();if(!nome)continue;const cognome=String(r[1]||'').trim();const sedi=String(r[4]||'').split(';').map(s=>s.trim()).filter(s=>SEDI.includes(s));const avail={};GIORNI.forEach((g,i)=>{const rs=c2r(r[5+i]);if(rs.length)avail[g]=rs;});
     const ei=state.data.operatori.findIndex(o=>(o.nome+' '+o.cognome).toLowerCase()===(nome+' '+cognome).toLowerCase());
     const obj={id:ei>=0?state.data.operatori[ei].id:uid(),nome,cognome,telefono:String(r[2]||'').trim(),email:String(r[3]||'').trim(),sedi,disponibilita:avail,eccezioni:[],colore:OP_COLORS[state.data.operatori.length%OP_COLORS.length],ruolo:'Operatore',attivo:true};
-    await saveRecord('operatori',obj);added++;}}
+    try{await saveRecord('operatori',obj);added++;}catch(e){console.error('Import operatore fallito:',nome,cognome,e);failed++;}}}
   else{for(const r of rows){const nome=String(r[0]||'').trim();if(!nome)continue;
     const obj={id:uid(),nome,cognome:String(r[1]||'').trim(),dataNascita:String(r[2]||'').trim(),refNome:String(r[3]||'').trim(),refCognome:String(r[4]||'').trim(),telefono:String(r[5]||'').trim(),email:String(r[6]||'').trim(),via:String(r[7]||'').trim(),comune:String(r[8]||'').trim(),provincia:String(r[9]||'').trim().toUpperCase(),cap:String(r[10]||'').trim(),paese:String(r[11]||'').trim(),note:String(r[12]||'').trim(),attivo:true};
-    await saveRecord('utenti',obj);added++;}}
-  toast(added+' importati.');if(kind==='op')renderOperatori();else renderUtenti();
+    try{await saveRecord('utenti',obj);added++;}catch(e){console.error('Import utente fallito:',nome,e);failed++;}}}
+  if(kind==='op')renderOperatori();else renderUtenti();
+  if(failed)toast(added+' importati, '+failed+' falliti (dettagli in console).',true);
+  else toast(added+' importati.');
 }
 
 
@@ -1482,15 +1498,18 @@ $('#op-new').addEventListener('click',()=>openOperatoreModal());
 $('#ut-new').addEventListener('click',()=>openUtenteModal());
 $('#ut-clear-all').addEventListener('click',async()=>{
   if(!confirm('Sei sicuro di voler eliminare TUTTI gli utenti? Questa azione è irreversibile.'))return;
-  if(!confirm('Confermi? Verranno eliminati '+state.data.utenti.length+' utenti.'))return;
+  if(!confirm('Confermi? Verranno eliminati '+state.data.utenti.length+' utenti, insieme a tutti i progetti e le sessioni collegate.'))return;
+  const utIds=new Set(state.data.utenti.map(u=>u.id));
+  for(const s of state.data.sessioni.filter(s=>utIds.has(s.utenteId))){try{await deleteRecord('sessioni',s);}catch(e){console.warn(e);}}
+  for(const p of state.data.progetti.filter(p=>utIds.has(p.utenteId))){try{await deleteRecord('progetti',p);}catch(e){console.warn(e);}}
   for(const u of state.data.utenti){try{await deleteRecord('utenti',u);}catch(e){console.warn(e);}}
-  state.data.utenti=[];renderUtenti();toast('Tutti gli utenti sono stati eliminati.');
+  state.data.utenti=[];renderUtenti();toast('Utenti, progetti e sessioni collegate sono stati eliminati.');
 });
 $('#ut-search').addEventListener('input',renderUtenti);
 $('#pr-new').addEventListener('click',()=>openProgettoModal());
 $('#avail-save').addEventListener('click',saveDisponibilita);
 $('#avail-add-exc').addEventListener('click',()=>{if(!state.availDraft)return;state.availDraft.eccezioni.push({data:todayISO(),tipo:'assente',da:'',a:'',note:''});renderAvailExceptions();});
-$('#gen-scope').addEventListener('change',e=>{$('#gen-proj-wrap').classList.toggle('hidden',e.target.value!=='single');if(e.target.value==='single')refreshGenSel();});
+$('#gen-scope').addEventListener('change',e=>{const v=e.target.value;$('#gen-proj-wrap').classList.toggle('hidden',v!=='single');$('#gen-proj-name-wrap').classList.toggle('hidden',v!=='byname');if(v==='single')refreshGenSel();});
 
 
 /* ============================================================
@@ -1502,17 +1521,17 @@ function renderImpostazioni(){
   // Formazioni
   const fDiv=$('#imp-formazioni');
   fDiv.innerHTML=imp.formazioni.map((f,i)=>'<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px">'+esc(f)+'</span><button class="btn ghost small imp-f-rm" data-fi="'+i+'" style="font-size:11px;padding:2px 6px">✕</button></div>').join('');
-  fDiv.querySelectorAll('.imp-f-rm').forEach(b=>b.addEventListener('click',async()=>{imp.formazioni.splice(parseInt(b.dataset.fi),1);try{await saveImp();}catch(e){console.warn(e);}renderImpostazioni();}));
+  fDiv.querySelectorAll('.imp-f-rm').forEach(b=>b.addEventListener('click',async()=>{imp.formazioni.splice(parseInt(b.dataset.fi),1);try{await saveImp();}catch(e){console.error(e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();}));
   // Metodi
   const mDiv=$('#imp-metodi');
   mDiv.innerHTML=imp.metodi.map((m,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(m.nome)+'</span><span class="tag '+(m.tipo==='digitale'?'info':m.tipo==='formazione'?'warn':'ok')+'" style="font-size:10px">'+esc(m.tipo)+'</span><span style="font-size:11px;color:var(--ink-soft);white-space:nowrap">'+(m.durate||[]).map(d=>fmtDurata(d)).join(', ')+'</span><button class="btn ghost small imp-m-dur" data-mi="'+i+'" style="font-size:11px;padding:2px 8px;white-space:nowrap">✏️ Durate</button><button class="btn ghost small imp-m-rm" data-mi="'+i+'" style="font-size:11px;padding:2px 6px;color:var(--danger)">✕</button></div>').join('');
-  mDiv.querySelectorAll('.imp-m-rm').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Rimuovere "'+imp.metodi[parseInt(b.dataset.mi)].nome+'"?'))return;imp.metodi.splice(parseInt(b.dataset.mi),1);try{await saveImp();}catch(e){console.warn(e);}renderImpostazioni();}));
+  mDiv.querySelectorAll('.imp-m-rm').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Rimuovere "'+imp.metodi[parseInt(b.dataset.mi)].nome+'"?'))return;imp.metodi.splice(parseInt(b.dataset.mi),1);try{await saveImp();}catch(e){console.error(e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();}));
   mDiv.querySelectorAll('.imp-m-dur').forEach(b=>b.addEventListener('click',()=>{
     const mi=parseInt(b.dataset.mi);const m=imp.metodi[mi];if(!m)return;
     const all=[15,30,45,60,90,120,150,180,210,240];
     openModal('<h3>Durate — '+esc(m.nome)+'</h3><p>Seleziona le durate consentite per ogni sessione:</p><div id="imp-dur-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">'+all.map(d=>'<label class="chip '+(m.durate.includes(d)?'on':'')+'"><input type="checkbox" value="'+d+'" '+(m.durate.includes(d)?'checked':'')+' style="display:none">'+fmtDurata(d)+'</label>').join('')+'</div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="imp-dur-save">Salva</button></div>');
     $$('#imp-dur-chips label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);}));
-    $('#imp-dur-save').addEventListener('click',async()=>{m.durate=Array.from($$('#imp-dur-chips input:checked')).map(c=>parseInt(c.value)).sort((a,b)=>a-b);try{await saveImp();}catch(e){console.warn(e);}closeModal();renderImpostazioni();});
+    $('#imp-dur-save').addEventListener('click',async()=>{m.durate=Array.from($$('#imp-dur-chips input:checked')).map(c=>parseInt(c.value)).sort((a,b)=>a-b);try{await saveImp();}catch(e){console.error(e);toast('Errore nel salvataggio: '+e.message,true);}closeModal();renderImpostazioni();});
   }));
 }
 async function saveImp(){await saveRecord('impostazioni',{id:'impostazioni',...state.data.impostazioni});}
@@ -1521,8 +1540,8 @@ function initImpostazioni(){
   renderImpostazioni();
   if(!$('#imp-f-add')._bound){
     $('#imp-f-add')._bound=true;
-    $('#imp-f-add').addEventListener('click',async()=>{const v=$('#imp-f-new').value.trim();if(!v)return;state.data.impostazioni.formazioni.push(v);$('#imp-f-new').value='';try{await saveImp();}catch(e){console.warn('Save imp error:',e);}renderImpostazioni();});
-    $('#imp-m-add').addEventListener('click',async()=>{const v=$('#imp-m-new').value.trim();if(!v)return;state.data.impostazioni.metodi.push({nome:v,durate:[60],tipo:$('#imp-m-tipo').value});$('#imp-m-new').value='';try{await saveImp();}catch(e){console.warn('Save imp error:',e);}renderImpostazioni();});
+    $('#imp-f-add').addEventListener('click',async()=>{const v=$('#imp-f-new').value.trim();if(!v)return;state.data.impostazioni.formazioni.push(v);$('#imp-f-new').value='';try{await saveImp();}catch(e){console.error('Save imp error:',e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();});
+    $('#imp-m-add').addEventListener('click',async()=>{const v=$('#imp-m-new').value.trim();if(!v)return;state.data.impostazioni.metodi.push({nome:v,durate:[60],tipo:$('#imp-m-tipo').value});$('#imp-m-new').value='';try{await saveImp();}catch(e){console.error('Save imp error:',e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();});
   }
 }
 
@@ -1542,20 +1561,24 @@ function renderChiusure(){
   $$('.btn-del-chiusura').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.cid;state.data.chiusure=state.data.chiusure.filter(c=>c.id!==id);await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});renderChiusure();}));
 }
 function initChiusureTab(){
-  const sel=$('#chiusure-anno');const y=new Date().getFullYear();
-  sel.innerHTML=[y-1,y,y+1,y+2].map(a=>'<option'+(a===y?' selected':'')+'>'+a+'</option>').join('');
-  sel.addEventListener('change',renderChiusure);
-  $('#btn-load-festivita').addEventListener('click',async()=>{
-    const anno=parseInt($('#chiusure-anno').value);const fest=getFestivita(anno);let added=0;
-    for(const f of fest){const ds=anno+'-'+pad2(f.m)+'-'+pad2(f.d);if(!state.data.chiusure.some(c=>c.data===ds)){state.data.chiusure.push({id:uid(),data:ds,tipo:'festivita',nome:f.nome});added++;}}
-    if(added){await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});toast(added+' festività caricate per il '+anno);}else{toast('Tutte le festività del '+anno+' sono già presenti.');}
-    renderChiusure();
-  });
-  $('#btn-add-chiusura').addEventListener('click',()=>{
-    const anno=$('#chiusure-anno').value;
-    openModal('<h3>Nuova chiusura</h3><div class="field"><label>Data</label><input id="ch-data" type="date" value="'+anno+'-01-01"></div><div class="field"><label>Tipo</label><select id="ch-tipo"><option value="festivita">Festività</option><option value="ferie" selected>Chiusura ferie</option></select></div><div class="field"><label>Descrizione</label><input id="ch-nome" placeholder="es. Chiusura estiva"></div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="ch-save">Salva</button></div>');
-    $('#ch-save').addEventListener('click',async()=>{const d=$('#ch-data').value;if(!d){toast('Inserisci una data.',true);return;}state.data.chiusure.push({id:uid(),data:d,tipo:$('#ch-tipo').value,nome:$('#ch-nome').value.trim()});await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});closeModal();renderChiusure();});
-  });
+  const sel=$('#chiusure-anno');
+  if(!sel._bound){
+    sel._bound=true;
+    const y=new Date().getFullYear();
+    sel.innerHTML=[y-1,y,y+1,y+2].map(a=>'<option'+(a===y?' selected':'')+'>'+a+'</option>').join('');
+    sel.addEventListener('change',renderChiusure);
+    $('#btn-load-festivita').addEventListener('click',async()=>{
+      const anno=parseInt($('#chiusure-anno').value);const fest=getFestivita(anno);let added=0;
+      for(const f of fest){const ds=anno+'-'+pad2(f.m)+'-'+pad2(f.d);if(!state.data.chiusure.some(c=>c.data===ds)){state.data.chiusure.push({id:uid(),data:ds,tipo:'festivita',nome:f.nome});added++;}}
+      if(added){await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});toast(added+' festività caricate per il '+anno);}else{toast('Tutte le festività del '+anno+' sono già presenti.');}
+      renderChiusure();
+    });
+    $('#btn-add-chiusura').addEventListener('click',()=>{
+      const anno=$('#chiusure-anno').value;
+      openModal('<h3>Nuova chiusura</h3><div class="field"><label>Data</label><input id="ch-data" type="date" value="'+anno+'-01-01"></div><div class="field"><label>Tipo</label><select id="ch-tipo"><option value="festivita">Festività</option><option value="ferie" selected>Chiusura ferie</option></select></div><div class="field"><label>Descrizione</label><input id="ch-nome" placeholder="es. Chiusura estiva"></div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="ch-save">Salva</button></div>');
+      $('#ch-save').addEventListener('click',async()=>{const d=$('#ch-data').value;if(!d){toast('Inserisci una data.',true);return;}state.data.chiusure.push({id:uid(),data:d,tipo:$('#ch-tipo').value,nome:$('#ch-nome').value.trim()});await saveRecord('chiusure',{id:'chiusure',chiusure:state.data.chiusure});closeModal();renderChiusure();});
+    });
+  }
   renderChiusure();
 }
 
@@ -1577,7 +1600,7 @@ $('#btn-gen-ai').addEventListener('click',async()=>{
   const scope=$('#gen-scope').value;let spid=scope==='single'?$('#gen-proj-sel').value:null;const projNameFilter=scope==='byname'?$('#gen-proj-name').value.trim().toLowerCase():null;
   const notes=$('#gen-ai-notes').value.trim();
   $('#gen-results').innerHTML='<div class="banner info">🤖 L\'IA sta analizzando operatori, progetti, disponibilità e vincoli… Questo può richiedere 10–30 secondi.</div>';
-  try{const res=await generateMonthAI(ms,spid,notes);
+  try{const res=await generateMonthAI(ms,spid,notes,projNameFilter);
   let h='<div class="card"><div class="card-pad"><h3>🤖 '+res.count+' sessioni create con IA</h3>';
   if(res.anom.length)h+='<div style="margin-top:8px"><strong>Note:</strong>'+res.anom.map(a=>'<p>'+esc(a.lbl)+': '+esc(a.msg)+'</p>').join('')+'</div>';
   else h+='<span class="tag ok">✓ Generazione completata senza anomalie</span>';
@@ -1597,8 +1620,8 @@ $('#chat-in').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
 $('#chat-clear').addEventListener('click',()=>{chatH=[];rChat();});
 $('#op-tpl').addEventListener('click',()=>{const hdr=['Nome','Cognome','Telefono','Email','Sedi (separate da ;)',...GIORNI.map(g=>g+' (es: 09:00-12:00, 14:00-18:00)')];const ws=XLSX.utils.aoa_to_sheet([hdr]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Operatori');XLSX.writeFile(wb,'modello_operatori.xlsx');});
 $('#ut-tpl').addEventListener('click',()=>{const hdr=['Nome','Cognome','Data di nascita','Nome referente','Cognome referente','Telefono','Email','Via','Comune','Provincia','CAP','Paese','Note'];const ws=XLSX.utils.aoa_to_sheet([hdr]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Utenti');XLSX.writeFile(wb,'modello_utenti.xlsx');});
-$('#op-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'op');e.target.value='';});
-$('#ut-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'ut');e.target.value='';});
+$('#op-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'op').catch(err=>{console.error(err);toast('Errore import: '+err.message,true);});e.target.value='';});
+$('#ut-import').addEventListener('change',e=>{if(e.target.files[0])handleImport(e.target.files[0],'ut').catch(err=>{console.error(err);toast('Errore import: '+err.message,true);});e.target.value='';});
 
 if(typeof msal!=='undefined'&&msal.PublicClientApplication){init();}
 else{window.addEventListener('msal-ready',function(){init();},{once:true});setTimeout(function(){if(!state.account&&typeof msal==='undefined')$('#loading-msg').textContent='Caricamento libreria Microsoft…';},5000);}
