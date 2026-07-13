@@ -1,90 +1,196 @@
 # VERIFICA.md
 
-Verifica pre-pubblicazione del gestionale (`index.html`). Data verifica: 2026-07-13.
+Verifica delle 4 modifiche richieste all'algoritmo e all'interfaccia. Data: 2026-07-13.
 
 ---
 
-## PARTE A — Integrità delle funzionalità esistenti
+## 1 — Rotazione tipi di sessione continua sul mese
 
-| Funzionalità | Stato | Dettaglio |
-|---|---|---|
-| Divisione nome/cognome | **Presente** | Campi `nome`/`cognome` separati per operatori (`oe-nome`/`oe-cognome`) e utenti (`ue-nome`/`ue-cognome`, più `refNome`/`refCognome` per il referente). `loadAll()` include una migrazione automatica che divide i vecchi record con `nome` unico. |
-| Sezioni credenziali | **Presente** | `buildCredUI()` genera righe piattaforma/ID/password con toggle mostra/nascondi (`eye-btn`); usata sia in Operatori (`oe-cred`) sia in Utenti (`ue-cred`). Nota: le password sono salvate in chiaro nel blob JSON su SharePoint (problema noto #12, non in scope di questa verifica). |
-| Collegamento documenti OneDrive/SharePoint | **Parziale** | `buildDocsUI()` è implementata e collegata solo alla scheda **Utenti** (`ue-docs`, con link + apertura rapida della libreria SharePoint). Non è presente per gli **Operatori** (nessun campo documenti nella loro modale). |
-| Paese di origine | **Presente** | Select `ue-paese` con l'elenco `COUNTRIES` (~190 paesi), solo per gli utenti. |
-| Tempi di viaggio (casa, Busto Arsizio, domicilio) | **Parziale** | Tutti e tre i campi sono presenti nell'interfaccia e salvati (`tempoCasa`/`oe-tempo-casa`, `tempoBusto`/`oe-tempo-busto`, `domicilioTempo`/`pe-domicilio-tempo`). **Ma** l'algoritmo di generazione (`generateMonth`) usa solo `tempoBusto` e `domicilioTempo` nel calcolo di `travelMin`; **`tempoCasa` non viene mai letto da nessuna parte della logica di scheduling** — è un campo raccolto ma senza effetto pratico sulla calendarizzazione. |
-| Calendario chiusure con festività italiane e calcolo Pasqua | **Presente** | Tab "📅 Chiusure Centro" (`renderChiusure`/`initChiusureTab`), pulsante "Carica festività italiane" che usa `getFestivita()`/`getPasqua()` (algoritmo di Gauss per la Pasqua, con Lunedì dell'Angelo calcolato di conseguenza). Le chiusure bloccano la generazione (`chiusureDates`). |
-| Tipi di assenza operatori (malattia, permesso visita medica, permesso studio, ferie) con calendario colorato | **Parziale** | I 4 tipi sono gestiti in `renderMonthlyAvail()` con celle colorate (`mc-malattia`, `mc-ferie`, `mc-permesso`) **nel calendario mensile dentro la modale di modifica** dell'operatore/progetto. Le classi CSS `.ev-malattia`, `.ev-ferie`, `.ev-permesso`, `.ev-festivita` esistono nel foglio di stile ma **non vengono mai applicate da nessuna funzione JS**: il Calendario principale (tab "Calendario") non mostra le assenze come blocchi colorati, mostra solo le sessioni. |
-| Calendari mensili di disponibilità per operatori e progetti | **Presente** | `renderMonthlyAvail()` è riutilizzata sia per l'operatore (`oe-monthly`, `isOperator=true`) sia per il progetto/utente (`pe-monthly`, `isOperator=false`), con opzioni di eccezione differenti (assenze per l'operatore, sola disponibilità extra per il progetto). |
-| Selezione sede per fascia con regola Cesate ≠ Online automatico | **Presente** (a livello di risoluzione, non di editor) | Nell'editor delle fasce (`renderAvailEditor`/`renderFasce`) è possibile marcare una fascia come valida per Cesate **e** Online contemporaneamente (è un OR di disponibilità, comportamento voluto). La regola di mutua esclusione si applica invece **al momento della generazione**: per un progetto `Presenza+Online`, `generateMonth`/`generateMonthAI` risolvono la sede effettiva della singola sessione a **una sola** tra Cesate oppure Online (mai entrambe), scegliendo Cesate se lo slot lo consente, altrimenti Online. |
-| Gestione contratti Assunto/P.IVA con limiti ore settimanali | **Parziale** | Anagrafica completa (`oe-contratto` Assunto/P.IVA, `oe-ore-sett`, tipo Indeterminato/Determinato, scadenza). Il limite ore settimanali **è applicato** dentro `generateMonth` (segnalazione di anomalia se superato, sessione creata comunque — vedi Parte B, punto 8). Le funzioni `checkContractAlerts()` (avvisi scadenza contratto) e `calcStraordinari()` (calcolo straordinari) sono scritte ma **non vengono mai invocate** da nessuna parte dell'app (problema noto #11, non in scope). |
-| Campo Formazione con dropdown e chip | **Presente** | `oe-form-dd` (select con le formazioni non ancora assegnate) + `oe-form-chips` (chip rimovibili), alimentati da `getFormazioni()`/`DEFAULT_FORMAZIONI` o dalle formazioni personalizzate in Impostazioni. |
-| Tab Impostazioni con liste modificabili | **Presente** | `renderImpostazioni()`/`initImpostazioni()`: liste "Formazione Operatori" e "Metodi/Progetti" con aggiunta, rimozione e modifica delle durate consentite per metodo, persistite su SharePoint (`saveImp`). |
-| Rilevamento duplicati per data di nascita | **Presente** (solo Utenti) | In `openUtenteModal`, salvando un utente si controlla se esiste già un altro utente con stesso nome+cognome+data di nascita, con avviso bloccante. (Gli Operatori hanno un controllo duplicati analogo ma basato sull'email, non sulla data di nascita — coerente col fatto che non hanno un campo data di nascita.) |
-| Import/export Excel con modelli scaricabili | **Presente** | `op-tpl`/`ut-tpl` generano e scaricano modelli `.xlsx` vuoti con le intestazioni corrette; `op-import`/`ut-import` leggono un file `.xlsx` e creano/aggiornano i record (con gestione errori riga-per-riga, vedi fix #5 già applicato). Non esiste un "export" dei dati esistenti (solo import + modello vuoto), ma è coerente con quanto richiesto ("modelli scaricabili", non "dati scaricabili"). |
+**Cosa è stato fatto**: in `generateMonth`, la rotazione dei "Tipi di sessione" di un progetto usava `placed % p.tipiSessione.length`, dove `placed` è il contatore settimanale delle sessioni piazzate (si azzerava a ogni nuova settimana: `let placed=0` dentro `while(wk<=days)`). È stato introdotto un nuovo contatore `sessionCount`, dichiarato **una sola volta per progetto** (prima del loop settimanale) e incrementato solo quando una sessione viene effettivamente creata (`placed++;sessionCount++;`). Sia il controllo di formazione (`sessType`) sia la registrazione della sessione (`sessType2`, `tipoSessioneIdx`) ora usano `sessionCount % p.tipiSessione.length` invece di `placed % ...`: la sequenza Tipo1→Tipo2→Tipo1→… prosegue quindi ininterrotta per tutto il mese, indipendentemente dai confini di settimana.
 
-### Riepilogo Parte A
-12 funzionalità **presenti** in modo completo, 4 **parziali** (documenti solo per Utenti non Operatori; tempo casa raccolto ma non usato; assenze colorate solo nel calendario mensile della modale non nel Calendario principale; contratti con enforcement dell'algoritmo ma alert/straordinari mai collegati). Nessuna funzionalità risulta **assente**.
+| Parte | Stato |
+|---|---|
+| `generateMonth` | ✅ Fatto — nuovo contatore `sessionCount` persistente per progetto |
+| `generateMonthAI` | ⚠️ Non applicabile — il generatore IA **non implementa affatto** la composizione per "Tipi di sessione" (il campo `tipiSessione`/`metodi` del progetto non viene nemmeno incluso nei dati inviati all'IA, `projData` in `generateMonthAI`). Non essendoci alcun meccanismo di rotazione da correggere in quel percorso, il punto 1 non si applica lì. Se in futuro si vuole che anche il generatore IA componga le sessioni per tipo, è un'estensione a parte (non richiesta ora) e non una correzione di bug. |
+| UI | Nessuna modifica necessaria: l'interfaccia di configurazione dei "Tipi di sessione" (`pe-tipi-sess` nella modale progetto) non mostra né dipende dal contatore di rotazione. |
+| Dati | Nessun nuovo campo dati richiesto: la rotazione è uno stato interno del calcolo, non persistito sul progetto. |
 
 ---
 
-## PARTE B — Logica dell'algoritmo di generazione (`generateMonth`)
+## 2 — Sessioni online da casa o in sede (regola del tempo di viaggio)
 
-### 1) Priorità per indice di rigidità (strictness)
-**Come implementato**: `calcStrettezza(p) = totalMin / (freq × durata)`, dove `totalMin` è il totale dei minuti disponibili nella disponibilità settimanale del progetto. `target.sort(...)` ordina i progetti per questo indice **crescente** (meno margine disponibile → priorità più alta), con pareggio risolto a favore dei progetti in presenza rispetto a quelli online. Identica logica è duplicata in `generateMonthAI` per costruire l'ordine con cui i progetti vengono presentati all'IA.
-**Scostamento**: nessuno rilevante. Nota minore: se `totalMin===0` l'indice è forzato a `999` (bassissima priorità) invece che generare una divisione per zero — comportamento corretto e intenzionale.
+**Cosa è stato fatto**:
+- Aggiunta una funzione condivisa `decidiOnlineDaCasa(op, sessioniGiorno, st, en)` (usata sia da `generateMonth` sia da `generateMonthAI`) che: individua le sessioni "in presenza" (Cesate/Busto Arsizio) dell'operatore in quella giornata; se la sessione online candidata è **dopo l'ultima presenza**, richiede che il margine fino a quel momento sia ≥ tempo di viaggio (usa `op.tempoCasa` se l'ultima presenza è a Cesate, `op.tempoBusto` se è a Busto Arsizio); se è **prima della prima presenza**, stessa regola simmetrica; se è "incastrata" tra due presenze nello stesso giorno (caso non previsto esplicitamente dalla regola), resta prudenzialmente in sede.
+- Una sessione online già risolta "in sede" (perché non c'era margine) **conta essa stessa come presenza fisica** per le decisioni successive nella stessa giornata (l'operatore non è mai uscito dal centro): questo evita che una catena di sessioni online molto vicine tra loro venga erroneamente valutata "da casa" confrontando solo con l'ultima presenza *reale* invece che con l'ultimo momento in cui l'operatore era davvero al centro. Vedi l'esempio concreto sotto.
+- In `generateMonth`: quando una sessione online risulta "in sede", viene riutilizzata l'aula già occupata dalla presenza più vicina (o quella assegnata a quel semi-giorno, o una aula libera come ultima risorsa) e registrata come occupata (`auB`), esattamente come per una sessione in presenza. Il flag `onlineDaCasa` (`true`/`false`, `null` se la sessione non è online) è salvato sul record della sessione.
+- In `generateMonthAI`: dopo aver ricevuto e validato l'array di sessioni proposto dall'IA, un secondo passaggio deterministico applica **la stessa funzione** `decidiOnlineDaCasa` a ogni sessione con sede "Online", assegna `onlineDaCasa` e, se la sessione resta in sede, ne riusa l'aula della presenza più vicina. La scelta non è mai lasciata all'IA (che potrebbe sbagliare l'aritmetica dei margini): il prompt è stato aggiornato per spiegare la regola all'IA a scopo informativo, ma il risultato finale è sempre ricalcolato in modo deterministico dal codice.
+- **UI**: nel Calendario, le sessioni online mostrano ora un'icona 🏠 (da casa) o 🏢 (in sede); nel dettaglio sessione (`openSessionDetail`) compare la riga "Modalità online" con la stessa informazione.
+- La vecchia logica ("mantieni l'aula occupata se ci sono sessioni entro 15 minuti") è stata **rimossa** perché era di fatto inattiva: usava una chiave di lookup (`operatoreId|data`, senza distinzione mattina/pomeriggio) che non veniva mai scritta da nessuna sessione generata nello stesso run, solo dalle sessioni preesistenti del mese. La nuova logica basata sul margine di viaggio la sostituisce interamente.
 
-### 2) Sessioni composte da "Tipi di sessione" con rotazione e componenti — Approccio A
-**Come implementato**: ogni progetto può avere `tipiSessione` (array di `{componenti:[{metodo,durata}]}`). Nel loop di piazzamento, `sessType = p.tipiSessione[placed % p.tipiSessione.length]` seleziona il tipo da usare in base al numero di sessioni già piazzate per quel progetto, realizzando la rotazione. La sessione creata riporta `composizione` (i componenti con metodo e durata) e `tipoSessioneIdx`, ma un **solo** `operatoreId` gestisce l'intera sessione — conferma dell'Approccio A, non c'è alcuna suddivisione tra più operatori per componente.
-**Scostamento da segnalare**: la variabile `placed` con cui si calcola la rotazione **si azzera ogni settimana** (`let placed=0` dentro il loop settimanale), quindi la sequenza dei tipi ricomincia da capo ogni settimana invece di proseguire in modo continuo per tutto il mese. Se l'intento era una rotazione continua mese per mese, questo è uno scostamento; se l'intento era "una rotazione a inizio settimana", è corretto così.
+| Parte | Stato |
+|---|---|
+| `generateMonth` | ✅ Fatto |
+| `generateMonthAI` | ✅ Fatto (validazione deterministica post-risposta IA + nota nel prompt) |
+| UI | ✅ Fatto (icona nel calendario + riga nel dettaglio sessione) |
+| Dati | ✅ Fatto — nuovo campo `onlineDaCasa` (`true`/`false`/`null`) su ogni sessione |
 
-### 3) Requisito di formazione — TUTTE le formazioni richieste
-**Come implementato**: `reqForms = sessType.componenti.map(c=>c.metodo).filter(Boolean)`; poi `reqForms.every(rf=>opForms.includes(rf))` — l'operatore viene scartato dal pool candidati se manca **anche una sola** delle formazioni richieste dai metodi della sessione. Corrisponde esattamente al requisito ("TUTTE le formazioni").
-**Scostamento**: nessuno.
+### Esempio concreto (come richiesto)
 
-### 4) Frequenza settimanale e monte ore
-**Come implementato**: la frequenza (`freq = p.frequenza`) è rispettata dal doppio loop settimana→giorno con `placed<freq` come condizione di uscita, e le anomalie segnalano quando non si riesce a raggiungere la frequenza (`'Settimana X/Y: n/freq incontri.'`). Il monte ore è filtrato **prima** di iniziare la generazione: `target = target.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre)`, cioè i progetti che hanno già raggiunto il monte ore (calcolato sulle sole sessioni passate con stato `eseguita`/`assenza ingiustificata`) vengono esclusi dalla generazione.
-**Scostamento da segnalare**: il controllo del monte ore è fatto **una sola volta all'inizio**, sulle ore già erogate; non viene ricalcolato progressivamente mentre si generano le nuove sessioni nello stesso run. Un progetto vicino al tetto di monte ore può quindi ricevere, in una singola generazione mensile, più sessioni di quante il monte ore residuo consentirebbe (l'unico limite reale in quel caso resta la frequenza settimanale, non il monte ore).
+Operatore **Marco**, `tempoCasa = 30 min` (Cesate → casa e viceversa), sedi abilitate: Cesate + Online. Giornata del 14/07:
 
-### 5) Vincoli fisici (aule, stessa aula per il giorno, gap 5 minuti, orari 09:00–19:30)
-**Come implementato**: `AULE_CESATE` (6) e `AULE_BUSTO` (2) sono gli elenchi delle aule; l'orario è vincolato tra `tmin('09:00')` e `tmin('19:30')` nel calcolo di `rF`/`rT`; il gap minimo di 5 minuti (`GAP=5`) è verificato con `rfree(opBusy, st-GAP, en+GAP)`.
-**Scostamento da segnalare — importante**: la "stessa aula per tutta la giornata" è in realtà enforced **per mezza giornata** (mattina/pomeriggio separatamente), non sull'intera giornata: la chiave usata per ricordare l'aula preferita è `operatoreId|data|AM` oppure `operatoreId|data|PM` (`halfDay2`/`halfDay`, calcolate confrontando l'ora di inizio con le 13:30). Non c'è alcun meccanismo che forzi la stessa aula tra mattina e pomeriggio: un operatore può ragionevolmente ricevere un'aula diversa al mattino e un'altra al pomeriggio, se in entrambi i turni ci sono sessioni in presenza. Se il requisito di business è "stessa aula per l'intera giornata (mattina e pomeriggio)", questo è uno scostamento da correggere.
+| Sessione candidata | Tipo | Calcolo del margine | Esito |
+|---|---|---|---|
+| 09:00–10:00 | Presenza a Cesate, aula Verde | — | In presenza (riferimento) |
+| 10:15–10:45 | Online | Fine ultima presenza 10:00 → inizio online 10:15 = **15 min** < 30 richiesti | ❌ Margine insufficiente → **online in sede**, aula Verde resta occupata, `onlineDaCasa:false` |
+| 11:00–11:30 | Online | L'"ultima presenza" ora è la sessione online-in-sede appena decisa (finisce alle 10:45, non più le 10:00): 11:00 − 10:45 = **15 min** < 30 | ❌ Ancora insufficiente → **online in sede** (stessa aula Verde), `onlineDaCasa:false` |
+| 11:45–12:15 | Online | Rispetto alla fine dell'ultima occupazione reale (10:45): 11:45 − 10:45 = **60 min** ≥ 30 | ✅ Margine sufficiente → **online da casa**, `onlineDaCasa:true`, nessuna aula |
+| 08:40–08:55 | Online (prima della prima presenza) | Fine online 08:55 → inizio presenza 09:00 = **5 min** < 30 | ❌ Margine insufficiente → **online in sede** |
+| 08:00–08:30 | Online (prima della prima presenza) | Fine online 08:30 → inizio presenza 09:00 = **30 min** ≥ 30 | ✅ Margine sufficiente → **online da casa** |
 
-### 6) Tempi di viaggio tra sedi
-**Come implementato**: `travelMin` viene calcolato da `op.tempoBusto` (se la sessione è a Busto Arsizio o se l'operatore ha già sessioni a Busto quel giorno) e da `p.domicilioTempo` (se la sessione è a domicilio); se l'operatore ha sessioni con sede diversa lo stesso giorno (`diffSede`), viene verificato che ci sia margine libero pari a `travelMin` prima/dopo la sessione candidata.
-**Scostamento**: `op.tempoCasa` (tempo di trasferimento casa↔Cesate) **non è mai utilizzato** in questo calcolo — coerente con quanto già rilevato in Parte A. Se il tempo casa dovesse influenzare, ad esempio, la prima/ultima sessione della giornata, questa logica non è implementata.
+Questo esempio mostra perché è stato necessario far "contare" le sessioni online-in-sede come presenza fisica per i calcoli successivi (righe 2→3 della tabella): senza questa correzione, la sessione delle 11:00–11:30 sarebbe stata erroneamente valutata "da casa" confrontando il margine con le 10:00 (fine della presenza reale) invece che con le 10:45 (fine dell'ultima occupazione effettiva).
 
-### 7) Esclusione di chiusure e assenze
-**Come implementato**: `chiusureDates` (da `state.data.chiusure`) blocca l'intera giornata per tutti i progetti (`if(chiusureDates.has(ds))continue;`); le assenze dell'operatore (malattia/ferie/permesso) e le eccezioni del progetto/utente sono lette tramite `effRng()` che ritorna `[]` (nessuna disponibilità) per quei tipi, escludendo di fatto operatore e progetto da quel giorno.
-**Scostamento**: nessuno rilevante.
-
-### 8) Limiti ore settimanali da contratto con segnalazione anomalie
-**Come implementato**: solo per operatori `tipoContratto==='Assunto'` con `oreSettimanali>0`, si calcola `wkMin` (minuti già assegnati nella settimana ISO corrente + la nuova sessione) e, se supera `oreSettimanali*60`, si aggiunge un'anomalia (`anom.push(...)`) — **ma la sessione viene creata comunque** ("Sessione comunque creata" nel messaggio): è un avviso, non un blocco, coerente con la formulazione del requisito ("segnalazione anomalie").
-**Scostamento da segnalare**: il calcolo di `wkMin` considera solo le sessioni presenti in `opB`, che a sua volta è popolato solo dalle sessioni **del mese che si sta generando** (`keep.filter(s=>s.data.startsWith(ms))`). Se la settimana ISO si estende a cavallo di due mesi (es. l'ultima settimana di gennaio che finisce nei primi giorni di febbraio), le sessioni del mese adiacente non vengono contate, e il controllo del limite settimanale può sottostimare le ore realmente impegnate in quella settimana.
-
-### Riepilogo Parte B
-I punti 1, 3, 7 e 8 sono implementati esattamente come richiesto (8 con la precisazione che è un limite "soft", come previsto). I punti 2, 4, 5, 6 sono implementati ma con **scostamenti specifici** rispetto alla descrizione ideale del requisito, elencati sopra — nessuno di questi è un errore di sintassi o un crash (l'algoritmo è stabile dopo i fix già applicati), sono scelte/limiti dell'implementazione attuale che vale la pena confermare con chi ha definito i requisiti prima della pubblicazione, in particolare il punto 5 (aula unica AM+PM) perché è il più visibile lato utente.
+### Limite noto (da confermare)
+La decisione viene presa nell'ordine in cui l'algoritmo genera le sessioni (progetto per progetto, giorno per giorno). Se una sessione online viene valutata **prima** che l'algoritmo abbia ancora generato una presenza dello stesso operatore più avanti nello stesso giorno (perché appartiene a un altro progetto elaborato successivamente), la regola "prima della prima presenza" potrebbe non vedere ancora quella presenza e risolvere "da casa" per default (nessuna presenza nota = nessun vincolo). È un limite intrinseco dell'algoritmo attuale (elabora un progetto alla volta, non l'intera giornata di un operatore in un colpo unico) — riguarda solo il caso, presumibilmente raro, di un operatore con sessioni sparse su più progetti nello stesso giorno. Non l'ho risolto perché richiederebbe una ristrutturazione più ampia (due passate: prima tutte le presenze, poi le sessioni online), non richiesta in queste 4 modifiche.
 
 ---
 
-## Riepilogo dei fix già applicati in questa sessione
+## 3 — Fascia oraria nelle assenze (permesso visita medica, permesso studio, ferie)
 
-Prima di questa verifica sono stati corretti, uno alla volta, i seguenti problemi (numerazione della revisione precedente):
+**Cosa è stato fatto**:
+- **Dati**: le eccezioni di tipo `ferie`, `permesso_visita`, `permesso_studio` possono ora avere due campi opzionali `da`/`a` (orario). Se assenti, l'assenza vale l'intera giornata (comportamento identico a prima → **retrocompatibile** con tutte le assenze già salvate). `malattia` non ha mai la fascia oraria (resta sempre giornata intera, come richiesto).
+- **Logica di disponibilità** (`effRng`, usata sia per operatori sia per progetti/utenti, quindi sia da `generateMonth` sia dagli editor UI): quando è presente una fascia, viene sottratta (nuova funzione `subtractWindow`) dalla disponibilità normale di quel giorno della settimana, spezzando eventualmente una fascia di disponibilità in due se l'assenza cade nel mezzo. L'operatore/progetto resta quindi disponibile nelle ore fuori dalla fascia di assenza.
+- Rimosso in `generateMonth` un controllo ridondante (e ora sbagliato) che saltava **l'intera giornata** per un progetto con eccezione malattia/ferie/permesso, ignorando la fascia oraria: la logica corretta passa ora esclusivamente per `effRng`.
+- **UI** (`renderMonthlyAvail`, editor mensile delle assenze operatore): per i tipi ferie/permesso visita/permesso studio compare un campo "Fascia oraria (facoltativa)" con due orari; se lasciati entrambi vuoti l'assenza è sull'intera giornata (con validazione: non è permesso indicare solo uno dei due orari). Il calendario mensile colorato mostra ora la fascia nel tooltip del giorno (es. "🏖 Ferie 14:00-18:00") quando presente, oppure "(giornata intera)" quando assente.
+- **`generateMonthAI`**: il campo `eccezioni` degli operatori inviato nel prompt già includeva `e.da`/`e.a` quando presenti (codice preesistente) — scegliendo questi stessi nomi di campo per la nuova fascia, il dato arriva automaticamente e correttamente all'IA (es. `"2026-07-14 ferie 14:00-18:00"`) senza bisogno di modifiche aggiuntive. È stata comunque aggiunta una riga esplicita ai VINCOLI del prompt per chiarire che un'eccezione con orario vale solo per quella fascia.
 
-1. **`sed` non definito in `generateMonth`** — `ReferenceError` quasi sistematico che bloccava "Genera con algoritmo". Risolto spostando il calcolo della sede effettiva dopo `matchSlot` ed eliminando un secondo calcolo duplicato/incoerente (introdotta `chosenSed`).
-2. **`nameFilter` non definito in `generateMonthAI`** — `ReferenceError` ad ogni uso di "Genera con IA". Risolto aggiungendo il parametro reale.
-3. **`#gen-proj-name` mancante** — `TypeError` selezionando lo scope "Per nome progetto". Risolto aggiungendo il campo HTML e collegandolo a entrambi i generatori.
-4. **Stato ottimistico/duplicazione sessioni** in `generateMonth` e `generateMonthAI` — le sessioni proposte venivano duplicate in memoria (una volta dalla riassegnazione bulk, una volta dal salvataggio). Risolto assegnando `state.data.sessioni=keep` prima del ciclo di salvataggio.
-5. **Import Excel senza gestione errori** — righe fallite bloccavano l'intero import senza avviso. Risolto con `try/catch` per riga, conteggio successi/falliti e toast.
-6. **Campo "Tempo Busto Arsizio" non sincronizzato** con il checkbox della sede — risolto con un listener che aggiorna la visibilità in tempo reale.
-7. **Errori nelle Impostazioni silenziati** (solo `console.warn`) — risolto mostrando un toast d'errore in tutti i 5 punti di salvataggio.
-8. **Listener duplicati sulla tab Chiusure** ad ogni apertura — risolto con una guardia `_bound`, come già usato in Impostazioni.
-9. **Mismatch sede/aula per una nuova sessione** (Cesate mostrato come selezionato ma campo Aula nascosto) — risolto introducendo `sedeVal` come valore di default coerente.
-10. **"Svuota tutti gli utenti" lasciava progetti e sessioni orfani** — risolto eliminando anche questi record collegati.
-14. **Nessun retry su throttling Graph (429/503)** — risolto con retry automatico basato su `Retry-After` (fino a 3 tentativi) in `gfetch()`.
-**Extra (richiesto durante la sessione)**: corretta la regola di business per cui `Presenza+Online` può risolversi solo in Cesate/Online e `Presenza+Domicilio` solo in Cesate/Domicilio, **mai** in Busto Arsizio — applicata sia nell'algoritmo deterministico sia nel prompt e nella validazione post-risposta del generatore IA, e documentata in `CLAUDE.md`.
+| Parte | Stato |
+|---|---|
+| Dati (`eccezioni`) | ✅ Fatto — campi `da`/`a` opzionali, retrocompatibili |
+| `effRng` (disponibilità) | ✅ Fatto — nuova funzione `subtractWindow` |
+| `generateMonth` | ✅ Fatto — rimosso il controllo ridondante che ignorava la fascia |
+| `generateMonthAI` | ✅ Fatto — dato già veicolato automaticamente, chiarito nel prompt |
+| UI editor assenze | ✅ Fatto — campo fascia oraria facoltativo con validazione |
+| UI calendario colorato | ✅ Fatto — fascia mostrata nel tooltip del giorno |
 
-**Non toccati, per scelta esplicita** (richiedono decisioni organizzative): #11 (alert contratti/straordinari mai invocati), #12 (credenziali in chiaro), #13 (race condition sul primo login come Admin), #15 (Pasqua senza correzioni secolari), #16 (doppio click su "Genera con IA").
+### Nota (limite preesistente, non introdotto da questa modifica)
+Le eccezioni di tipo ferie/permesso/malattia sono selezionabili solo per gli **operatori**: l'editor mensile per i progetti/utenti (`isOperator=false`) offre solo l'opzione "Disponibile" nel menu Tipo, quindi un progetto non può avere oggi un'assenza di questi tipi tramite interfaccia (né con né senza fascia). Inoltre le eccezioni progetto/utente non vengono comunque inviate a `generateMonthAI` (il campo non è incluso in `projData`) — è un limite preesistente e indipendente da questa modifica, che non ho toccato perché non richiesto nei 4 punti.
+
+---
+
+## 4 — Ordinamento utenti nella sezione Progetti (Cognome Nome)
+
+**Cosa è stato fatto**: aggiunta una nuova funzione `fullNameCN(r)` (Cognome Nome, simmetrica alla già esistente `fullName` che fa Nome Cognome), applicata nei due punti della sezione Progetti dove compaiono utenti:
+- **Elenco progetti** (`renderProgetti`): la colonna "Utente" mostra ora "Cognome Nome"; l'ordinamento della tabella (che segue l'utente associato) confronta ora `cognome+nome` invece di solo `nome`.
+- **Modale progetto** (`openProgettoModal`, dropdown "Utente \*"): le opzioni mostrano "Cognome Nome"; l'ordine delle opzioni era già corretto (la funzione `sortN`, già usata per popolare la select, ordina per cognome+nome — riutilizzata senza modifiche).
+
+| Parte | Stato |
+|---|---|
+| Elenco progetti (`renderProgetti`) | ✅ Fatto — visualizzazione e ordinamento |
+| Dropdown utente in modale progetto (`pe-utente`) | ✅ Fatto — visualizzazione (ordinamento già corretto) |
+| Altre sezioni (Calendario, Sessioni, Genera, Assistente) | Non toccate intenzionalmente: la richiesta era scoped a "nella sezione progetti"; altrove l'app continua a mostrare "Nome Cognome" com'era prima. |
+
+---
+
+## Verifica automatica finale
+
+| Punto | UI | Dati | `generateMonth` | `generateMonthAI` | Esito |
+|---|---|---|---|---|---|
+| 1. Rotazione continua tipi di sessione | n/a | n/a | ✅ | n/a (funzione non implementata lì) | **Completo per la parte esistente** |
+| 2. Online da casa/in sede | ✅ | ✅ (`onlineDaCasa`) | ✅ | ✅ | **Completo**, con limite noto sull'ordine di elaborazione documentato sopra |
+| 3. Fascia oraria nelle assenze | ✅ | ✅ (`da`/`a` retrocompatibili) | ✅ | ✅ (automatico + prompt aggiornato) | **Completo** per gli operatori (unico caso già supportabile da UI) |
+| 4. Ordinamento utenti in Progetti | ✅ | n/a | n/a | n/a | **Completo** |
+
+**Cosa manca / non è stato toccato, e perché**:
+- Il generatore IA non compone le sessioni per "Tipi di sessione" (punto 1/2 del vecchio report B): non essendo un bug introdotto né toccato oggi, non l'ho implementato — resterebbe un'estensione futura separata.
+- Le assenze ferie/permesso/malattia per i progetti/utenti (non operatori) non sono selezionabili da UI né inviate all'IA: limite preesistente, non in scope.
+- L'ordine di elaborazione greedy (progetto per progetto) può, in casi rari con più progetti sullo stesso operatore nello stesso giorno, valutare una sessione online "prima della prima presenza" senza ancora conoscere una presenza che verrà generata più avanti nello stesso run: documentato come limite noto del punto 2, non risolto (richiederebbe una ristrutturazione a due passate).
 
 ## Limiti di questa verifica
-Analisi effettuata per lettura statica del codice (non è stato possibile eseguire l'app dal vivo: richiede login Microsoft 365 sul dominio registrato in Entra ID, non disponibile in questo ambiente, e non è presente alcun motore JavaScript locale per un test automatizzato). Si raccomanda un test manuale in staging/produzione di "Genera con algoritmo" e "Genera con IA" su un mese con più progetti/operatori reali prima della pubblicazione, con particolare attenzione al punto 5 della Parte B (aula unica mattina/pomeriggio).
+Analisi per lettura statica del codice: non è stato possibile eseguire l'app dal vivo (richiede login Microsoft 365 su dominio registrato, non disponibile in questo ambiente) né un motore JavaScript locale per un test automatizzato. L'esempio del punto 2 è stato verificato "a mano" ripercorrendo il codice riga per riga con valori concreti, non eseguendo realmente `generateMonth`. Si raccomanda un test manuale in staging/produzione su un operatore con sessioni miste presenza/online nello stesso giorno prima di considerare il punto 2 definitivamente validato.
+
+---
+
+# Verifica — Vista cliente per operatori, consuntivazione sessioni, rimozione Bulk
+
+Tre nuove funzionalità richieste. Data: 2026-07-13.
+
+## 1 — Vista anagrafica cliente in sola lettura per gli operatori
+
+**Cosa è stato fatto**:
+- Nuova funzione `openUtenteReadonly(u)`: mostra nome/cognome utente, data di nascita, nome/cognome referente, telefono, email, indirizzo completo, paese, credenziali piattaforme (con occhio mostra/nascondi password, nessun campo modificabile), documenti collegati (solo link "Apri", nessun input/aggiungi/rimuovi) e note. L'intera modale ha un solo bottone: "Chiudi". Nessun input è editabile, nessun bottone salva/elimina.
+- **Punto di accesso "naturale"**: in `openSessionDetail` (il dettaglio sessione, già raggiungibile dal Calendario cliccando una sessione e dalla tab Sessioni cliccando una riga — entrambe le vie già disponibili per l'operatore) il nome dell'utente nel titolo è ora un link cliccabile che apre `openUtenteReadonly`. Poiché le sessioni visibili a un Operatore sono già filtrate a sole quelle a lui assegnate (`sessioniVisibili()`), l'accesso a questa vista è automaticamente scoped ai clienti dei propri progetti/sessioni, senza bisogno di controlli aggiuntivi.
+- **Non implementato**: l'accesso "dal progetto" citato come esempio nella richiesta — gli operatori non hanno (e non avevano già prima di questa modifica) alcuna tab "Progetti"; ho quindi implementato solo la via "dalla sessione", che è l'unica concretamente disponibile nell'interfaccia attuale. **Caso limite non coperto**: se un operatore è assegnato a un progetto (`operatoriAmmessi`) ma per quel progetto non esiste ancora nessuna sessione (calendario non ancora generato), non ha alcun modo di consultare l'anagrafica di quel cliente finché non viene creata almeno una sessione. Se questo caso è rilevante in pratica, andrebbe aggiunta una vista "I miei progetti" per gli operatori — non l'ho fatto perché non richiesto esplicitamente e sarebbe una nuova superficie UI, non una semplice apertura di una vista già esistente.
+
+### Verifica esplicita: un Operatore non ha alcun modo di modificare l'anagrafica
+
+| Livello di protezione | Prima di questa modifica | Dopo |
+|---|---|---|
+| Nav UI | La tab "Utenti" non viene mai creata per il ruolo Operatore (`TABS.Operatore` non la include) | Invariato |
+| Funzione `showTab(id)` | **Nessun controllo di ruolo**: chiamando `showTab('utenti')` manualmente (es. dalla console del browser) si sarebbe comunque potuta rendere visibile la sezione Utenti con i suoi bottoni "+ Nuovo utente" ed "Elimina" | **Corretto**: `showTab()` ora verifica che l'id richiesto sia tra quelli ammessi per `TABS[state.role]`; se non lo è, la chiamata non ha alcun effetto |
+| Funzione `openUtenteModal()` (la modale di modifica/creazione) | Nessun controllo interno: chiunque potesse invocarla (es. da console) poteva creare/modificare/eliminare utenti | **Corretto**: la funzione ora rifiuta l'esecuzione con un avviso se `state.role!=='Admin'`, indipendentemente da come viene chiamata |
+| Vista di consultazione dell'operatore | Non esisteva | `openUtenteReadonly()` — nessun input, nessun bottone di salvataggio/eliminazione nel markup generato |
+
+**Limite intrinseco, non risolvibile in questo file**: la protezione qui descritta è interamente lato client (JavaScript). Il token Microsoft Graph di un operatore ha lo stesso scope (`Sites.ReadWrite.All`) di quello di un Admin — necessario perché anche l'operatore deve poter scrivere legittimamente (proprie disponibilità, note, esito sessione). Questo significa che un operatore tecnicamente capace potrebbe, aprendo la console del browser, chiamare direttamente `saveRecord('utenti', {...})` bypassando **tutta** l'interfaccia (comprese le due protezioni appena aggiunte, che sono nel percorso della UI ma non dentro `saveRecord` stesso) — a meno che i permessi della lista SharePoint "Gestionale_Utenti" non siano configurati per negare la scrittura al gruppo Operatori a livello di sito. Questo è un limite architetturale preesistente e comune a **tutte** le altre sezioni Admin-only (Progetti, Operatori, Chiusure, Impostazioni), non specifico di questa funzionalità: la vera garanzia di sola lettura per un utente esterno alla UI richiede un intervento di permessi SharePoint, non ottenibile da `index.html`. Le due protezioni aggiunte (`showTab`, `openUtenteModal`) coprono comunque tutto l'uso reale dell'app (nessun pulsante, link o percorso di navigazione porta un Operatore a modificare un'anagrafica), che è l'obiettivo concreto della richiesta.
+
+| Parte | Stato |
+|---|---|
+| UI vista sola lettura | ✅ Fatto (`openUtenteReadonly`) |
+| Punto di accesso dalla sessione | ✅ Fatto (nome utente cliccabile in `openSessionDetail`) |
+| Punto di accesso dal progetto | ⚠️ Non implementato — nessuna tab Progetti per l'operatore (limite preesistente) |
+| Permessi: nessun modo di modificare (via UI) | ✅ Verificato e rinforzato (`showTab` + `openUtenteModal` ora controllano il ruolo) |
+| Permessi: nessun modo di modificare (via Graph/console) | ⚠️ Non risolvibile da questo file — richiede permessi a livello di lista SharePoint |
+
+---
+
+## 2 — Consuntivazione sessioni da parte dell'operatore
+
+**Cosa è stato fatto**:
+- **Nota operatore** (a): il campo esisteva già ed era già salvabile da chiunque apra il dettaglio sessione; non ho dovuto crearlo, solo integrarlo nel nuovo flusso di salvataggio unico.
+- **Esito sessione** (b): in `openSessionDetail`, quando la sessione è modificabile da chi la sta visualizzando (`canEdit`, vedi sotto), compare un nuovo campo "Esito sessione" con select limitata a **eseguita / annullata / assenza ingiustificata** (le uniche 3 richieste — non "proposta"/"confermata", che restano gestibili solo dall'Admin tramite "Modifica"). Il salvataggio (bottone unico "💾 Salva") aggiorna sia `noteOperatore` sia, se selezionato un valore, `stato`.
+- **Permessi**: `canEdit = isAdmin || (Operatore && sessione assegnata a me)`. Se `canEdit` è falso, il campo Esito non viene nemmeno generato, la nota diventa `readonly` e il bottone Salva non viene creato. In pratica, dato che un Operatore vede solo le proprie sessioni (`sessioniVisibili()`), questa condizione è sempre vera per ciò che l'operatore può effettivamente apire — il controllo è comunque implementato esplicitamente (non per accidente del filtro a monte) per rispondere esattamente al requisito "solo delle proprie sessioni".
+- **Logica monte ore** (già corretta, verificata): `oreErog(pid)` conta le ore di `eseguita` **e** `assenza ingiustificata`, esclude `annullata` — esattamente la regola richiesta. Non ho dovuto modificare questa funzione. Ho verificato tutti i suoi punti di utilizzo (elenco progetti, filtro progetti da calendarizzare in `generateMonth` e `generateMonthAI`): tutti ereditano automaticamente la logica corretta.
+- **Correzioni di coerenza collegate** (perché una `assenza ingiustificata` è un fatto storico "consumato" al pari di `eseguita`, non una proposta da rigenerare): 
+  - `generateMonth`/`generateMonthAI`: le sessioni del mese da **conservare** (non rigenerare) ora includono anche quelle con stato `assenza ingiustificata`, non solo `eseguita` (prima sarebbero state cancellate e potenzialmente ri-schedulate a ogni rigenerazione del mese, nonostante contassero già nel monte ore).
+  - `generateMonthAI`: le sessioni "già eseguite (non modificare)" indicate all'IA includono ora anche quelle in `assenza ingiustificata`.
+  - "🗑 Svuota proposte del mese": non elimina più le sessioni in `assenza ingiustificata` insieme alle proposte (prima veniva eliminato tutto ciò che non era `eseguita`).
+  - Calendario: le sessioni in `assenza ingiustificata` mostrano ora un'icona ⚠ (come `eseguita` mostra ✓ e `annullata` mostra ✕).
+
+| Parte | Stato |
+|---|---|
+| UI nota operatore | ✅ Già presente, integrata nel nuovo flusso |
+| UI esito sessione (select limitata a 3 stati) | ✅ Fatto |
+| Permessi (operatore solo proprie, admin tutte) | ✅ Fatto — controllo esplicito `canEdit` |
+| Logica monte ore (`oreErog`) | ✅ Già corretta, verificata in tutti i punti d'uso |
+| Coerenza generazione/pulizia con `assenza ingiustificata` | ✅ Fatto (4 correzioni collegate elencate sopra) |
+
+**Non toccato, fuori scope**: `calcStraordinari()` (calcolo straordinari operatore, concetto diverso dal monte ore progetto) resta funzione morta/non invocata come già documentato nella verifica precedente — non related al monte ore progetto, quindi non l'ho modificata.
+
+---
+
+## 3 — Rimozione pulsante Bulk
+
+**Cosa è stato fatto**: rimosso l'elemento `<button id="cal-bulk">+ Bulk</button>` dalla vista Calendario e la relativa riga che ne gestiva la visibilità in `renderCalendar()` (`$('#cal-bulk').classList.toggle('hidden',!isAdmin)`). Verificato che non esistesse alcun `addEventListener` collegato all'id `cal-bulk` altrove nel file (confermato via ricerca testuale): il pulsante era davvero senza alcuna funzione collegata, come segnalato.
+
+| Parte | Stato |
+|---|---|
+| Rimozione elemento HTML | ✅ Fatto |
+| Rimozione gestione visibilità | ✅ Fatto |
+| Verifica assenza di listener orfani | ✅ Verificato — nessuno presente |
+
+---
+
+## Verifica automatica finale (i 3 punti)
+
+| Punto | UI | Permessi per ruolo | Logica monte ore | Esito |
+|---|---|---|---|---|
+| 1. Vista anagrafica sola lettura | ✅ | ✅ (rinforzata: `showTab` + `openUtenteModal`) | n/a | **Completo per la sessione**; accesso "dal progetto" non implementato (nessuna tab progetti per operatori, limite preesistente) |
+| 2. Consuntivazione sessioni | ✅ | ✅ (`canEdit` esplicito) | ✅ (già corretta + 4 coerenze collegate) | **Completo** |
+| 3. Rimozione Bulk | ✅ | n/a | n/a | **Completo** |
+
+**Riepilogo di cosa manca**:
+- Punto 1: nessun accesso "dal progetto" per l'operatore (non esiste una tab Progetti per quel ruolo); resta solo l'accesso dalla sessione, che copre l'uso reale dell'app ma non il caso limite di un progetto assegnato senza ancora nessuna sessione generata.
+- Punto 1 (permessi): la sola-lettura è garantita a livello di interfaccia (rinforzata anche contro l'uso della console del browser per le funzioni toccate), ma **non** a livello di permessi SharePoint/Graph — un limite architetturale di tutta l'app, non specifico di questa funzionalità, che richiederebbe una configurazione lato Microsoft 365 fuori dalla portata di questo file.
+- Nessun'altra lacuna rilevata per i punti 2 e 3.
+
+## Limiti di questa verifica
+Come per le verifiche precedenti: analisi per lettura statica del codice, senza possibilità di eseguire l'app dal vivo né un motore JavaScript locale. Si raccomanda un test manuale in staging con un account Operatore reale per confermare visivamente: (a) l'apertura della vista cliente in sola lettura dal dettaglio sessione; (b) il salvataggio di esito e nota su una propria sessione; (c) l'impossibilità di raggiungere in qualunque modo dall'interfaccia la modale di modifica utenti.

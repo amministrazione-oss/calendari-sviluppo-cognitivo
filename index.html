@@ -263,7 +263,6 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
     <button class="btn ghost small" id="cal-today">Oggi</button>
     <div class="grow" style="flex:1"></div>
     <button class="btn ghost small hidden" id="cal-new">+ Sessione</button>
-    <button class="btn ghost small hidden" id="cal-bulk">+ Bulk</button>
     <button class="btn ghost small hidden" id="cal-send-month" title="Esporta messaggi mese">📤 Invio mese</button>
   </div>
   <div class="cal-grid" id="cal-grid"></div>
@@ -539,6 +538,7 @@ function sortN(arr){return[...arr].sort((a,b)=>((a.cognome||'')+(a.nome||'')).lo
 function toast(msg,isErr){const el=document.createElement('div');el.className='toast'+(isErr?' err':'');el.textContent=msg;$('#toast-root').appendChild(el);setTimeout(()=>el.remove(),3200);}
 function initials(name){return String(name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();}
 function fullName(r){return((r.nome||'')+(r.cognome?' '+r.cognome:'')).trim()||'—';}
+function fullNameCN(r){return((r.cognome||'')+(r.nome?' '+r.nome:'')).trim()||'—';}
 function splitName(n){const p=(n||'').trim().split(/\s+/);if(p.length<=1)return{nome:p[0]||'',cognome:''};return{nome:p[0],cognome:p.slice(1).join(' ')};}
 function fullRef(r){return((r.refNome||r.referente||'')+(r.refCognome?' '+r.refCognome:'')).trim();}
 function opById(id){return state.data.operatori.find(o=>o.id===id)||null;}
@@ -548,14 +548,31 @@ function opColor(op){return(op&&op.colore)||'#5C6C6A';}
 function sedeClass(s){if(!s)return'online';const l=s.toLowerCase();if(l.includes('cesate'))return'cesate';if(l.includes('busto'))return'busto';if(l.includes('domicilio'))return'domicilio';return'online';}
 function statoTag(st){const m={'proposta':'info','confermata':'warn','eseguita':'ok','assenza ingiustificata':'danger','annullata':'off'};return m[st]||'off';}
 function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00'))/60,0);}
+// Sottrae la fascia [da,a] da un elenco di fasce {from,to,...}, spezzando le fasce che la contengono
+function subtractWindow(slots,da,a){
+  const wf=tmin(da),wt=tmin(a);const out=[];
+  for(const s of slots){
+    const sf=tmin(s.from||s.da),st=tmin(s.to||s.a);
+    if(wt<=sf||wf>=st){out.push(s);continue;}
+    if(wf>sf)out.push({...s,from:mtime(sf),to:mtime(Math.min(wf,st))});
+    if(wt<st)out.push({...s,from:mtime(Math.max(wt,sf)),to:mtime(st)});
+  }
+  return out;
+}
 function effRng(ent,ds,dn){
-  const ov=(ent.eccezioni||ent.availOverrides||{}); 
-  // New format: array of {data, tipo, fasce, codiceMalattia}
+  const weekly=()=>{const avail=ent.disponibilita||ent.avail||{};return avail[dn]||avail[GIORNI.indexOf(dn)+1]||[];};
+  const ov=(ent.eccezioni||ent.availOverrides||{});
+  // New format: array of {data, tipo, fasce, codiceMalattia, da, a}
   if(Array.isArray(ov)){
     const ex=ov.find(e=>e.data===ds);
     if(ex){
-      // Absences: malattia, ferie, permessi → not available
-      if(ex.tipo==='malattia'||ex.tipo==='ferie'||ex.tipo==='permesso_visita'||ex.tipo==='permesso_studio')return[];
+      // Malattia: sempre giornata intera, non disponibile
+      if(ex.tipo==='malattia')return[];
+      // Ferie/permessi: giornata intera se non è indicata una fascia oraria, altrimenti solo la fascia è indisponibile
+      if(ex.tipo==='ferie'||ex.tipo==='permesso_visita'||ex.tipo==='permesso_studio'){
+        if(ex.da&&ex.a)return subtractWindow(weekly(),ex.da,ex.a);
+        return[];
+      }
       // Disponibile with specific fasce
       if(ex.tipo==='disponibile'&&ex.fasce&&ex.fasce.length)return ex.fasce;
       if(ex.tipo==='assente')return[];
@@ -566,8 +583,32 @@ function effRng(ent,ds,dn){
   // Legacy object format
   if(typeof ov==='object'&&!Array.isArray(ov)&&ov[ds])return ov[ds]==='off'?[]:ov[ds];
   // Fall back to weekly availability
-  const avail=ent.disponibilita||ent.avail||{};
-  return avail[dn]||avail[GIORNI.indexOf(dn)+1]||[];
+  return weekly();
+}
+// Decide se una sessione online si svolge da casa o in sede, in base al margine di viaggio rispetto alle presenze della giornata
+function decidiOnlineDaCasa(op,sessioniGiorno,st,en){
+  // Anche una sessione online già risolta "in sede" conta come presenza fisica a quell'orario (l'operatore non è mai andato a casa)
+  const presenze=sessioniGiorno.map(sx=>{
+    if(sx.sede==='Cesate'||sx.sede==='Busto Arsizio')return{from:tmin(sx.oraInizio||sx.ora_inizio),to:tmin(sx.oraFine||sx.ora_fine),sede:sx.sede,aula:sx.aula};
+    if(sx.sede==='Online'&&sx.onlineDaCasa===false&&sx.aula){
+      const sedeAula=AULE_CESATE.includes(sx.aula)?'Cesate':AULE_BUSTO.includes(sx.aula)?'Busto Arsizio':null;
+      if(sedeAula)return{from:tmin(sx.oraInizio||sx.ora_inizio),to:tmin(sx.oraFine||sx.ora_fine),sede:sedeAula,aula:sx.aula};
+    }
+    return null;
+  }).filter(Boolean).sort((a,b)=>a.from-b.from);
+  if(!presenze.length)return{daCasa:true,ancora:null};
+  const first=presenze[0],last=presenze[presenze.length-1];
+  if(en<=first.from){
+    const margine=first.sede==='Cesate'?(op.tempoCasa||0):(op.tempoBusto||0);
+    return{daCasa:(first.from-en)>=margine,ancora:first};
+  }
+  if(st>=last.to){
+    const margine=last.sede==='Cesate'?(op.tempoCasa||0):(op.tempoBusto||0);
+    return{daCasa:(st-last.to)>=margine,ancora:last};
+  }
+  // Sessione online "incastrata" tra due presenze nello stesso giorno: resta in sede (nessuna regola di margine per questo caso)
+  const ancora=presenze.reduce((best,pz)=>{const d=Math.min(Math.abs(pz.to-st),Math.abs(en-pz.from));return(!best||d<best.d)?{...pz,d}:best;},null);
+  return{daCasa:false,ancora};
 }
 
 /* ============================================================
@@ -669,7 +710,9 @@ const TABS={
   Operatore:[{id:'calendario',label:'Il mio calendario'},{id:'sessioni',label:'Le mie sessioni'},{id:'disponibilita',label:'Disponibilità'}]
 };
 function buildNav(){const nav=$('#nav-tabs');nav.innerHTML='';for(const t of TABS[state.role]){const b=document.createElement('button');b.textContent=t.label;b.dataset.tab=t.id;b.addEventListener('click',()=>showTab(t.id));nav.appendChild(b);}}
-function showTab(id){$$('#nav-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));$$('main section').forEach(s=>s.classList.add('hidden'));$('#view-'+id).classList.remove('hidden');
+function showTab(id){
+  if(!TABS[state.role]||!TABS[state.role].some(t=>t.id===id))return; // Blocca l'accesso a tab non consentite per il ruolo corrente (anche da console)
+  $$('#nav-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));$$('main section').forEach(s=>s.classList.add('hidden'));$('#view-'+id).classList.remove('hidden');
   if(id==='calendario'){renderCalendar();refreshSendSel();}
   if(id==='sessioni')renderSessioni();if(id==='operatori')renderOperatori();if(id==='utenti')renderUtenti();if(id==='chiusure'&&$('#chiusure-anno'))initChiusureTab();if(id==='impostazioni')initImpostazioni();
   if(id==='progetti')renderProgetti();if(id==='disponibilita')renderDisponibilita();
@@ -695,7 +738,7 @@ function renderCalFilters(){
 function renderCalendar(){
   $('#cal-title').textContent=state.role==='Admin'?'Calendario del centro':'Il mio calendario';
   const isAdmin=state.role==='Admin';
-  $('#cal-new').classList.toggle('hidden',!isAdmin);$('#cal-bulk').classList.toggle('hidden',!isAdmin);$('#cal-send-month').classList.toggle('hidden',!isAdmin);$('#cal-send-panel').classList.toggle('hidden',!isAdmin);
+  $('#cal-new').classList.toggle('hidden',!isAdmin);$('#cal-send-month').classList.toggle('hidden',!isAdmin);$('#cal-send-panel').classList.toggle('hidden',!isAdmin);
   renderCalFilters();
   const{year,month}=state.cal;$('#cal-month-label').textContent=monthLabel(year,month);
   const sessions=sessioniVisibili();const byDay={};
@@ -725,7 +768,8 @@ function evChip(s){
   const b=document.createElement('div');
   b.className='ev '+sedeClass(s.sede)+(s.stato==='annullata'?' cancelled':'');
   const ora=s.oraInizio||s.ora_inizio||'';
-  b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullName(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':'')+'</span>';
+  const onlineTag=s.sede==='Online'&&s.onlineDaCasa!=null?(s.onlineDaCasa?' 🏠':' 🏢'):'';
+  b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullName(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+onlineTag+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':s.stato==='assenza ingiustificata'?' ⚠':'')+'</span>';
   b.style.cursor='pointer';b.addEventListener('click',e=>{e.stopPropagation();openSessionDetail(s);});
   return b;
 }
@@ -752,8 +796,17 @@ function renderSessioni(){
 }
 function openSessionDetail(s){
   const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const isAdmin=state.role==='Admin';
-  openModal('<h3>'+esc(ut?fullName(ut):'?')+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd><dt>Stato</dt><dd><span class="tag '+statoTag(s.stato||'proposta')+'">'+esc(s.stato||'proposta')+'</span></dd>'+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl><div class="field"><label>Note operatore</label><textarea id="sd-note-op">'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button><button class="btn primary" id="sd-save-note">Salva note</button></div>');
-  $('#sd-save-note').addEventListener('click',async()=>{s.noteOperatore=$('#sd-note-op').value.trim();await withBusy(()=>saveRecord('sessioni',s),'Note salvate');closeModal();refreshCurrent();});
+  const canEdit=isAdmin||(state.role==='Operatore'&&state.me&&s.operatoreId===state.me.id);
+  const utTitle=ut?'<a href="#" id="sd-open-utente" style="color:inherit;text-decoration:underline" title="Vedi anagrafica cliente (sola lettura)">'+esc(fullName(ut))+'</a>':'?';
+  const esitoOpts=['eseguita','annullata','assenza ingiustificata'];
+  const esitoField=canEdit?('<div class="field"><label>Esito sessione</label><select id="sd-stato-op"><option value="">'+esc('— non specificato —')+'</option>'+esitoOpts.map(x=>'<option value="'+x+'" '+(s.stato===x?'selected':'')+'>'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('')+'</select><p class="help">Eseguita e Assenza ingiustificata contano nel monte ore del progetto; Annullata no (la sessione resta recuperabile in futuro).</p></div>'):'';
+  openModal('<h3>'+utTitle+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd>'+(s.sede==='Online'&&s.onlineDaCasa!=null?('<dt>Modalità online</dt><dd>'+(s.onlineDaCasa?'🏠 Da casa':'🏢 In sede')+'</dd>'):'')+'<dt>Stato</dt><dd><span class="tag '+statoTag(s.stato||'proposta')+'">'+esc(s.stato||'proposta')+'</span></dd>'+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl>'+esitoField+'<div class="field"><label>Note operatore</label><textarea id="sd-note-op" '+(canEdit?'':'readonly')+'>'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button>'+(canEdit?'<button class="btn primary" id="sd-save-note">💾 Salva</button>':'')+'</div>');
+  if(ut)$('#sd-open-utente').addEventListener('click',e=>{e.preventDefault();openUtenteReadonly(ut);});
+  if(canEdit)$('#sd-save-note').addEventListener('click',async()=>{
+    s.noteOperatore=$('#sd-note-op').value.trim();
+    const nuovoStato=$('#sd-stato-op').value;if(nuovoStato)s.stato=nuovoStato;
+    await withBusy(()=>saveRecord('sessioni',s),'Salvato');closeModal();refreshCurrent();
+  });
   if(isAdmin){$('#sd-edit').addEventListener('click',()=>{closeModal();openSessionModal(s);});
   $('#sd-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('sessioni',s),'Eliminata');closeModal();refreshCurrent();});}
 }
@@ -823,6 +876,7 @@ function renderUtenti(){
   $$('#ut-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const u=utById(tr.dataset.id);if(u)openUtenteModal(u);}));
 }
 function openUtenteModal(u={}){
+  if(state.role!=='Admin'){toast('Non autorizzato a modificare l\'anagrafica.',true);return;} // Solo l'Admin può modificare/creare/eliminare utenti; gli operatori hanno solo la vista in sola lettura (openUtenteReadonly)
   const isNew=!u.id;
   openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' utente</h3><div class="grid2"><div class="field"><label>Nome (ragazzo/a) *</label><input id="ue-nome" value="'+esc(u.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="ue-cognome" value="'+esc(u.cognome||'')+'"></div></div><div class="field"><label>Data di nascita</label><input id="ue-ddn" type="date" value="'+esc(u.dataNascita||'')+'"></div><div class="grid2"><div class="field"><label>Nome referente</label><input id="ue-ref-nome" value="'+esc(u.refNome||'')+'"></div><div class="field"><label>Cognome referente</label><input id="ue-ref-cognome" value="'+esc(u.refCognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="ue-tel" value="'+esc(u.telefono||'')+'"></div><div class="field"><label>Email</label><input id="ue-email" type="email" value="'+esc(u.email||'')+'"></div></div><div class="field"><label>Via e numero</label><input id="ue-via" value="'+esc(u.via||'')+'" placeholder="Via Roma 12"></div><div class="grid3"><div class="field"><label>Comune</label><input id="ue-comune" value="'+esc(u.comune||'')+'"></div><div class="field"><label>Provincia</label><input id="ue-prov" value="'+esc(u.provincia||'')+'" maxlength="2" placeholder="MI"></div><div class="field"><label>CAP</label><input id="ue-cap" value="'+esc(u.cap||'')+'" maxlength="5"></div></div><div class="field"><label>Paese di provenienza</label><select id="ue-paese"><option value="">— Seleziona —</option>'+COUNTRIES.map(c=>'<option '+(c===(u.paese||'')?'selected':'')+'>'+c+'</option>').join('')+'</select></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="ue-cred"></div></div><div class="field"><label>📁 Documenti (OneDrive / SharePoint)</label><div id="ue-docs"></div></div><div class="field"><label>Note</label><textarea id="ue-note">'+esc(u.note||'')+'</textarea></div><div class="grid2"><div class="field"><label>Stato</label><select id="ue-attivo"><option value="1" '+(u.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(u.attivo===false?'selected':'')+'>Archiviato</option></select></div><div></div></div><div id="ue-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="ue-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="ue-save">'+(isNew?'Crea':'Salva')+'</button></div>');
   buildCredUI('ue-cred',u.credenziali||[]);
@@ -837,21 +891,32 @@ function openUtenteModal(u={}){
   if(!isNew)$('#ue-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('utenti',u),'Eliminato');closeModal();renderUtenti();});
 }
 
+/* Anagrafica cliente in sola lettura — usata dagli operatori (e come vista rapida dagli admin) dalla sessione/progetto. Nessun campo modificabile, nessun salvataggio/eliminazione. */
+function openUtenteReadonly(u){
+  const addrParts=[u.via,[u.comune,u.provincia?('('+u.provincia+')'):''].filter(Boolean).join(' '),u.cap].filter(Boolean);
+  const credRows=(u.credenziali||[]).filter(c=>c.piattaforma||c.uid||c.password);
+  const credHtml=credRows.length?('<div class="cred-section">'+credRows.map(c=>'<div class="cred-line" style="grid-template-columns:1fr 1fr 1fr 30px"><span>'+esc(c.piattaforma||'—')+'</span><span>'+esc(c.uid||'—')+'</span><span class="ro-pw" data-pw="'+esc(c.password||'')+'">••••••••</span><button type="button" class="eye-btn" title="Mostra/nascondi">👁</button></div>').join('')+'</div>'):'<p class="help">Nessuna credenziale registrata.</p>';
+  const docRows=(u.documenti||[]).filter(d=>d.label||d.url);
+  const docsHtml=docRows.length?docRows.map(d=>'<span class="doc-pill">'+esc(d.label||d.name||'Documento')+(d.url?' <a href="'+esc(d.url)+'" target="_blank" rel="noopener">Apri ↗</a>':'')+'</span>').join(''):'<p class="help">Nessun documento collegato.</p>';
+  openModal('<h3>👁 '+esc(fullName(u))+' — Anagrafica cliente (sola lettura)</h3><dl class="kv"><dt>Nome</dt><dd>'+esc(u.nome||'—')+'</dd><dt>Cognome</dt><dd>'+esc(u.cognome||'—')+'</dd><dt>Data di nascita</dt><dd>'+(u.dataNascita?fmtDate(u.dataNascita):'—')+'</dd><dt>Referente</dt><dd>'+esc(fullRef(u)||'—')+'</dd><dt>Telefono</dt><dd>'+esc(u.telefono||'—')+'</dd><dt>Email</dt><dd>'+esc(u.email||'—')+'</dd><dt>Indirizzo</dt><dd>'+esc(addrParts.join(', ')||'—')+'</dd><dt>Paese</dt><dd>'+esc(u.paese||'—')+'</dd></dl><div class="field"><label>🔑 Credenziali piattaforme</label>'+credHtml+'</div><div class="field"><label>📁 Documenti</label>'+docsHtml+'</div><div class="field"><label>Note</label><p style="white-space:pre-wrap;font-size:14px">'+esc(u.note||'—')+'</p></div><div class="modal-actions"><button class="btn ghost" data-close>Chiudi</button></div>');
+  $$('.eye-btn').forEach(btn=>btn.addEventListener('click',()=>{const span=btn.previousElementSibling;span.textContent=span.textContent==='••••••••'?(span.dataset.pw||'(vuota)'):'••••••••';}));
+}
+
 /* ============================================================
    Progetti
    ============================================================ */
 function renderProgetti(){
-  const box=$('#pr-table');const list=[...state.data.progetti].sort((a,b)=>{const na=utById(a.utenteId)?.nome||'',nb=utById(b.utenteId)?.nome||'';return na.localeCompare(nb,'it')||a.nome.localeCompare(b.nome,'it');});
+  const box=$('#pr-table');const list=[...state.data.progetti].sort((a,b)=>{const ua=utById(a.utenteId),ub=utById(b.utenteId);const na=((ua?.cognome||'')+(ua?.nome||'')),nb=((ub?.cognome||'')+(ub?.nome||''));return na.localeCompare(nb,'it')||a.nome.localeCompare(b.nome,'it');});
   if(!list.length){box.innerHTML='<div class="empty">Nessun progetto.</div>';return;}
   box.innerHTML='<table class="list"><thead><tr><th>Utente</th><th>Progetto</th><th>Frequenza</th><th>Monte ore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(p=>{
     const ut=utById(p.utenteId);const ore=oreErog(p.id).toFixed(1);
-    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullName(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+esc(p.monteOre)+' h':'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
+    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullNameCN(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+esc(p.monteOre)+' h':'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#pr-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const p=prById(tr.dataset.id);if(p)openProgettoModal(p);}));
 }
 function openProgettoModal(p={}){
   const isNew=!p.id;const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));const ops=sortN(state.data.operatori.filter(o=>o.attivo!==false));
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
   renderAvailEditor('pe-av',p.disponibilita||p.avail||{});
   renderMonthlyAvail('pe-monthly',p,false);
   const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
@@ -940,8 +1005,9 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       else if(exc&&(exc.tipo==='ferie'))cls+=' mc-ferie';
       else if(exc&&exc.tipo&&exc.tipo.startsWith('permesso'))cls+=' mc-permesso';
       else if(exc&&exc.fasce)cls+=' mc-disp';
+      const excFascia=(exc&&exc.da&&exc.a)?(' '+exc.da+'-'+exc.a):'';
       let title=d+'';
-      if(exc){if(exc.tipo==='malattia')title+='\n🏥 Malattia';else if(exc.tipo==='ferie')title+='\n🏖 Ferie';else if(exc.tipo&&exc.tipo.startsWith('permesso'))title+='\n📝 Permesso';else if(exc.fasce)title+='\n✓ Disponibile';}
+      if(exc){if(exc.tipo==='malattia')title+='\n🏥 Malattia (giornata intera)';else if(exc.tipo==='ferie')title+='\n🏖 Ferie'+(excFascia||' (giornata intera)');else if(exc.tipo&&exc.tipo.startsWith('permesso'))title+='\n📝 Permesso'+(excFascia||' (giornata intera)');else if(exc.fasce)title+='\n✓ Disponibile';}
       if(isFest)title+='\n🇮🇹 Festività';
       h+='<div class="'+cls+'" data-ds="'+ds+'" title="'+title+'">'+d+'</div>';
     }
@@ -955,7 +1021,8 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       const ds=el.dataset.ds;const existing=eccezioni.find(e=>e.data===ds);
       const dt=new Date(ds+'T00:00');const dlabel=fmtDate(ds);
       const tipoOptions=isOperator?'<option value="disponibile" '+((!existing||!existing.tipo||existing.tipo==='disponibile')?'selected':'')+'>✓ Disponibile</option><option value="malattia" '+((existing&&existing.tipo==='malattia')?'selected':'')+'>🏥 Malattia</option><option value="permesso_visita" '+((existing&&existing.tipo==='permesso_visita')?'selected':'')+'>📋 Permesso visita medica</option><option value="permesso_studio" '+((existing&&existing.tipo==='permesso_studio')?'selected':'')+'>📚 Permesso studio</option><option value="ferie" '+((existing&&existing.tipo==='ferie')?'selected':'')+'>🏖 Ferie</option>':'<option value="disponibile" selected>✓ Disponibile</option>';
-      const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
+      const tipoConFascia=existing&&(existing.tipo==='ferie'||existing.tipo==='permesso_visita'||existing.tipo==='permesso_studio');
+      const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div id="mc-fascia-assenza-fields" style="'+(tipoConFascia?'':'display:none')+'"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mc-fascia-da" value="'+esc((existing&&existing.da)||'')+'"> → <input type="time" id="mc-fascia-a" value="'+esc((existing&&existing.a)||'')+'"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
       openModal(mh);
       const fasceDiv=$('#mc-fasce');const fasce=(existing&&existing.fasce)||[{from:"09:00",to:"13:00"}];
       function renderFasce(){fasceDiv.innerHTML=fasce.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mc-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mc-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mc-rm-f" data-fi="'+i+'">✕</button></div>').join('');
@@ -964,7 +1031,7 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       }
       renderFasce();
       $('#mc-add-fascia').addEventListener('click',()=>{fasce.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasce();});
-      $('#mc-tipo').addEventListener('change',()=>{const v=$('#mc-tipo').value;$('#mc-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mc-malattia-fields').style.display=(v==='malattia')?'':'none';});
+      $('#mc-tipo').addEventListener('change',()=>{const v=$('#mc-tipo').value;$('#mc-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mc-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mc-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
       $('#mc-rm').addEventListener('click',()=>{const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);closeModal();render();});
       $('#mc-save').addEventListener('click',()=>{
         const tipo=$('#mc-tipo').value;const idx=eccezioni.findIndex(e=>e.data===ds);
@@ -974,6 +1041,11 @@ function renderMonthlyAvail(containerId,entity,isOperator){
           entry.fasce=ff;
         }
         if(tipo==='malattia')entry.codiceMalattia=$('#mc-codice-mal').value.trim();
+        if(tipo==='ferie'||tipo==='permesso_visita'||tipo==='permesso_studio'){
+          const fDa=$('#mc-fascia-da').value,fA=$('#mc-fascia-a').value;
+          if((fDa&&!fA)||(!fDa&&fA)){toast('Indica sia l\'ora di inizio che quella di fine della fascia, oppure lasciale entrambe vuote per l\'intera giornata.',true);return;}
+          if(fDa&&fA){entry.da=fDa;entry.a=fA;}
+        }
         if(idx>=0)eccezioni[idx]=entry;else eccezioni.push(entry);
         closeModal();render();
       });
@@ -1064,7 +1136,7 @@ function calcStrettezza(p){
 async function generateMonth(ms,spid,nameFilter){
   const GAP=5; // 5 min gap between consecutive sessions
   const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
-  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita');
+  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms)||s.stato==='eseguita'||s.stato==='assenza ingiustificata');
   const newS=[],anom=[];const opB={},prB={},auB={},opRoom={};
   // Pre-populate busy from existing confirmed/executed sessions
   keep.filter(s=>s.data.startsWith(ms)).forEach(s=>{
@@ -1096,6 +1168,7 @@ async function generateMonth(ms,spid,nameFilter){
     const pool=(p.operatoriAmmessi||[]).map(id=>opById(id)).filter(Boolean);
     if(!pool.length){anom.push({lbl,msg:'Nessun operatore assegnato.'});continue;}
     const allPU=state.data.progetti.filter(x=>x.utenteId===p.utenteId).map(x=>x.id);
+    let sessionCount=0; // Indice di rotazione dei "Tipi di sessione": continua per tutto il mese, non si azzera a ogni settimana
     let wk=1;
     while(wk<=days){
       const we=Math.min(wk+6,days);let placed=0;
@@ -1106,11 +1179,8 @@ async function generateMonth(ms,spid,nameFilter){
         // Check how many sessions already placed today for this project
         const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===ds).length;
         if(todayPlaced>=maxDay)continue;
+        // effRng gestisce già malattia/ferie/permesso del progetto (giornata intera o solo la fascia indicata)
         const pRng=effRng(p,ds,dn);
-        // Also check user-level exceptions
-        const uExc=(p.eccezioni||[]);
-        const uEx=uExc.find?uExc.find(e=>e.data===ds):null;
-        if(uEx&&(uEx.tipo==='malattia'||uEx.tipo==='ferie'||uEx.tipo==='permesso_visita'||uEx.tipo==='permesso_studio'))continue;
         for(const ur of pRng){
           if(placed>=freq)break;
           const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
@@ -1120,7 +1190,7 @@ async function generateMonth(ms,spid,nameFilter){
             // Check user not busy across all their projects
             const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
             if(!rfree(uBN,st,en))continue;
-            let chosen=null,cAula=null,chosenSed=null;
+            let chosen=null,cAula=null,chosenSed=null,chosenOnlineDaCasa=null;
             for(const op of pool){
               if(!sdComp(p.sede,op.sedi||[]))continue;
               const opRng=effRng(op,ds,dn);
@@ -1143,7 +1213,7 @@ async function generateMonth(ms,spid,nameFilter){
               // Determine effective sede now that we know which slot matched (mai Busto Arsizio per le modalità composite)
               const sed=p.sede==='Presenza+Online'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':'Online'):p.sede==='Presenza+Domicilio'?((matchSlot&&matchSlot.sedi&&matchSlot.sedi.includes('Cesate'))?'Cesate':'Domicilio'):p.sede;
               // Formation check: operator must have ALL formations for this session type
-              const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[placed%p.tipiSessione.length]:null;
+              const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
               if(sessType){const reqForms=sessType.componenti.map(c=>c.metodo).filter(Boolean);const opForms=op.formazione||[];if(!reqForms.every(rf=>opForms.includes(rf)))continue;}
               // Check operator busy with GAP
               const opBusy=(opB[op.id]||[]).filter(b=>b.date===ds);
@@ -1173,21 +1243,19 @@ async function generateMonth(ms,spid,nameFilter){
                 if(!opRoom[dkH])opRoom[dkH]=al;
                 break;
               }
-              // For Online sessions: if operator is at Cesate or Busto (has sessions in-sede same day within GAP), keep their room occupied
+              // Sessioni Online: da casa solo se c'è margine di viaggio sufficiente rispetto alle presenze della giornata, altrimenti in sede (aula occupata)
+              let onlineDaCasa=null,onlineAula=null;
               if(sed==='Online'){
-                const dk=op.id+'|'+ds;
-                const assignedRoom=opRoom[dk]||null;
-                if(assignedRoom){
-                  // Check if operator has sessions close in time (within GAP*3=15min) at the sede
-                  const opDaySess=(opB[op.id]||[]).filter(b=>b.date===ds);
-                  const hasNearby=opDaySess.some(b=>(Math.abs(b.to-st)<=GAP*3)||(Math.abs(en-b.from)<=GAP*3));
-                  if(hasNearby){
-                    // Room stays occupied — mark it busy for this slot too
-                    (auB[assignedRoom]=auB[assignedRoom]||[]).push({date:ds,from:st,to:en});
-                  }
+                const{daCasa,ancora}=decidiOnlineDaCasa(op,opDaySess,st,en);
+                onlineDaCasa=daCasa;
+                if(!daCasa&&ancora){
+                  const auList3=ancora.sede==='Cesate'?AULE_CESATE:AULE_BUSTO;
+                  const halfDay3=st<tmin('13:30')?'AM':'PM';
+                  onlineAula=(ancora.aula&&auList3.includes(ancora.aula))?ancora.aula:(opRoom[op.id+'|'+ds+'|'+halfDay3]||auList3.find(a=>rfree((auB[a]||[]).filter(b=>b.date===ds),st,en))||null);
+                  // L'occupazione dell'aula viene registrata più sotto tramite cAula, una sola volta
                 }
               }
-              chosen=op;chosenSed=sed;break;
+              chosen=op;chosenSed=sed;chosenOnlineDaCasa=onlineDaCasa;cAula=onlineAula||cAula;break;
             }
             if(chosen){
               // Contract hour check for Assunti
@@ -1199,13 +1267,13 @@ async function generateMonth(ms,spid,nameFilter){
                 if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullName(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
               }
               const sed=chosenSed;
-              const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[placed%p.tipiSessione.length]:null;
-              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?placed%p.tipiSessione.length:null};
+              const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
+              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?sessionCount%p.tipiSessione.length:null,onlineDaCasa:sed==='Online'?chosenOnlineDaCasa:null};
               newS.push(sess);
               (opB[chosen.id]=opB[chosen.id]||[]).push({date:ds,from:st,to:en});
               (prB[p.id]=prB[p.id]||[]).push({date:ds,from:st,to:en});
               if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:ds,from:st,to:en});
-              placed++;break;
+              placed++;sessionCount++;break;
             }
           }
         }
@@ -1261,7 +1329,7 @@ async function generateMonthAI(ms, spid, userNotes, nameFilter){
     };
   });
   // Existing sessions to keep
-  const existing=state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&s.stato==='eseguita').map(s=>{
+  const existing=state.data.sessioni.filter(s=>s.data.startsWith(ms.slice(0,7))&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).map(s=>{
     const op=opById(s.operatoreId);return{data:s.data,ora:s.oraInizio||s.ora_inizio,fine:s.oraFine||s.ora_fine,operatore:op?op.nome:'?',sede:s.sede,aula:s.aula||'—'};
   });
 
@@ -1276,9 +1344,9 @@ VINCOLI INDEROGABILI:
 - Aule Cesate (max 6 contemporanee): Blu, Verde, Gialla, Rosa, Arancione, Viola.
 - Aule Busto Arsizio (max 2 contemporanee): Grande, Piccola.
 - Un operatore che lavora in sede (Cesate o Busto) deve mantenere la STESSA aula per tutta la giornata.
-- Se un operatore fa una sessione online ma è in sede (ha sessioni in presenza prima o dopo entro 15 minuti), l'aula resta occupata.
+- Le sessioni online di un operatore che ha anche sessioni in presenza lo stesso giorno si svolgono da casa solo se c'è margine di viaggio sufficiente prima/dopo la presenza più vicina (tempo di viaggio verso casa se la presenza è a Cesate, verso Busto se a Busto Arsizio); altrimenti restano in sede e l'aula resta occupata. Questo aspetto viene comunque verificato e corretto automaticamente dopo la tua risposta: non è necessario indicarlo nel JSON.
 - Rispetta la frequenza settimanale di ciascun progetto.
-- Rispetta le disponibilità orarie e le eccezioni per data.
+- Rispetta le disponibilità orarie e le eccezioni per data (le eccezioni con orario indicato, es. "ferie 14:00-18:00", valgono solo per quella fascia: l'operatore resta disponibile nel resto della giornata; senza orario indicato valgono per l'intera giornata).
 - Max sessioni/giorno per progetto come indicato.
 - Se la sede di un progetto è "Presenza+Online", usa SOLO Cesate oppure Online: mai Busto Arsizio (a Busto Arsizio non si svolgono sessioni online).
 - Se la sede di un progetto è "Presenza+Domicilio", usa SOLO Cesate oppure Domicilio: mai Busto Arsizio.
@@ -1312,7 +1380,7 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
 
   // Validate and save sessions
   const newS=[];const anom=[];
-  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms.slice(0,7))||s.stato==='eseguita');
+  const keep=state.data.sessioni.filter(s=>!s.data.startsWith(ms.slice(0,7))||s.stato==='eseguita'||s.stato==='assenza ingiustificata');
   for(const sess of sessions){
     if(!sess.data||!sess.oraInizio||!sess.oraFine||!sess.progettoId||!sess.operatoreId){
       anom.push({lbl:'Sessione incompleta',msg:JSON.stringify(sess).slice(0,120)});continue;
@@ -1326,6 +1394,16 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
     if(sediAmmesse&&!sediAmmesse.includes(sedeFinale)){anom.push({lbl:'Sede non ammessa',msg:'Progetto "'+pr.nome+'" ('+pr.sede+'): la sede "'+sedeFinale+'" proposta dall\'IA non è ammessa (solo '+sediAmmesse.join(' o ')+'). Sessione scartata.'});continue;}
     const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:''};
     newS.push(rec);
+  }
+  // Sessioni Online: determina deterministicamente da-casa/in-sede (stessa regola di generateMonth), senza fidarsi della scelta dell'IA
+  for(const sess of newS){
+    if(sess.sede!=='Online')continue;
+    const op=opById(sess.operatoreId);if(!op)continue;
+    const giorno=[...newS,...keep].filter(sx=>sx.operatoreId===sess.operatoreId&&sx.data===sess.data&&sx!==sess);
+    const st=tmin(sess.oraInizio),en=tmin(sess.oraFine);
+    const{daCasa,ancora}=decidiOnlineDaCasa(op,giorno,st,en);
+    sess.onlineDaCasa=daCasa;
+    if(!daCasa&&ancora&&ancora.aula)sess.aula=ancora.aula;
   }
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
@@ -1609,7 +1687,7 @@ $('#btn-gen-ai').addEventListener('click',async()=>{
 });
 $('#btn-clear-gen').addEventListener('click',async()=>{
   const ms=$('#gen-month').value;if(!ms||!confirm('Eliminare tutte le proposte (non eseguite) di '+ms+'?'))return;
-  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato!=='eseguita');
+  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato!=='eseguita'&&s.stato!=='assenza ingiustificata');
   for(const s of toRemove)await deleteRecord('sessioni',s);
   toast(toRemove.length+' proposte eliminate.');
 });
