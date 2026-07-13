@@ -188,7 +188,7 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 .mc-day.mc-malattia{background:#BBDEFB;border-color:#64B5F6}
 .mc-day.mc-ferie{background:#FFE0B2;border-color:#FF9800}
 .mc-day.mc-permesso{background:#FFF9C4;border-color:#FDD835}
-.mc-day.mc-festivita{background:#FFE0B2;border-color:#FFB74D;opacity:.7;cursor:default}
+.mc-day.mc-festivita{background:#FFECB3;border-color:#FFB300;opacity:.7;cursor:default}
 .cal-cell.chiusura{background:#FFF3E0;opacity:.85}
 .cal-cell.chiusura .cal-daynum{color:var(--ink-soft)}
 
@@ -1011,14 +1011,18 @@ function renderMonthlyAvail(containerId,entity,isOperator){
   const wrap=$('#'+containerId);if(!wrap)return;
   const eccezioni=entity.eccezioni||[];
   const now=new Date();let curY=now.getFullYear(),curM=now.getMonth()+1;
-  
+  async function persistEccezioni(msg){
+    if(!entity.id)return; // scheda non ancora creata: resta solo in memoria fino al primo salvataggio
+    entity.eccezioni=eccezioni;
+    await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),msg||'Disponibilità salvata');
+  }
   function render(){
     const days=new Date(curY,curM,0).getDate();
     const firstDow=(new Date(curY,curM-1,1).getDay()+6)%7; // Mon=0
     const chiusure=(state.data.chiusure||[]);
     const meseLabel=MESI[curM-1]+' '+curY;
     
-    let h='<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><button class="btn ghost small mc-prev">◀</button><strong style="min-width:140px;text-align:center">'+meseLabel+'</strong><button class="btn ghost small mc-next">▶</button></div>';
+    let h='<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><button class="btn ghost small mc-prev">◀</button><strong style="min-width:140px;text-align:center">'+meseLabel+'</strong><button class="btn ghost small mc-next">▶</button><button class="btn ghost small mc-bulk" style="margin-left:auto">🗓 Applica a più giorni</button></div>';
     h+='<div class="month-cal">';
     ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(d=>{h+='<div class="mc-hdr">'+d+'</div>';});
     for(let i=0;i<firstDow;i++)h+='<div class="mc-day mc-empty"></div>';
@@ -1041,11 +1045,12 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       h+='<div class="'+cls+'" data-ds="'+ds+'" title="'+title+'">'+d+'</div>';
     }
     h+='</div>';
-    h+=(isOperator?'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità o assenze. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#E4F2E9;border:1px solid #2E7D4F"></span> Disponibile <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#BBDEFB;border:1px solid #64B5F6;margin-left:8px"></span> Malattia <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFE0B2;border:1px solid #FF9800;margin-left:8px"></span> Ferie <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFF9C4;border:1px solid #FDD835;margin-left:8px"></span> Permesso</p>':'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità specifiche.</p>');
+    h+=(isOperator?'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità o assenze. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#E4F2E9;border:1px solid #2E7D4F"></span> Disponibile <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#BBDEFB;border:1px solid #64B5F6;margin-left:8px"></span> Malattia <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFE0B2;border:1px solid #FF9800;margin-left:8px"></span> Ferie <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFF9C4;border:1px solid #FDD835;margin-left:8px"></span> Permesso <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>':'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità specifiche. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>');
     
     wrap.innerHTML=h;
     wrap.querySelector('.mc-prev').addEventListener('click',()=>{curM--;if(curM<1){curM=12;curY--;}render();});
     wrap.querySelector('.mc-next').addEventListener('click',()=>{curM++;if(curM>12){curM=1;curY++;}render();});
+    wrap.querySelector('.mc-bulk').addEventListener('click',openBulkApply);
     wrap.querySelectorAll('.mc-day:not(.mc-empty):not(.mc-festivita)').forEach(el=>el.addEventListener('click',()=>{
       const ds=el.dataset.ds;const existing=eccezioni.find(e=>e.data===ds);
       const dt=new Date(ds+'T00:00');const dlabel=fmtDate(ds);
@@ -1061,11 +1066,6 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       renderFasce();
       $('#mc-add-fascia').addEventListener('click',()=>{fasce.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasce();});
       $('#mc-tipo').addEventListener('change',()=>{const v=$('#mc-tipo').value;$('#mc-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mc-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mc-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
-      async function persistEccezioni(){
-        if(!entity.id)return; // scheda non ancora creata: resta solo in memoria fino al primo salvataggio
-        entity.eccezioni=eccezioni;
-        await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),'Disponibilità salvata');
-      }
       $('#mc-rm').addEventListener('click',async()=>{
         const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);
         await persistEccezioni();
@@ -1089,6 +1089,67 @@ function renderMonthlyAvail(containerId,entity,isOperator){
         closeDay();render();
       });
     }));
+  }
+  function openBulkApply(){
+    const first=curY+'-'+pad2(curM)+'-01';
+    const last=curY+'-'+pad2(curM)+'-'+pad2(new Date(curY,curM,0).getDate());
+    const tipoField=isOperator?'<select id="mcb-tipo"><option value="disponibile">✓ Disponibile</option><option value="malattia">🏥 Malattia</option><option value="permesso_visita">📋 Permesso visita medica</option><option value="permesso_studio">📚 Permesso studio</option><option value="ferie">🏖 Ferie</option></select>':'<input type="hidden" id="mcb-tipo" value="disponibile"><span class="chip on" style="width:fit-content">✓ Disponibile</span>';
+    const bh='<h3>Applica a più giorni</h3>'+
+      '<div class="grid2"><div class="field"><label>Data inizio</label><input type="date" id="mcb-da" value="'+first+'"></div><div class="field"><label>Data fine</label><input type="date" id="mcb-a" value="'+last+'"></div></div>'+
+      '<div class="field"><label>Giorni della settimana</label><div id="mcb-giorni" style="display:flex;flex-wrap:wrap;gap:8px">'+GIORNI.map((g,i)=>'<label class="chip on" data-gi="'+i+'">'+g+'<input type="checkbox" value="'+i+'" checked style="display:none"></label>').join('')+'</div></div>'+
+      '<div class="field"><label>Tipo</label>'+tipoField+'</div>'+
+      '<div id="mcb-disp-fields"><div class="field"><label>Fasce orarie</label><div id="mcb-fasce"></div><button class="btn ghost small" id="mcb-add-fascia" style="margin-top:6px">+ Fascia</button></div></div>'+
+      (isOperator?'<div id="mcb-malattia-fields" style="display:none"><div class="field"><label>Codice malattia</label><input id="mcb-codice-mal"></div></div><div id="mcb-fascia-assenza-fields" style="display:none"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mcb-fascia-da"> → <input type="time" id="mcb-fascia-a"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div>':'')+
+      '<div id="mcb-warn"></div>'+
+      '<div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="mcb-apply">Applica</button></div>';
+    const closeBulk=openModalStacked(bh);
+    $$('#mcb-giorni input').forEach(cb=>cb.addEventListener('change',()=>{cb.closest('label').classList.toggle('on',cb.checked);}));
+    const fasceBDiv=$('#mcb-fasce');const fasceB=[{from:"09:00",to:"13:00",sedi:["Cesate","Online"]}];
+    function renderFasceB(){fasceBDiv.innerHTML=fasceB.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mcb-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mcb-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mcb-rm-f" data-fi="'+i+'">✕</button></div>').join('');
+      fasceBDiv.querySelectorAll('.mcb-rm-f').forEach(b=>b.addEventListener('click',()=>{fasceB.splice(parseInt(b.dataset.fi),1);renderFasceB();}));
+      fasceBDiv.querySelectorAll('.avail-sede input').forEach(cb=>cb.addEventListener('change',()=>{cb.closest('label').classList.toggle('on',cb.checked);}));
+    }
+    renderFasceB();
+    $('#mcb-add-fascia').addEventListener('click',()=>{fasceB.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasceB();});
+    if(isOperator)$('#mcb-tipo').addEventListener('change',()=>{const v=$('#mcb-tipo').value;$('#mcb-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mcb-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mcb-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
+    $('#mcb-apply').addEventListener('click',async()=>{
+      const da=$('#mcb-da').value,a=$('#mcb-a').value;
+      if(!da||!a||da>a){$('#mcb-warn').innerHTML='<div class="banner warn">Intervallo di date non valido.</div>';return;}
+      const selGiorni=Array.from($$('#mcb-giorni input:checked')).map(i=>parseInt(i.value));
+      if(!selGiorni.length){$('#mcb-warn').innerHTML='<div class="banner warn">Seleziona almeno un giorno della settimana.</div>';return;}
+      const tipo=$('#mcb-tipo').value;
+      const entryBase={tipo};
+      if(tipo==='disponibile'){
+        const ff=[];fasceBDiv.querySelectorAll('.avail-slot').forEach(sl=>{const from=sl.querySelector('.mcb-f-from').value;const to=sl.querySelector('.mcb-f-to').value;const sedi=Array.from(sl.querySelectorAll('.avail-sede input:checked')).map(i=>i.value);if(from&&to)ff.push({from,to,sedi:sedi.length?sedi:['Cesate','Online']});});
+        entryBase.fasce=ff;
+      }
+      if(tipo==='malattia')entryBase.codiceMalattia=$('#mcb-codice-mal')?$('#mcb-codice-mal').value.trim():'';
+      if(tipo==='ferie'||tipo==='permesso_visita'||tipo==='permesso_studio'){
+        const fDa=$('#mcb-fascia-da')?$('#mcb-fascia-da').value:'',fA=$('#mcb-fascia-a')?$('#mcb-fascia-a').value:'';
+        if((fDa&&!fA)||(!fDa&&fA)){toast('Indica sia l\'ora di inizio che quella di fine della fascia, oppure lasciale entrambe vuote per l\'intera giornata.',true);return;}
+        if(fDa&&fA){entryBase.da=fDa;entryBase.a=fA;}
+      }
+      const chiusure=(state.data.chiusure||[]);
+      const dates=[];let cur=new Date(da+'T00:00');const end=new Date(a+'T00:00');
+      while(cur<=end){
+        const dow=(cur.getDay()+6)%7;
+        if(selGiorni.includes(dow)){
+          const ds=cur.getFullYear()+'-'+pad2(cur.getMonth()+1)+'-'+pad2(cur.getDate());
+          if(!chiusure.some(c=>c.data===ds&&(c.tipo==='festivita'||c.tipo==='ferie')))dates.push(ds);
+        }
+        cur.setDate(cur.getDate()+1);
+      }
+      if(!dates.length){$('#mcb-warn').innerHTML='<div class="banner warn">Nessun giorno valido nell\'intervallo selezionato (festività/chiusure del centro escluse).</div>';return;}
+      const nEsistenti=dates.filter(ds=>eccezioni.some(e=>e.data===ds)).length;
+      if(nEsistenti&&!confirm(nEsistenti+' giorno/i nell\'intervallo hanno già un\'eccezione impostata. Sovrascriverla?'))return;
+      dates.forEach(ds=>{
+        const entry={data:ds,...entryBase};
+        const idx=eccezioni.findIndex(e=>e.data===ds);
+        if(idx>=0)eccezioni[idx]=entry;else eccezioni.push(entry);
+      });
+      await persistEccezioni(dates.length+' giorno/i aggiornati');
+      closeBulk();render();
+    });
   }
   render();
   wrap._getExceptions=()=>eccezioni;
