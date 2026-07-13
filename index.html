@@ -1051,8 +1051,8 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       const dt=new Date(ds+'T00:00');const dlabel=fmtDate(ds);
       const tipoOptions=isOperator?'<option value="disponibile" '+((!existing||!existing.tipo||existing.tipo==='disponibile')?'selected':'')+'>✓ Disponibile</option><option value="malattia" '+((existing&&existing.tipo==='malattia')?'selected':'')+'>🏥 Malattia</option><option value="permesso_visita" '+((existing&&existing.tipo==='permesso_visita')?'selected':'')+'>📋 Permesso visita medica</option><option value="permesso_studio" '+((existing&&existing.tipo==='permesso_studio')?'selected':'')+'>📚 Permesso studio</option><option value="ferie" '+((existing&&existing.tipo==='ferie')?'selected':'')+'>🏖 Ferie</option>':'<option value="disponibile" selected>✓ Disponibile</option>';
       const tipoConFascia=existing&&(existing.tipo==='ferie'||existing.tipo==='permesso_visita'||existing.tipo==='permesso_studio');
-      const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div id="mc-fascia-assenza-fields" style="'+(tipoConFascia?'':'display:none')+'"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mc-fascia-da" value="'+esc((existing&&existing.da)||'')+'"> → <input type="time" id="mc-fascia-a" value="'+esc((existing&&existing.a)||'')+'"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
-      openModal(mh);
+      const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div id="mc-fascia-assenza-fields" style="'+(tipoConFascia?'':'display:none')+'"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mc-fascia-da" value="'+esc((existing&&existing.da)||'')+'"> → <input type="time" id="mc-fascia-a" value="'+esc((existing&&existing.a)||'')+'"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
+      const closeDay=openModalStacked(mh);
       const fasceDiv=$('#mc-fasce');const fasce=(existing&&existing.fasce)||[{from:"09:00",to:"13:00"}];
       function renderFasce(){fasceDiv.innerHTML=fasce.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mc-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mc-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mc-rm-f" data-fi="'+i+'">✕</button></div>').join('');
         fasceDiv.querySelectorAll('.mc-rm-f').forEach(b=>b.addEventListener('click',()=>{fasce.splice(parseInt(b.dataset.fi),1);renderFasce();}));
@@ -1061,8 +1061,17 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       renderFasce();
       $('#mc-add-fascia').addEventListener('click',()=>{fasce.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasce();});
       $('#mc-tipo').addEventListener('change',()=>{const v=$('#mc-tipo').value;$('#mc-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mc-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mc-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
-      $('#mc-rm').addEventListener('click',()=>{const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);closeModal();render();});
-      $('#mc-save').addEventListener('click',()=>{
+      async function persistEccezioni(){
+        if(!entity.id)return; // scheda non ancora creata: resta solo in memoria fino al primo salvataggio
+        entity.eccezioni=eccezioni;
+        await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),'Disponibilità salvata');
+      }
+      $('#mc-rm').addEventListener('click',async()=>{
+        const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);
+        await persistEccezioni();
+        closeDay();render();
+      });
+      $('#mc-save').addEventListener('click',async()=>{
         const tipo=$('#mc-tipo').value;const idx=eccezioni.findIndex(e=>e.data===ds);
         const entry={data:ds,tipo};
         if(tipo==='disponibile'){
@@ -1076,7 +1085,8 @@ function renderMonthlyAvail(containerId,entity,isOperator){
           if(fDa&&fA){entry.da=fDa;entry.a=fA;}
         }
         if(idx>=0)eccezioni[idx]=entry;else eccezioni.push(entry);
-        closeModal();render();
+        await persistEccezioni();
+        closeDay();render();
       });
     }));
   }
@@ -1868,6 +1878,17 @@ function buildCredUI(containerId, credList){
 function openModal(html){closeModal();const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModal));$('#modal-root').appendChild(wrap);document.addEventListener('keydown',escClose);}
 function closeModal(){$('#modal-root').innerHTML='';document.removeEventListener('keydown',escClose);}
 function escClose(e){if(e.key==='Escape')closeModal();}
+/* Modale "impilata": si apre sopra una scheda già aperta senza distruggerla, e si chiude senza chiudere quella sottostante (usata per i popup giorno del calendario disponibilità/assenze) */
+function openModalStacked(html){
+  document.removeEventListener('keydown',escClose); // sospende l'Esc della scheda sottostante finché il popup impilato è aperto
+  const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';
+  const close=()=>{wrap.remove();document.removeEventListener('keydown',escStacked);document.addEventListener('keydown',escClose);};
+  function escStacked(e){if(e.key==='Escape')close();}
+  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)close();});
+  wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',close));
+  $('#modal-root').appendChild(wrap);document.addEventListener('keydown',escStacked);
+  return close;
+}
 async function withBusy(fn,okMsg){try{await fn();if(okMsg)toast(okMsg);}catch(e){console.error(e);toast('Errore: '+e.message,true);throw e;}}
 function refreshCurrent(){const active=$('#nav-tabs button.active');if(active)showTab(active.dataset.tab);}
 function showScreen(id){['screen-loading','screen-login','screen-denied','app'].forEach(s=>$('#'+s).classList.toggle('hidden',s!==id));}
