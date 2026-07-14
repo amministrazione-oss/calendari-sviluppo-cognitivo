@@ -185,6 +185,7 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 .month-cal .mc-day.mc-empty{cursor:default;border:none}
 .month-cal .mc-day.mc-empty:hover{background:none;border-color:transparent}
 .mc-day.mc-disp{background:#E4F2E9;border-color:#2E7D4F}
+.mc-day.mc-weekly{background:#F1F8F4;border-color:#8FBFA3;border-style:dashed}
 .mc-day.mc-malattia{background:#BBDEFB;border-color:#64B5F6}
 .mc-day.mc-ferie{background:#FFE0B2;border-color:#FF9800}
 .mc-day.mc-permesso{background:#FFF9C4;border-color:#FDD835}
@@ -510,6 +511,15 @@ const DEFAULT_METODI=[
 function getFormazioni(){return(state.data.impostazioni&&state.data.impostazioni.formazioni)||DEFAULT_FORMAZIONI;}
 function getMetodi(){return(state.data.impostazioni&&state.data.impostazioni.metodi)||DEFAULT_METODI;}
 function getMetodo(nome){return getMetodi().find(m=>m.nome===nome)||null;}
+/* Sana dati legacy/migrazione in cui formazioni/metodi sono arrivati come oggetto invece che array (es. {0:'x',1:'y'}).
+   Se il campo è assente/falsy lo lascia intatto: getFormazioni()/getMetodi() ricadono poi sui default. */
+function toArraySafe(v){if(Array.isArray(v)||!v)return v;if(typeof v==='object')return Object.values(v);return v;}
+function normalizeImpostazioni(s){
+  if(!s)return s;
+  s.formazioni=toArraySafe(s.formazioni);
+  s.metodi=toArraySafe(s.metodi);
+  return s;
+}
 function fmtDurata(min){if(min<60)return min+' min';const h=Math.floor(min/60),m=min%60;return h+'h'+(m?' '+m+'min':'');}
 
 const OP_COLORS = ['#3b7dd8','#2E7D4F','#8A4A7D','#B65E2E','#14655F','#A4692B','#456B8C','#7D3B3B','#5B7A2E','#6B4FA0','#1F7A8C','#96562F'];
@@ -673,7 +683,7 @@ async function loadListRecords(key){
   while(url){const page=await gfetch(url);for(const item of(page.value||[])){const f=item.fields||{};let p={};try{p=f.Data?JSON.parse(f.Data):{};}catch{p={};}records.push({...p,id:p.id||f.Title||item.id,_spId:item.id});}url=page['@odata.nextLink']||null;}
   return records;
 }
-async function loadAll(){const keys=['operatori','utenti','progetti','sessioni','chiusure','impostazioni'];const results=await Promise.all(keys.map(loadListRecords));keys.forEach((k,i)=>{if(k==='chiusure'){const cr=results[i];state.data.chiusure=(cr&&cr[0]&&cr[0].chiusure)||[];}else if(k==='impostazioni'){const im=results[i];state.data.impostazioni=(im&&im[0])?im[0]:null;}else{state.data[k]=results[i];}});
+async function loadAll(){const keys=['operatori','utenti','progetti','sessioni','chiusure','impostazioni'];const results=await Promise.all(keys.map(loadListRecords));keys.forEach((k,i)=>{if(k==='chiusure'){const cr=results[i];state.data.chiusure=(cr&&cr[0]&&cr[0].chiusure)||[];}else if(k==='impostazioni'){const im=results[i];state.data.impostazioni=normalizeImpostazioni((im&&im[0])?im[0]:null);}else{state.data[k]=results[i];}});
   // Migration: split nome->nome+cognome for old records
   try{
   let migrated=false;
@@ -687,8 +697,20 @@ async function loadAll(){const keys=['operatori','utenti','progetti','sessioni',
 }
 async function saveRecord(key,record){
   const listId=state.listIds[key];const{_spId,...payload}=record;const fields={Title:payload.id,Data:JSON.stringify(payload)};
-  if(_spId){await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items/'+_spId+'/fields',{method:'PATCH',body:JSON.stringify(fields)});const arr=state.data[key];const i=arr.findIndex(r=>r._spId===_spId);if(i>=0)arr[i]={...payload,_spId};return arr[i];}
-  else{const created=await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items',{method:'POST',body:JSON.stringify({fields})});const rec={...payload,_spId:created.id};state.data[key].push(rec);return rec;}
+  // Alcune "liste" (impostazioni, chiusure) non sono array di entità in state.data[key] ma un unico record-oggetto:
+  // in quel caso non c'è un array su cui fare findIndex/push, si sostituisce direttamente state.data[key].
+  const arr=state.data[key];const isArray=Array.isArray(arr);
+  if(_spId){
+    await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items/'+_spId+'/fields',{method:'PATCH',body:JSON.stringify(fields)});
+    const updated={...payload,_spId};
+    if(isArray){const i=arr.findIndex(r=>r._spId===_spId);if(i>=0)arr[i]=updated;return arr[i];}
+    state.data[key]=updated;return updated;
+  }else{
+    const created=await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items',{method:'POST',body:JSON.stringify({fields})});
+    const rec={...payload,_spId:created.id};
+    if(isArray)arr.push(rec);else state.data[key]=rec;
+    return rec;
+  }
 }
 async function deleteRecord(key,record){if(!record._spId)return;await gfetch('/sites/'+state.siteId+'/lists/'+state.listIds[key]+'/items/'+record._spId,{method:'DELETE'});state.data[key]=state.data[key].filter(r=>r._spId!==record._spId);}
 
@@ -769,7 +791,7 @@ function evChip(s){
   b.className='ev '+sedeClass(s.sede)+(s.stato==='annullata'?' cancelled':'');
   const ora=s.oraInizio||s.ora_inizio||'';
   const onlineTag=s.sede==='Online'&&s.onlineDaCasa!=null?(s.onlineDaCasa?' 🏠':' 🏢'):'';
-  b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullName(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+onlineTag+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':s.stato==='assenza ingiustificata'?' ⚠':'')+'</span>';
+  b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullNameCN(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+onlineTag+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':s.stato==='assenza ingiustificata'?' ⚠':'')+'</span>';
   b.style.cursor='pointer';b.addEventListener('click',e=>{e.stopPropagation();openSessionDetail(s);});
   return b;
 }
@@ -790,14 +812,14 @@ function renderSessioni(){
   if(!list.length){box.innerHTML='<div class="empty">Nessuna sessione trovata.</div>';return;}
   box.innerHTML='<table class="list"><thead><tr><th>Data</th><th>Orario</th><th>Utente</th><th>Progetto</th><th>Operatore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(s=>{
     const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const stato=s.stato||'proposta';
-    return'<tr class="rowlink" data-id="'+s.id+'"><td>'+fmtDate(s.data)+'</td><td>'+esc(s.oraInizio||s.ora_inizio||'')+(s.oraFine||s.ora_fine?'–'+esc(s.oraFine||s.ora_fine):'')+'</td><td>'+esc(ut?fullName(ut):'—')+'</td><td>'+esc(pr?pr.nome:'—')+'</td><td>'+esc(op?fullName(op):'—')+'</td><td>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</td><td><span class="tag '+statoTag(stato)+'">'+esc(stato)+'</span></td></tr>';
+    return'<tr class="rowlink" data-id="'+s.id+'"><td>'+fmtDate(s.data)+'</td><td>'+esc(s.oraInizio||s.ora_inizio||'')+(s.oraFine||s.ora_fine?'–'+esc(s.oraFine||s.ora_fine):'')+'</td><td>'+esc(ut?fullNameCN(ut):'—')+'</td><td>'+esc(pr?pr.nome:'—')+'</td><td>'+esc(op?fullName(op):'—')+'</td><td>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</td><td><span class="tag '+statoTag(stato)+'">'+esc(stato)+'</span></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#sess-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const s=state.data.sessioni.find(x=>x.id===tr.dataset.id);if(s)openSessionDetail(s);}));
 }
 function openSessionDetail(s){
   const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const isAdmin=state.role==='Admin';
   const canEdit=isAdmin||(state.role==='Operatore'&&state.me&&s.operatoreId===state.me.id);
-  const utTitle=ut?'<a href="#" id="sd-open-utente" style="color:inherit;text-decoration:underline" title="Vedi anagrafica cliente (sola lettura)">'+esc(fullName(ut))+'</a>':'?';
+  const utTitle=ut?'<a href="#" id="sd-open-utente" style="color:inherit;text-decoration:underline" title="Vedi anagrafica cliente (sola lettura)">'+esc(fullNameCN(ut))+'</a>':'?';
   const esitoOpts=['eseguita','annullata','assenza ingiustificata'];
   const esitoField=canEdit?('<div class="field"><label>Esito sessione</label><select id="sd-stato-op"><option value="">'+esc('— non specificato —')+'</option>'+esitoOpts.map(x=>'<option value="'+x+'" '+(s.stato===x?'selected':'')+'>'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('')+'</select><p class="help">Eseguita e Assenza ingiustificata contano nel monte ore del progetto; Annullata no (la sessione resta recuperabile in futuro).</p></div>'):'';
   openModal('<h3>'+utTitle+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd>'+(s.sede==='Online'&&s.onlineDaCasa!=null?('<dt>Modalità online</dt><dd>'+(s.onlineDaCasa?'🏠 Da casa':'🏢 In sede')+'</dd>'):'')+'<dt>Stato</dt><dd><span class="tag '+statoTag(s.stato||'proposta')+'">'+esc(s.stato||'proposta')+'</span></dd>'+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl>'+esitoField+'<div class="field"><label>Note operatore</label><textarea id="sd-note-op" '+(canEdit?'':'readonly')+'>'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button>'+(canEdit?'<button class="btn primary" id="sd-save-note">💾 Salva</button>':'')+'</div>');
@@ -813,7 +835,7 @@ function openSessionDetail(s){
 function openSessionModal(s={}){
   const isNew=!s.id;const ops=state.data.operatori.filter(o=>o.attivo!==false);const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));
   const sedeVal=s.sede||SEDI[0];
-  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullName(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(sedeVal===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((sedeVal==='Cesate'||sedeVal==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((sedeVal==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(sedeVal===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((sedeVal==='Cesate'||sedeVal==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((sedeVal==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
   function fillProj(){const uid_=$('#se-utente').value;const prs=state.data.progetti.filter(p=>!uid_||p.utenteId===uid_);$('#se-progetto').innerHTML='<option value="">— Nessuno —</option>'+prs.map(p=>'<option value="'+p.id+'" '+(s.progettoId===p.id?'selected':'')+'>'+esc(p.nome)+'</option>').join('');}
   fillProj();$('#se-utente').addEventListener('change',fillProj);
   $('#se-sede').addEventListener('change',e=>{const v=e.target.value;$('#se-aw').style.display=(v==='Cesate'||v==='Busto Arsizio')?'':'none';const al=$('#se-aula');const opts=v==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE;al.innerHTML='<option value="">—</option>'+opts.map(a=>'<option>'+a+'</option>').join('');});
@@ -835,9 +857,9 @@ function renderOperatori(){
 }
 function openOperatoreModal(o={}){
   const isNew=!o.id;const color=o.colore||OP_COLORS[state.data.operatori.length%OP_COLORS.length];
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
-  renderAvailEditor('oe-av',o.disponibilita||o.avail||{});
-  renderMonthlyAvail('oe-monthly',o,true);
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#oe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();});
+  renderMonthlyAvail('oe-monthly',o,true,'oe-av');
+  renderAvailEditor('oe-av',o.disponibilita||o.avail||{},()=>{const w=$('#oe-monthly');if(w&&w._refresh)w._refresh();});
   $('#oe-contratto').addEventListener('change',e=>{$('#oe-assunto-wrap').style.display=e.target.value==='Assunto'?'':'none';});
   $('#oe-tipo-contr').addEventListener('change',e=>{$('#oe-det-wrap').style.display=e.target.value==='Determinato'?'':'none';});
   buildCredUI('oe-cred',o.credenziali||[]);
@@ -883,7 +905,7 @@ function openUtenteModal(u={}){
   buildDocsUI('ue-docs',u.documenti||[]);
   $('#ue-save').addEventListener('click',async()=>{
     const nome=$('#ue-nome').value.trim(),cognome=$('#ue-cognome').value.trim();const ddnVal=$('#ue-ddn').value||'';
-    if(nome&&cognome&&ddnVal){const dup=state.data.utenti.find(x=>x.id!==u.id&&(x.nome||'').toLowerCase()===nome.toLowerCase()&&(x.cognome||'').toLowerCase()===cognome.toLowerCase()&&x.dataNascita&&x.dataNascita===ddnVal);if(dup){$('#ue-warn').innerHTML='<div class="banner warn">⚠️ Esiste già un utente con lo stesso nome, cognome e data di nascita: <strong>'+esc(fullName(dup))+'</strong></div>';return;}}
+    if(nome&&cognome&&ddnVal){const dup=state.data.utenti.find(x=>x.id!==u.id&&(x.nome||'').toLowerCase()===nome.toLowerCase()&&(x.cognome||'').toLowerCase()===cognome.toLowerCase()&&x.dataNascita&&x.dataNascita===ddnVal);if(dup){$('#ue-warn').innerHTML='<div class="banner warn">⚠️ Esiste già un utente con lo stesso nome, cognome e data di nascita: <strong>'+esc(fullNameCN(dup))+'</strong></div>';return;}}
     if(!nome||!cognome){$('#ue-warn').innerHTML='<div class="banner warn">Nome e cognome obbligatori.</div>';return;}
     const rec={...u,id:u.id||uid(),nome,cognome,refNome:$('#ue-ref-nome').value.trim(),refCognome:$('#ue-ref-cognome').value.trim(),dataNascita:ddnVal,telefono:$('#ue-tel').value.trim(),email:$('#ue-email').value.trim(),via:$('#ue-via').value.trim(),comune:$('#ue-comune').value.trim(),provincia:$('#ue-prov').value.trim().toUpperCase(),cap:$('#ue-cap').value.trim(),paese:$('#ue-paese').value,credenziali:$('#ue-cred')._getCreds?$('#ue-cred')._getCreds():(u.credenziali||[]),documenti:$('#ue-docs')._getDocs?$('#ue-docs')._getDocs():(u.documenti||[]),note:$('#ue-note').value.trim(),attivo:$('#ue-attivo').value==='1'};
     await withBusy(()=>saveRecord('utenti',rec),isNew?'Creato':'Aggiornato');closeModal();renderUtenti();
@@ -898,7 +920,7 @@ function openUtenteReadonly(u){
   const credHtml=credRows.length?('<div class="cred-section">'+credRows.map(c=>'<div class="cred-line" style="grid-template-columns:1fr 1fr 1fr 30px"><span>'+esc(c.piattaforma||'—')+'</span><span>'+esc(c.uid||'—')+'</span><span class="ro-pw" data-pw="'+esc(c.password||'')+'">••••••••</span><button type="button" class="eye-btn" title="Mostra/nascondi">👁</button></div>').join('')+'</div>'):'<p class="help">Nessuna credenziale registrata.</p>';
   const docRows=(u.documenti||[]).filter(d=>d.label||d.url);
   const docsHtml=docRows.length?docRows.map(d=>'<span class="doc-pill">'+esc(d.label||d.name||'Documento')+(d.url?' <a href="'+esc(d.url)+'" target="_blank" rel="noopener">Apri ↗</a>':'')+'</span>').join(''):'<p class="help">Nessun documento collegato.</p>';
-  openModal('<h3>👁 '+esc(fullName(u))+' — Anagrafica cliente (sola lettura)</h3><dl class="kv"><dt>Nome</dt><dd>'+esc(u.nome||'—')+'</dd><dt>Cognome</dt><dd>'+esc(u.cognome||'—')+'</dd><dt>Data di nascita</dt><dd>'+(u.dataNascita?fmtDate(u.dataNascita):'—')+'</dd><dt>Referente</dt><dd>'+esc(fullRef(u)||'—')+'</dd><dt>Telefono</dt><dd>'+esc(u.telefono||'—')+'</dd><dt>Email</dt><dd>'+esc(u.email||'—')+'</dd><dt>Indirizzo</dt><dd>'+esc(addrParts.join(', ')||'—')+'</dd><dt>Paese</dt><dd>'+esc(u.paese||'—')+'</dd></dl><div class="field"><label>🔑 Credenziali piattaforme</label>'+credHtml+'</div><div class="field"><label>📁 Documenti</label>'+docsHtml+'</div><div class="field"><label>Note</label><p style="white-space:pre-wrap;font-size:14px">'+esc(u.note||'—')+'</p></div><div class="modal-actions"><button class="btn ghost" data-close>Chiudi</button></div>');
+  openModal('<h3>👁 '+esc(fullNameCN(u))+' — Anagrafica cliente (sola lettura)</h3><dl class="kv"><dt>Nome</dt><dd>'+esc(u.nome||'—')+'</dd><dt>Cognome</dt><dd>'+esc(u.cognome||'—')+'</dd><dt>Data di nascita</dt><dd>'+(u.dataNascita?fmtDate(u.dataNascita):'—')+'</dd><dt>Referente</dt><dd>'+esc(fullRef(u)||'—')+'</dd><dt>Telefono</dt><dd>'+esc(u.telefono||'—')+'</dd><dt>Email</dt><dd>'+esc(u.email||'—')+'</dd><dt>Indirizzo</dt><dd>'+esc(addrParts.join(', ')||'—')+'</dd><dt>Paese</dt><dd>'+esc(u.paese||'—')+'</dd></dl><div class="field"><label>🔑 Credenziali piattaforme</label>'+credHtml+'</div><div class="field"><label>📁 Documenti</label>'+docsHtml+'</div><div class="field"><label>Note</label><p style="white-space:pre-wrap;font-size:14px">'+esc(u.note||'—')+'</p></div><div class="modal-actions"><button class="btn ghost" data-close>Chiudi</button></div>');
   $$('.eye-btn').forEach(btn=>btn.addEventListener('click',()=>{const span=btn.previousElementSibling;span.textContent=span.textContent==='••••••••'?(span.dataset.pw||'(vuota)'):'••••••••';}));
 }
 
@@ -945,9 +967,9 @@ function renderProgetti(){
 }
 function openProgettoModal(p={}){
   const isNew=!p.id;const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));const ops=sortN(state.data.operatori.filter(o=>o.attivo!==false));
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>');
-  renderAvailEditor('pe-av',p.disponibilita||p.avail||{});
-  renderMonthlyAvail('pe-monthly',p,false);
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();});
+  renderMonthlyAvail('pe-monthly',p,false,'pe-av');
+  renderAvailEditor('pe-av',p.disponibilita||p.avail||{},()=>{const w=$('#pe-monthly');if(w&&w._refresh)w._refresh();});
   const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
   const domWrap=$('#pe-domicilio-wrap');if(domWrap)$('#pe-sede').addEventListener('change',e=>{domWrap.style.display=(e.target.value==='Domicilio'||e.target.value==='Presenza+Domicilio')?'':'none';});
   /* Chip-based operator selection */
@@ -1007,21 +1029,28 @@ function openProgettoModal(p={}){
 /* ============================================================
    Calendario mensile giornaliero + Assenze operatore
    ============================================================ */
-function renderMonthlyAvail(containerId,entity,isOperator){
+function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
   const wrap=$('#'+containerId);if(!wrap)return;
   const eccezioni=entity.eccezioni||[];
+  // Fotografia dello stato all'apertura della scheda: l'Annulla la ripristina (anche su SharePoint se nel
+  // frattempo un salvataggio immediato — giorno singolo o "Applica a più giorni" — l'ha già persa).
+  const eccezioniSnapshot=JSON.parse(JSON.stringify(eccezioni));
+  let dirty=false;
   const now=new Date();let curY=now.getFullYear(),curM=now.getMonth()+1;
+  function getWeekly(){return weeklyContainerId?(readAvailEditor(weeklyContainerId)||{}):{};}
   async function persistEccezioni(msg){
     if(!entity.id)return; // scheda non ancora creata: resta solo in memoria fino al primo salvataggio
     entity.eccezioni=eccezioni;
+    dirty=true;
     await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),msg||'Disponibilità salvata');
   }
   function render(){
     const days=new Date(curY,curM,0).getDate();
     const firstDow=(new Date(curY,curM-1,1).getDay()+6)%7; // Mon=0
     const chiusure=(state.data.chiusure||[]);
+    const weekly=getWeekly();
     const meseLabel=MESI[curM-1]+' '+curY;
-    
+
     let h='<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><button class="btn ghost small mc-prev">◀</button><strong style="min-width:140px;text-align:center">'+meseLabel+'</strong><button class="btn ghost small mc-next">▶</button><button class="btn ghost small mc-bulk" style="margin-left:auto">🗓 Applica a più giorni</button></div>';
     h+='<div class="month-cal">';
     ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(d=>{h+='<div class="mc-hdr">'+d+'</div>';});
@@ -1029,6 +1058,8 @@ function renderMonthlyAvail(containerId,entity,isOperator){
     for(let d=1;d<=days;d++){
       const ds=curY+'-'+pad2(curM)+'-'+pad2(d);
       const exc=eccezioni.find(e=>e.data===ds);
+      const dow=(new Date(curY,curM-1,d).getDay()+6)%7;
+      const weeklySlots=weekly[GIORNI[dow]]||[];
       const isFest=chiusure.some(c=>c.data===ds&&c.tipo==='festivita');
       const isChiusura=chiusure.some(c=>c.data===ds&&c.tipo==='ferie');
       let cls='mc-day';
@@ -1038,15 +1069,17 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       else if(exc&&(exc.tipo==='ferie'))cls+=' mc-ferie';
       else if(exc&&exc.tipo&&exc.tipo.startsWith('permesso'))cls+=' mc-permesso';
       else if(exc&&exc.fasce)cls+=' mc-disp';
+      else if(weeklySlots.length)cls+=' mc-weekly';
       const excFascia=(exc&&exc.da&&exc.a)?(' '+exc.da+'-'+exc.a):'';
       let title=d+'';
       if(exc){if(exc.tipo==='malattia')title+='\n🏥 Malattia (giornata intera)';else if(exc.tipo==='ferie')title+='\n🏖 Ferie'+(excFascia||' (giornata intera)');else if(exc.tipo&&exc.tipo.startsWith('permesso'))title+='\n📝 Permesso'+(excFascia||' (giornata intera)');else if(exc.fasce)title+='\n✓ Disponibile';}
+      else if(weeklySlots.length)title+='\n🕒 Disponibilità settimanale ('+weeklySlots.map(s=>s.from+'–'+s.to).join(', ')+')';
       if(isFest)title+='\n🇮🇹 Festività';
       h+='<div class="'+cls+'" data-ds="'+ds+'" title="'+title+'">'+d+'</div>';
     }
     h+='</div>';
-    h+=(isOperator?'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità o assenze. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#E4F2E9;border:1px solid #2E7D4F"></span> Disponibile <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#BBDEFB;border:1px solid #64B5F6;margin-left:8px"></span> Malattia <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFE0B2;border:1px solid #FF9800;margin-left:8px"></span> Ferie <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFF9C4;border:1px solid #FDD835;margin-left:8px"></span> Permesso <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>':'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità specifiche. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>');
-    
+    h+=(isOperator?'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità o assenze. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#E4F2E9;border:1px solid #2E7D4F"></span> Disponibile <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F1F8F4;border:1px dashed #8FBFA3;margin-left:8px"></span> Settimanale <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#BBDEFB;border:1px solid #64B5F6;margin-left:8px"></span> Malattia <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFE0B2;border:1px solid #FF9800;margin-left:8px"></span> Ferie <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFF9C4;border:1px solid #FDD835;margin-left:8px"></span> Permesso <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>':'<p style="font-size:11px;color:var(--ink-soft);margin-top:8px">Clicca su un giorno per impostare disponibilità specifiche. <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F1F8F4;border:1px dashed #8FBFA3;margin-left:8px"></span> Settimanale <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFECB3;border:1px solid #FFB300;margin-left:8px"></span> Festività/Chiusura</p>');
+
     wrap.innerHTML=h;
     wrap.querySelector('.mc-prev').addEventListener('click',()=>{curM--;if(curM<1){curM=12;curY--;}render();});
     wrap.querySelector('.mc-next').addEventListener('click',()=>{curM++;if(curM>12){curM=1;curY++;}render();});
@@ -1054,11 +1087,14 @@ function renderMonthlyAvail(containerId,entity,isOperator){
     wrap.querySelectorAll('.mc-day:not(.mc-empty):not(.mc-festivita)').forEach(el=>el.addEventListener('click',()=>{
       const ds=el.dataset.ds;const existing=eccezioni.find(e=>e.data===ds);
       const dt=new Date(ds+'T00:00');const dlabel=fmtDate(ds);
+      const dowClick=(dt.getDay()+6)%7;
+      const weeklySlotNow=getWeekly()[GIORNI[dowClick]]||[];
       const tipoOptions=isOperator?'<option value="disponibile" '+((!existing||!existing.tipo||existing.tipo==='disponibile')?'selected':'')+'>✓ Disponibile</option><option value="malattia" '+((existing&&existing.tipo==='malattia')?'selected':'')+'>🏥 Malattia</option><option value="permesso_visita" '+((existing&&existing.tipo==='permesso_visita')?'selected':'')+'>📋 Permesso visita medica</option><option value="permesso_studio" '+((existing&&existing.tipo==='permesso_studio')?'selected':'')+'>📚 Permesso studio</option><option value="ferie" '+((existing&&existing.tipo==='ferie')?'selected':'')+'>🏖 Ferie</option>':'<option value="disponibile" selected>✓ Disponibile</option>';
       const tipoConFascia=existing&&(existing.tipo==='ferie'||existing.tipo==='permesso_visita'||existing.tipo==='permesso_studio');
       const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div id="mc-fascia-assenza-fields" style="'+(tipoConFascia?'':'display:none')+'"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mc-fascia-da" value="'+esc((existing&&existing.da)||'')+'"> → <input type="time" id="mc-fascia-a" value="'+esc((existing&&existing.a)||'')+'"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
       const closeDay=openModalStacked(mh);
-      const fasceDiv=$('#mc-fasce');const fasce=(existing&&existing.fasce)||[{from:"09:00",to:"13:00"}];
+      const fasceDiv=$('#mc-fasce');
+      const fasce=(existing&&existing.fasce)||(weeklySlotNow.length?JSON.parse(JSON.stringify(weeklySlotNow)):[{from:"09:00",to:"13:00"}]);
       function renderFasce(){fasceDiv.innerHTML=fasce.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mc-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mc-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mc-rm-f" data-fi="'+i+'">✕</button></div>').join('');
         fasceDiv.querySelectorAll('.mc-rm-f').forEach(b=>b.addEventListener('click',()=>{fasce.splice(parseInt(b.dataset.fi),1);renderFasce();}));
         fasceDiv.querySelectorAll('.avail-sede label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);}));
@@ -1101,7 +1137,7 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       '<div id="mcb-disp-fields"><div class="field"><label>Fasce orarie</label><div id="mcb-fasce"></div><button class="btn ghost small" id="mcb-add-fascia" style="margin-top:6px">+ Fascia</button></div></div>'+
       (isOperator?'<div id="mcb-malattia-fields" style="display:none"><div class="field"><label>Codice malattia</label><input id="mcb-codice-mal"></div></div><div id="mcb-fascia-assenza-fields" style="display:none"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mcb-fascia-da"> → <input type="time" id="mcb-fascia-a"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div>':'')+
       '<div id="mcb-warn"></div>'+
-      '<div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="mcb-apply">Applica</button></div>';
+      '<div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn danger-o" id="mcb-remove">🗑 Rimuovi impostazioni</button><button class="btn primary" id="mcb-apply">Applica</button></div>';
     const closeBulk=openModalStacked(bh);
     $$('#mcb-giorni input').forEach(cb=>cb.addEventListener('change',()=>{cb.closest('label').classList.toggle('on',cb.checked);}));
     const fasceBDiv=$('#mcb-fasce');const fasceB=[{from:"09:00",to:"13:00",sedi:["Cesate","Online"]}];
@@ -1112,11 +1148,28 @@ function renderMonthlyAvail(containerId,entity,isOperator){
     renderFasceB();
     $('#mcb-add-fascia').addEventListener('click',()=>{fasceB.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasceB();});
     if(isOperator)$('#mcb-tipo').addEventListener('change',()=>{const v=$('#mcb-tipo').value;$('#mcb-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mcb-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mcb-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
-    $('#mcb-apply').addEventListener('click',async()=>{
+    function computeBulkDates(){
       const da=$('#mcb-da').value,a=$('#mcb-a').value;
-      if(!da||!a||da>a){$('#mcb-warn').innerHTML='<div class="banner warn">Intervallo di date non valido.</div>';return;}
+      if(!da||!a||da>a)return{error:'Intervallo di date non valido.'};
       const selGiorni=Array.from($$('#mcb-giorni input:checked')).map(i=>parseInt(i.value));
-      if(!selGiorni.length){$('#mcb-warn').innerHTML='<div class="banner warn">Seleziona almeno un giorno della settimana.</div>';return;}
+      if(!selGiorni.length)return{error:'Seleziona almeno un giorno della settimana.'};
+      const chiusure=(state.data.chiusure||[]);
+      const dates=[];let cur=new Date(da+'T00:00');const end=new Date(a+'T00:00');
+      while(cur<=end){
+        const dow=(cur.getDay()+6)%7;
+        if(selGiorni.includes(dow)){
+          const ds=cur.getFullYear()+'-'+pad2(cur.getMonth()+1)+'-'+pad2(cur.getDate());
+          if(!chiusure.some(c=>c.data===ds&&(c.tipo==='festivita'||c.tipo==='ferie')))dates.push(ds);
+        }
+        cur.setDate(cur.getDate()+1);
+      }
+      if(!dates.length)return{error:'Nessun giorno valido nell\'intervallo selezionato (festività/chiusure del centro escluse).'};
+      return{dates};
+    }
+    $('#mcb-apply').addEventListener('click',async()=>{
+      const r=computeBulkDates();
+      if(r.error){$('#mcb-warn').innerHTML='<div class="banner warn">'+r.error+'</div>';return;}
+      const{dates}=r;
       const tipo=$('#mcb-tipo').value;
       const entryBase={tipo};
       if(tipo==='disponibile'){
@@ -1129,17 +1182,6 @@ function renderMonthlyAvail(containerId,entity,isOperator){
         if((fDa&&!fA)||(!fDa&&fA)){toast('Indica sia l\'ora di inizio che quella di fine della fascia, oppure lasciale entrambe vuote per l\'intera giornata.',true);return;}
         if(fDa&&fA){entryBase.da=fDa;entryBase.a=fA;}
       }
-      const chiusure=(state.data.chiusure||[]);
-      const dates=[];let cur=new Date(da+'T00:00');const end=new Date(a+'T00:00');
-      while(cur<=end){
-        const dow=(cur.getDay()+6)%7;
-        if(selGiorni.includes(dow)){
-          const ds=cur.getFullYear()+'-'+pad2(cur.getMonth()+1)+'-'+pad2(cur.getDate());
-          if(!chiusure.some(c=>c.data===ds&&(c.tipo==='festivita'||c.tipo==='ferie')))dates.push(ds);
-        }
-        cur.setDate(cur.getDate()+1);
-      }
-      if(!dates.length){$('#mcb-warn').innerHTML='<div class="banner warn">Nessun giorno valido nell\'intervallo selezionato (festività/chiusure del centro escluse).</div>';return;}
       const nEsistenti=dates.filter(ds=>eccezioni.some(e=>e.data===ds)).length;
       if(nEsistenti&&!confirm(nEsistenti+' giorno/i nell\'intervallo hanno già un\'eccezione impostata. Sovrascriverla?'))return;
       dates.forEach(ds=>{
@@ -1150,12 +1192,32 @@ function renderMonthlyAvail(containerId,entity,isOperator){
       await persistEccezioni(dates.length+' giorno/i aggiornati');
       closeBulk();render();
     });
+    $('#mcb-remove').addEventListener('click',async()=>{
+      const r=computeBulkDates();
+      if(r.error){$('#mcb-warn').innerHTML='<div class="banner warn">'+r.error+'</div>';return;}
+      const{dates}=r;
+      const nEsistenti=dates.filter(ds=>eccezioni.some(e=>e.data===ds)).length;
+      if(!nEsistenti){$('#mcb-warn').innerHTML='<div class="banner warn">Nessuna impostazione da rimuovere nell\'intervallo selezionato.</div>';return;}
+      if(!confirm('Verranno rimosse impostazioni da '+nEsistenti+' giorni: procedere?'))return;
+      dates.forEach(ds=>{const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);});
+      await persistEccezioni(nEsistenti+' giorno/i ripristinati');
+      closeBulk();render();
+    });
   }
   render();
   wrap._getExceptions=()=>eccezioni;
+  wrap._refresh=render;
+  wrap._restoreSnapshot=async()=>{
+    eccezioni.splice(0,eccezioni.length,...JSON.parse(JSON.stringify(eccezioniSnapshot)));
+    entity.eccezioni=eccezioni;
+    if(dirty&&entity.id){
+      dirty=false;
+      await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),'Modifiche annullate');
+    }
+  };
 }
 
-function renderAvailEditor(containerId,avail){
+function renderAvailEditor(containerId,avail,onChange){
   const box=$('#'+containerId);if(!box)return;
   box.innerHTML=GIORNI.map((g,i)=>{
     const key=avail[g]?g:(avail[i+1]?(i+1):g);const slots=avail[key]||[];
@@ -1166,12 +1228,14 @@ function renderAvailEditor(containerId,avail){
     const idx=slotsDiv.querySelectorAll('.avail-slot').length;
     const el=document.createElement('div');el.className='avail-slot';
     el.innerHTML='<input type="time" value="09:00" data-f="'+idx+'"> → <input type="time" value="13:00" data-t="'+idx+'"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label data-s="'+s+'"><input type="checkbox" value="'+s+'" style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn" data-rm="'+idx+'">✕</button>';
-    el.querySelector('[data-rm]').addEventListener('click',()=>el.remove());
-    el.querySelectorAll('.avail-sede label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);}));
+    el.querySelector('[data-rm]').addEventListener('click',()=>{el.remove();onChange&&onChange();});
+    el.querySelectorAll('.avail-sede label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);onChange&&onChange();}));
     slotsDiv.insertBefore(el,btn);
+    onChange&&onChange();
   }));
-  box.querySelectorAll('[data-rm]').forEach(btn=>btn.addEventListener('click',()=>btn.closest('.avail-slot').remove()));
-  box.querySelectorAll('.avail-sede label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);}));
+  box.querySelectorAll('[data-rm]').forEach(btn=>btn.addEventListener('click',()=>{btn.closest('.avail-slot').remove();onChange&&onChange();}));
+  box.querySelectorAll('.avail-sede label').forEach(lb=>lb.addEventListener('click',()=>{const cb=lb.querySelector('input');cb.checked=!cb.checked;lb.classList.toggle('on',cb.checked);onChange&&onChange();}));
+  if(onChange)box.addEventListener('input',onChange);
 }
 function readAvailEditor(containerId){
   const box=$('#'+containerId);if(!box)return{};const result={};
@@ -1222,8 +1286,9 @@ async function saveDisponibilita(){
    ============================================================ */
 function refreshGenSel(){
   const sel=$('#gen-proj-sel');if(!sel)return;
-  const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
-  sel.innerHTML=att.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullName(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
+  const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo')
+    .sort((a,b)=>((utById(a.utenteId)?.cognome||'')+(utById(a.utenteId)?.nome||'')).localeCompare((utById(b.utenteId)?.cognome||'')+(utById(b.utenteId)?.nome||''),'it'));
+  sel.innerHTML=att.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullNameCN(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
 }
 function sdComp(sede,sedi){if(sede==='Online')return(sedi||[]).includes('Online');if(sede==='Presenza+Online'||sede==='Presenza+Domicilio')return true;return(sedi||[]).includes(sede);}
 
@@ -1321,7 +1386,7 @@ function costruisciReportGenerazione(ms,target,riepiloghi,mosseRiparazione,sugge
   riepiloghi.forEach(r=>{
     const p=prById(r.progettoId);if(!p)return;
     const uId=p.utenteId;
-    if(!perUtente[uId])perUtente[uId]={utenteId:uId,nome:(utById(uId)?fullName(utById(uId)):'?'),progetti:{}};
+    if(!perUtente[uId])perUtente[uId]={utenteId:uId,nome:(utById(uId)?fullNameCN(utById(uId)):'?'),progetti:{}};
     if(!perUtente[uId].progetti[p.id])perUtente[uId].progetti[p.id]={progettoId:p.id,nome:p.nome,settimane:[]};
     const causeLbl=[];
     if(r.piazzate<r.richieste){
@@ -1332,7 +1397,7 @@ function costruisciReportGenerazione(ms,target,riepiloghi,mosseRiparazione,sugge
     }
     perUtente[uId].progetti[p.id].settimane.push({settimana:r.wk,richieste:r.richieste,piazzate:r.piazzate,causa:r.piazzate<r.richieste?causeLbl.join('; '):null,giorniNoUtente:r.giorniNoUtente,diagNoUtente:r.diagNoUtente,diagAulaPiena:r.diagAulaPiena,diagNessunOperatore:r.diagNessunOperatore});
   });
-  const utenti=Object.values(perUtente).map(u=>({...u,progetti:Object.values(u.progetti)})).filter(u=>u.progetti.some(p=>p.settimane.some(s=>s.causa)));
+  const utenti=Object.values(perUtente).map(u=>({...u,progetti:Object.values(u.progetti)})).filter(u=>u.progetti.some(p=>p.settimane.some(s=>s.causa))).sort((a,b)=>a.nome.localeCompare(b.nome,'it'));
   const suggerimentiRichieste=[];
   utenti.forEach(u=>u.progetti.forEach(p=>p.settimane.forEach(s=>{
     if(!s.causa)return;
@@ -1422,7 +1487,7 @@ async function generateMonth(ms,spid,nameFilter){
   for(const p of target){
     const freq=p.frequenza||0;if(!freq)continue;
     const maxDay=p.maxSessioniGiorno||1;
-    const u=utById(p.utenteId);const lbl=(u?fullName(u):'?')+' — '+p.nome;
+    const u=utById(p.utenteId);const lbl=(u?fullNameCN(u):'?')+' — '+p.nome;
     const pool=(p.operatoriAmmessi||[]).map(id=>opById(id)).filter(Boolean);
     if(!pool.length){anom.push({lbl,msg:'Nessun operatore assegnato.'});riepiloghi.push({progettoId:p.id,wk:1,richieste:freq,piazzate:0,diagNoUtente:0,diagAulaPiena:0,diagNessunOperatore:1,giorniNoUtente:[]});continue;}
     const allPU=state.data.progetti.filter(x=>x.utenteId===p.utenteId).map(x=>x.id);
@@ -1501,7 +1566,7 @@ async function generateMonth(ms,spid,nameFilter){
               // Contract hour check for Assunti
               if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
                 const wkMin=minutiSettimana(chosen,ds,opB,Y,M)+(p.durataSessione||60);
-                if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullName(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+                if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullNameCN(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
               }
               const sed=chosenSed;
               const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
@@ -1648,8 +1713,8 @@ async function generateMonth(ms,spid,nameFilter){
               if(!movibile){
                 const blUt=utById(blocco.utenteId),blPr=prById(blocco.progettoId);
                 let destTxt='';
-                if(blocco.stato==='proposta'){const alt=trovaAlternativaBlocker(blocco);if(alt)destTxt=', spostando la sua proposta di '+(blUt?fullName(blUt):'?')+' al '+dname(new Date(alt.ds+'T00:00'))+' '+mtime(alt.st);}
-                suggerimentiFuoriAmbito.push('Le sessioni di '+(u?fullName(u):'?')+' ('+p.nome+') entrerebbero '+fmtDate(ds)+' '+mtime(st)+destTxt+' — ma la sessione che occupa quello slot ('+(blUt?fullName(blUt):'?')+', '+(blPr?blPr.nome:'?')+', '+blocco.stato+(scopeIds.has(blocco.progettoId)?'':' fuori ambito')+') non è modificabile in questo run.');
+                if(blocco.stato==='proposta'){const alt=trovaAlternativaBlocker(blocco);if(alt)destTxt=', spostando la sua proposta di '+(blUt?fullNameCN(blUt):'?')+' al '+dname(new Date(alt.ds+'T00:00'))+' '+mtime(alt.st);}
+                suggerimentiFuoriAmbito.push('Le sessioni di '+(u?fullNameCN(u):'?')+' ('+p.nome+') entrerebbero '+fmtDate(ds)+' '+mtime(st)+destTxt+' — ma la sessione che occupa quello slot ('+(blUt?fullNameCN(blUt):'?')+', '+(blPr?blPr.nome:'?')+', '+blocco.stato+(scopeIds.has(blocco.progettoId)?'':' fuori ambito')+') non è modificabile in questo run.');
                 continue;
               }
               const alt=trovaAlternativaBlocker(blocco);
@@ -1661,7 +1726,7 @@ async function generateMonth(ms,spid,nameFilter){
               registraOccupazione(blocco,alt.st,alt.en);
               const nuova=creaSessioneRiparata(p,ds,st,en,op,sed,aulaLibera);
               newS.push(nuova);registraOccupazione(nuova,st,en);
-              mosseRiparazione.push({utente:(blUt?fullName(blUt):'?'),progetto:blPr?blPr.nome:'?',da:fmtDate(vecchiaData)+' '+vecchioOrario,a:fmtDate(alt.ds)+' '+mtime(alt.st),motivo:'liberato slot per '+(u?fullName(u):'?')+' ('+p.nome+')'});
+              mosseRiparazione.push({utente:(blUt?fullNameCN(blUt):'?'),progetto:blPr?blPr.nome:'?',da:fmtDate(vecchiaData)+' '+vecchioOrario,a:fmtDate(alt.ds)+' '+mtime(alt.st),motivo:'liberato slot per '+(u?fullNameCN(u):'?')+' ('+p.nome+')'});
               missing--;mosseTentate++;
             }
           }
@@ -1840,7 +1905,7 @@ function calcStraordinari(opId,mese){
 /* ============================================================
    Invio comunicazioni
    ============================================================ */
-function refreshSendSel(){const sel=$('#send-ut');if(!sel)return;sel.innerHTML=sortN(state.data.utenti).map(u=>'<option value="'+u.id+'">'+esc(fullName(u))+'</option>').join('')||'<option value="">—</option>';}
+function refreshSendSel(){const sel=$('#send-ut');if(!sel)return;sel.innerHTML=sortN(state.data.utenti).map(u=>'<option value="'+u.id+'">'+esc(fullNameCN(u))+'</option>').join('')||'<option value="">—</option>';}
 function mkWeekMsg(uid_){
   const u=utById(uid_);if(!u)return'';
   const now=new Date();const mon=new Date(now);mon.setDate(now.getDate()+((8-now.getDay())%7||7));const sun=new Date(mon);sun.setDate(mon.getDate()+6);
@@ -1856,7 +1921,7 @@ function mkWeekMsg(uid_){
    Assistente AI
    ============================================================ */
 let chatH=[];
-function bCtx(){return"Sei l'assistente interno del Centro Sviluppo Cognitivo, cooperativa sociale (training cognitivo: Feuerstein, BrainRx, ecc.) con sedi a Cesate, Busto Arsizio e online. Aiuti l'addetta amministrativa.\n\nDATI: Operatori ("+state.data.operatori.length+"): "+sortN(state.data.operatori).map(o=>fullName(o)).join(', ')+"\nUtenti ("+state.data.utenti.length+"): "+sortN(state.data.utenti).map(u=>fullName(u)).join(', ')+"\nProgetti attivi: "+state.data.progetti.filter(p=>(p.stato||'attivo')==='attivo').length+"\n\nRispondi in italiano, in modo conciso e pratico.";}
+function bCtx(){return"Sei l'assistente interno del Centro Sviluppo Cognitivo, cooperativa sociale (training cognitivo: Feuerstein, BrainRx, ecc.) con sedi a Cesate, Busto Arsizio e online. Aiuti l'addetta amministrativa.\n\nDATI: Operatori ("+state.data.operatori.length+"): "+sortN(state.data.operatori).map(o=>fullName(o)).join(', ')+"\nUtenti ("+state.data.utenti.length+"): "+sortN(state.data.utenti).map(u=>fullNameCN(u)).join(', ')+"\nProgetti attivi: "+state.data.progetti.filter(p=>(p.stato||'attivo')==='attivo').length+"\n\nRispondi in italiano, in modo conciso e pratico.";}
 function rChat(){const w=$('#chat-win');w.innerHTML=chatH.map(m=>'<div class="msg '+m.role+'">'+esc(m.content)+'</div>').join('');w.scrollTop=w.scrollHeight;}
 async function sendChat(){
   const inp=$('#chat-in');const txt=inp.value.trim();if(!txt)return;inp.value='';
@@ -1936,9 +2001,14 @@ function buildCredUI(containerId, credList){
 /* ============================================================
    Modal, feedback, init
    ============================================================ */
-function openModal(html){closeModal();const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModal));$('#modal-root').appendChild(wrap);document.addEventListener('keydown',escClose);}
-function closeModal(){$('#modal-root').innerHTML='';document.removeEventListener('keydown',escClose);}
-function escClose(e){if(e.key==='Escape')closeModal();}
+let currentModalCancel=null;
+/* onCancel (opzionale): invocato (atteso) prima della chiusura quando la modale viene abbandonata tramite
+   backdrop/Esc/pulsante [data-close] — es. per ripristinare uno snapshot su annullamento. closeModal()
+   chiamata direttamente (es. dopo un salvataggio riuscito) NON lo invoca mai. */
+function openModal(html,onCancel){closeModal();currentModalCancel=onCancel||null;const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModalWithCancel();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModalWithCancel));$('#modal-root').appendChild(wrap);document.addEventListener('keydown',escClose);}
+function closeModal(){$('#modal-root').innerHTML='';document.removeEventListener('keydown',escClose);currentModalCancel=null;}
+async function closeModalWithCancel(){const fn=currentModalCancel;currentModalCancel=null;if(fn){try{await fn();}catch(e){console.error(e);}}closeModal();}
+function escClose(e){if(e.key==='Escape')closeModalWithCancel();}
 /* Modale "impilata": si apre sopra una scheda già aperta senza distruggerla, e si chiude senza chiudere quella sottostante (usata per i popup giorno del calendario disponibilità/assenze) */
 function openModalStacked(html){
   document.removeEventListener('keydown',escClose); // sospende l'Esc della scheda sottostante finché il popup impilato è aperto
