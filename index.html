@@ -1970,7 +1970,14 @@ async function afterLogin(account){
 
 async function init(){
   try{if(window.location.protocol==='file:'){showScreen('screen-login');const err=$('#login-err');err.textContent='Apri dal sito pubblicato (https://…), non come file locale.';err.classList.remove('hidden');return;}
-  const account=await initMsal();if(account)await afterLogin(account);else showScreen('screen-login');
+  const account=await initMsal();
+  if(!account){showScreen('screen-login');return;}
+  // Account MSAL in cache: verifica in silenzio che la sessione sia ancora valida PRIMA di toccare SharePoint/Graph.
+  // Se il rinnovo silenzioso fallisce (token/refresh scaduto, consenso mancante, ecc.) mostriamo la schermata di
+  // login pulita senza errori, invece di far proseguire resolveSite() e mascherare il vero problema come "liste non trovate".
+  try{await msalApp.acquireTokenSilent({scopes:SCOPES,account});}
+  catch(e){console.warn('Sessione MSAL in cache non valida, richiesto nuovo login:',e);showScreen('screen-login');return;}
+  await afterLogin(account);
   }catch(e){console.error(e);showScreen('screen-login');const err=$('#login-err');err.textContent='Errore: '+e.message;err.classList.remove('hidden');}
 }
 
