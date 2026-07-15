@@ -149,7 +149,7 @@ Tre nuove funzionalità richieste. Data: 2026-07-13.
 - **Esito sessione** (b): in `openSessionDetail`, quando la sessione è modificabile da chi la sta visualizzando (`canEdit`, vedi sotto), compare un nuovo campo "Esito sessione" con select limitata a **eseguita / annullata / assenza ingiustificata** (le uniche 3 richieste — non "proposta"/"confermata", che restano gestibili solo dall'Admin tramite "Modifica"). Il salvataggio (bottone unico "💾 Salva") aggiorna sia `noteOperatore` sia, se selezionato un valore, `stato`.
 - **Permessi**: `canEdit = isAdmin || (Operatore && sessione assegnata a me)`. Se `canEdit` è falso, il campo Esito non viene nemmeno generato, la nota diventa `readonly` e il bottone Salva non viene creato. In pratica, dato che un Operatore vede solo le proprie sessioni (`sessioniVisibili()`), questa condizione è sempre vera per ciò che l'operatore può effettivamente apire — il controllo è comunque implementato esplicitamente (non per accidente del filtro a monte) per rispondere esattamente al requisito "solo delle proprie sessioni".
 - **Logica monte ore** (già corretta, verificata): `oreErog(pid)` conta le ore di `eseguita` **e** `assenza ingiustificata`, esclude `annullata` — esattamente la regola richiesta. Non ho dovuto modificare questa funzione. Ho verificato tutti i suoi punti di utilizzo (elenco progetti, filtro progetti da calendarizzare in `generateMonth` e `generateMonthAI`): tutti ereditano automaticamente la logica corretta.
-- **Correzioni di coerenza collegate** (perché una `assenza ingiustificata` è un fatto storico "consumato" al pari di `eseguita`, non una proposta da rigenerare): 
+- **Correzioni di coerenza collegate** (perché una `assenza ingiustificata` è un fatto storico "consumato" al pari di `eseguita`, non una proposta da rigenerare):
   - `generateMonth`/`generateMonthAI`: le sessioni del mese da **conservare** (non rigenerare) ora includono anche quelle con stato `assenza ingiustificata`, non solo `eseguita` (prima sarebbero state cancellate e potenzialmente ri-schedulate a ogni rigenerazione del mese, nonostante contassero già nel monte ore).
   - `generateMonthAI`: le sessioni "già eseguite (non modificare)" indicate all'IA includono ora anche quelle in `assenza ingiustificata`.
   - "🗑 Svuota proposte del mese": non elimina più le sessioni in `assenza ingiustificata` insieme alle proposte (prima veniva eliminato tutto ciò che non era `eseguita`).
@@ -366,3 +366,105 @@ Il monte ore settimanale contrattuale degli Assunti è, per scelta di design pre
 - Nessuna Passata 3 per `generateMonthAI` (solo report, senza riparazione automatica).
 - La causa "limite contrattuale" non si attiva mai nella pratica attuale (limite morbido preesistente, non toccato).
 - Non è stato possibile eseguire l'app dal vivo in questo ambiente: l'esempio sopra è stato verificato "a mano" ripercorrendo il codice nuovo riga per riga con valori concreti, non eseguendo realmente `generateMonth`. Raccomando un test manuale in staging con un caso reale di carenza multi-progetto prima di considerare la Passata 3 definitivamente validata, in particolare l'euristica di compattezza e il limite di 40 mosse su mesi con molte carenze contemporanee.
+
+---
+
+# Verifica — Ciclo di 4 fix UX + aggiornamenti documentali
+
+Quattro fix UX su `index.html` più aggiornamenti a `CLAUDE.md`/`CONTESTO.md`. Data: 2026-07-15.
+
+## 1 — Annulla completo nella scheda disponibilità
+
+**Cosa è stato fatto**: ho riletto per intero il meccanismo di snapshot/ripristino in `renderMonthlyAvail` (`eccezioniSnapshot`, `persistEccezioni`, `wrap._restoreSnapshot`) e i due percorsi segnalati come non annullabili (click sul giorno, "Applica a più giorni"). **Per lettura statica del codice, il meccanismo di ripristino risultava già logicamente corretto**: lo snapshot viene catturato una sola volta all'apertura, non viene mai riassegnato dai salvataggi intermedi, ed entrambi i percorsi (click-giorno e bulk) scrivono sullo stesso array `eccezioni` che l'Annulla ripristina e ri-salva su SharePoint se il contenuto risulta cambiato. Non sono quindi riuscito a individuare, per sola lettura, la riga esatta che causa il comportamento segnalato da Simone nei test manuali — non avendo un ambiente per eseguire l'app dal vivo (richiede login Microsoft 365 su dominio registrato) né un motore JavaScript locale.
+
+Ho comunque trovato e corretto un **difetto reale e concreto** nello strato di persistenza, che è un candidato diretto alla causa del bug e in ogni caso va corretto:
+- **`saveRecord`**: dopo ogni `PATCH` riuscito, sostituiva l'oggetto nell'array (`arr[i]=updated`) invece di aggiornarlo sul posto. Questo **rompe l'identità dell'oggetto**: chiunque tenga un riferimento allo stesso record (come `entity` nella scheda modale aperta) smette di essere lo stesso oggetto di `state.data.operatori[i]`/`state.data.progetti[i]` dopo il primo salvataggio intermedio (click-giorno o bulk). Corretto: ora l'oggetto esistente viene aggiornato sul posto (`Object.assign` + rimozione dei campi non più presenti), preservando l'identità del riferimento per tutta la vita della scheda.
+- **`renderMonthlyAvail`**: sostituito il flag booleano `dirty` (impostato manualmente a ogni salvataggio intermedio) con un **confronto di contenuto** (`JSON.stringify` tra lo stato corrente e lo snapshot) al momento dell'Annulla: il ripristino su SharePoint scatta ora ogni volta che il contenuto risulta effettivamente diverso dall'apertura, indipendentemente da quale codice l'abbia modificato — più robusto della dipendenza da un flag impostato a mano, e coerente con l'ipotesi di causa indicata nella richiesta ("eccezioniSnapshot perso dai salvataggi intermedi").
+
+| Parte | Stato |
+|---|---|
+| `saveRecord` (identità dell'oggetto preservata) | ✅ Fatto — difetto reale trovato e corretto |
+| `renderMonthlyAvail._restoreSnapshot` (rilevamento robusto delle modifiche) | ✅ Fatto — confronto di contenuto invece del flag `dirty` |
+| Copertura di click-giorno e "Applica a più giorni" | ✅ Entrambi i percorsi scrivono sullo stesso array `eccezioni`, coperti dallo stesso ripristino |
+| Riproduzione del bug originale | ⚠️ Non riprodotta dal vivo — vedi limiti sotto |
+
+**⚠️ Da verificare manualmente da Simone prima di considerare il punto chiuso**: inserire un'eccezione col click su un giorno, poi con "Applica a più giorni", cliccare Annulla sulla scheda operatore/progetto, ricaricare la pagina e controllare che entrambe le modifiche siano sparite sia dal calendario sia (se verificabile) da SharePoint.
+
+## 2 — Protezione modifiche non salvate nelle schede
+
+**Cosa è stato fatto**: aggiunto un meccanismo generico di "dirty check" alle funzioni `openModal`/`openModalStacked` (nuovi parametri opzionali `isDirty`, `onSaveTrigger`, oltre al già esistente `onCancel`). Quando la scheda viene abbandonata (click fuori/backdrop, Esc, o pulsante di chiusura) e `isDirty()` risulta vero, compare un dialogo (`confirmUnsavedChanges()`) con tre scelte: **Salva ed esci** (simula il click sul pulsante di salvataggio della scheda), **Esci senza salvare** (procede con la chiusura/ripristino come prima), **Continua a modificare** (annulla la chiusura, compreso qualunque click fuori/Esc accidentale).
+
+Applicato a tutte e 5 le schede richieste:
+- **Operatori** (`openOperatoreModal`): confronta tutti i campi del form (nome, cognome, contatti, sedi, contratto, tempi di viaggio, ruolo, colore, stato, disponibilità settimanale, formazione, credenziali, note) — **esclude** le eccezioni giornaliere, perché quelle sono già salvate immediatamente a ogni click-giorno/bulk e già coperte dal ripristino del punto 1 (altrimenti l'avviso scatterebbe due volte per lo stesso cambiamento).
+- **Utenti** (`openUtenteModal`): tutti i campi anagrafici, referente, contatti, indirizzo, paese, credenziali, documenti, note, stato.
+- **Progetti** (`openProgettoModal`): tutti i campi (utente, nome, descrizione, monte ore, frequenza, durata, sede, domicilio, operatori ammessi, operatore fisso, metodi assegnati, tipi di sessione, disponibilità) — stessa esclusione delle eccezioni giornaliere per lo stesso motivo.
+- **Sessioni** (`openSessionModal`): data, orari, utente, progetto, operatore, sede, aula, stato, note.
+- **Disponibilità**: il popup del **click sul giorno** e quello di **"Applica a più giorni"** (dentro `renderMonthlyAvail`, aperti con `openModalStacked`) hanno ciascuno il proprio dirty-check sui campi del form (tipo, fasce orarie con sede, codice malattia, fascia oraria assenza) — coerente con la richiesta di applicare la protezione anche alla scheda disponibilità.
+
+**Effetto collaterale corretto in corsa d'opera**: con la protezione aggiunta, una scheda può ora restare aperta sopra un popup impilato (disponibilità) e a sua volta sopra il dialogo di conferma — tre livelli di modale annidati. Il vecchio meccanismo Esc (un solo `addEventListener('keydown', escClose)` sospeso "a mano" tra i due livelli) avrebbe fatto reagire **più listener contemporaneamente** allo stesso tasto Esc col terzo livello. Ho quindi introdotto uno **stack di gestori Escape** (`pushEsc`/`popEsc`, in cima allo stack un solo listener alla volta) che sostituisce la sospensione manuale precedente, garantendo che Esc chiuda sempre e solo il livello più in alto.
+
+| Parte | Stato |
+|---|---|
+| Operatori | ✅ Fatto |
+| Utenti | ✅ Fatto |
+| Progetti | ✅ Fatto |
+| Sessioni | ✅ Fatto |
+| Disponibilità (popup giorno + "Applica a più giorni") | ✅ Fatto |
+| Dialogo a 3 scelte (Salva ed esci / Esci senza salvare / Continua) | ✅ Fatto (`confirmUnsavedChanges`) |
+| Gestione Esc su modali annidate (scheda → popup → conferma) | ✅ Fatto (`pushEsc`/`popEsc`) |
+
+**Non toccato, fuori dai 5 punti richiesti**: le modali minori "Durate" (Impostazioni) e "Nuova chiusura" (Chiusure) non hanno il dirty-check (non erano nell'elenco delle 5 schede indicate); usano ancora `onclick="closeModal()"` diretto, senza passare da `closeModalWithCancel`.
+
+## 3 — Numerazione elenchi nelle Impostazioni
+
+**Cosa è stato fatto**: nella scheda Impostazioni, aggiunto il numero progressivo (`i+1`) davanti al nome di ogni voce delle liste "Formazioni operatori" (`renderImpostazioni`, blocco `#imp-formazioni`) e "Metodi/progetti" (blocco `#imp-metodi`). Solo visualizzazione: nessuna modifica al formato dei dati salvati (`state.data.impostazioni.formazioni`/`.metodi` restano semplici array, la numerazione è calcolata dall'indice a ogni render).
+
+| Parte | Stato |
+|---|---|
+| Formazioni operatori | ✅ Fatto |
+| Metodi/progetti | ✅ Fatto |
+| Formato dati invariato | ✅ Verificato — solo stringa `(i+1)+'. '` anteposta al nome nel template |
+
+## 4 — Nuovo marchio nell'header
+
+**Cosa è stato fatto**: chiesto chiarimento a Simone perché il markup dei "due pallini" (classe `.brandmark`, due `<span>`) è condiviso da 3 punti identici nel file: header dell'app, schermata di login, schermata di accesso negato. Simone ha scelto di sostituire ovunque per coerenza visiva. Sostituito il contenuto di `.brandmark` con l'SVG fornito, **esattamente come dato** (stesse coordinate/colori, nessuna reinterpretazione), nei 3 punti. CSS aggiornato: rimosse le regole per i vecchi `<span>` posizionati in assoluto, l'SVG scala tramite `width:100%;height:auto` dentro un contenitore `.brandmark` dimensionato in larghezza (56px nelle schermate di login/accesso negato, 34px nell'header — proporzioni coerenti con le dimensioni preesistenti). Rimosso `aria-hidden="true"` dal contenitore (l'SVG ha ora un proprio `role="img" aria-label="Logo Sviluppo Cognitivo")`, altrimenti l'etichetta accessibile sarebbe stata soppressa dall'antenato `aria-hidden`.
+
+| Parte | Stato |
+|---|---|
+| SVG esatto fornito, colori/coordinate invariati | ✅ Fatto (verificato carattere per carattere contro il testo della richiesta) |
+| Header app | ✅ Fatto |
+| Schermata di login | ✅ Fatto (scelta di Simone, non era nella lettera del punto 4) |
+| Schermata di accesso negato | ✅ Fatto (idem) |
+| Dimensioni coerenti con l'header esistente | ✅ Fatto — contenitore ridimensionato, SVG scala proporzionalmente |
+
+## 5 — Aggiornamenti documentali
+
+**Cosa è stato fatto**:
+- **CLAUDE.md**: aggiunta la sezione "Regole UX" con la regola del dialogo a 3 scelte per le modifiche non salvate (punto 2), e la sezione "Regole di business pianificate (non ancora implementate)" con la specifica completa della pausa pranzo fornita nella richiesta (finestra 12:00–14:30, pausa implicita se si inizia alle 13:30 o dopo / si finisce entro le 13:30, viaggio casa→sede che deve concludersi entro le 14:30 insieme alla pausa, possibilità per la Passata 2 di usare online-in-sede per far quadrare la pausa, suggerimenti nel report mai automatici). Aggiornato anche il punto 7 dell'architettura per menzionare i nuovi parametri di `openModal`/`openModalStacked` e lo stack Escape.
+- **CONTESTO.md**: aggiunta al backlog (sezione 6, voce 13) "Calendari famiglie via inviti Outlook/Graph (opzione C scelta): eventi calendario M365 con la famiglia invitata, aggiornamenti in tempo reale, solo sessioni confermate, attenzione alle rigenerazioni" — rinumerata di conseguenza la lista "Strumenti" sottostante (14→18).
+
+| Parte | Stato |
+|---|---|
+| CLAUDE.md — regola UX modifiche non salvate | ✅ Fatto |
+| CLAUDE.md — regola business pausa pranzo (pianificata) | ✅ Fatto |
+| CONTESTO.md — nuova voce di backlog | ✅ Fatto |
+
+---
+
+## Verifica automatica finale (i 4 punti + documentazione)
+
+| Punto | Codice | Verificato dal vivo | Esito |
+|---|---|---|---|
+| 1. Annulla disponibilità | ✅ Difetto reale corretto (`saveRecord`) + ripristino reso più robusto (confronto di contenuto) | ⚠️ No — richiede test manuale in staging | **Da confermare da Simone** (vedi nota sopra) |
+| 2. Modifiche non salvate | ✅ Applicato a operatori/utenti/progetti/sessioni/disponibilità + fix Esc annidato | ⚠️ No | **Completo per il codice**, da provare a video |
+| 3. Numerazione Impostazioni | ✅ Fatto | ⚠️ No | **Completo** |
+| 4. Nuovo logo header | ✅ Fatto (3 punti, per scelta di Simone) | ⚠️ No | **Completo** |
+| 5. Documentazione | ✅ Fatto | n/a | **Completo** |
+
+**Cosa manca / attenzione**:
+- **Punto 1 è l'unico non chiuso con certezza**: ho corretto un difetto reale nello strato di persistenza (`saveRecord`) e reso il ripristino più robusto, ma non ho potuto riprodurre dal vivo il comportamento segnalato da Simone né confermare che fosse esattamente questa la causa. **Raccomando fortemente** di ripetere il test manuale descritto sopra prima di considerare il punto chiuso.
+- Il dirty-check del punto 2 non copre le modali minori "Durate" (Impostazioni) e "Nuova chiusura" (Chiusure), non incluse nell'elenco delle 5 schede richieste.
+- La pausa pranzo è **solo documentata** in CLAUDE.md come specifica per il prossimo ciclo: nessuna riga di `generateMonth`/`generateMonthAI`/Passata 2 è stata toccata in questo ciclo, come richiesto.
+
+## Limiti di questa verifica
+Come per tutte le verifiche precedenti: analisi per lettura statica del codice, verifica di bilanciamento sintattico (parentesi graffe/tonde) sull'intero file prima e dopo le modifiche, nessuna esecuzione dal vivo dell'app (richiede login Microsoft 365 su dominio registrato, non disponibile in questo ambiente) né un motore JavaScript locale per test automatizzati. In particolare il punto 1 (Annulla disponibilità) andrebbe verificato manualmente con priorità, essendo l'unico dei 4 punti per cui non è stato possibile confermare con certezza la causa esatta del comportamento segnalato.

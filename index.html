@@ -35,10 +35,8 @@ select[multiple]{height:110px}
 .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
   background:radial-gradient(circle at 15% 20%,rgba(21,180,183,.10) 0,transparent 40%),radial-gradient(circle at 85% 80%,rgba(232,161,61,.10) 0,transparent 45%),var(--bg)}
 .gate-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:40px 36px;max-width:420px;width:100%;text-align:center}
-.brandmark{width:56px;height:40px;position:relative;margin:0 auto 16px}
-.brandmark span{position:absolute;top:0;width:40px;height:40px;border-radius:50%}
-.brandmark span:first-child{left:0;background:var(--navy)}
-.brandmark span:last-child{right:0;background:var(--accent);opacity:.85;mix-blend-mode:multiply}
+.brandmark{width:56px;margin:0 auto 16px}
+.brandmark svg{width:100%;height:auto;display:block}
 .gate-card h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
 .gate-card .sub{color:var(--ink-soft);font-size:14px;margin-bottom:24px}
 .btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;transition:background .15s}
@@ -58,7 +56,7 @@ select[multiple]{height:110px}
 header.topbar{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:40}
 .topbar-inner{max-width:1260px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;font-size:15px}
-.brand .brandmark{width:34px;height:24px;margin:0} .brand .brandmark span{width:24px;height:24px}
+.brand .brandmark{width:34px;margin:0}
 nav.tabs{display:flex;gap:2px;flex-wrap:wrap}
 nav.tabs button{background:transparent;border:none;border-radius:8px;padding:8px 13px;font-size:14px;font-weight:600;color:var(--ink-soft)}
 nav.tabs button:hover{background:var(--bg)}
@@ -213,7 +211,18 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 </div>
 <div id="screen-login" class="gate hidden">
   <div class="gate-card">
-    <div class="brandmark" aria-hidden="true"><span></span><span></span></div>
+    <div class="brandmark"><svg width="42" height="28" viewBox="0 0 42 28"
+role="img" aria-label="Logo Sviluppo Cognitivo">
+<circle cx="27" cy="14" r="12" fill="#10b3b8"/>
+<circle cx="15" cy="13" r="12" fill="#34388f"/>
+<path d="M12 6.5 L12.9 8.5 L15 8.7 L13.4 10.1
+L13.9 12.2 L12 11.1 L10.1 12.2 L10.6 10.1
+L9 8.7 L11.1 8.5 Z" fill="#f7d21e"/>
+<path d="M19.5 10 L20.1 11.3 L21.5 11.5 L20.4 12.4
+L20.8 13.8 L19.5 13 L18.2 13.8 L18.6 12.4
+L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
+<circle cx="20" cy="22.5" r="4.5" fill="#a1daf8"/>
+</svg></div>
     <h1>Centro Sviluppo Cognitivo</h1>
     <p class="sub">Calendari e sessioni · BrainRx e Metodo Feuerstein</p>
     <button class="btn primary" id="btn-login" style="width:100%;justify-content:center">
@@ -226,7 +235,18 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 </div>
 <div id="screen-denied" class="gate hidden">
   <div class="gate-card">
-    <div class="brandmark" aria-hidden="true"><span></span><span></span></div>
+    <div class="brandmark"><svg width="42" height="28" viewBox="0 0 42 28"
+role="img" aria-label="Logo Sviluppo Cognitivo">
+<circle cx="27" cy="14" r="12" fill="#10b3b8"/>
+<circle cx="15" cy="13" r="12" fill="#34388f"/>
+<path d="M12 6.5 L12.9 8.5 L15 8.7 L13.4 10.1
+L13.9 12.2 L12 11.1 L10.1 12.2 L10.6 10.1
+L9 8.7 L11.1 8.5 Z" fill="#f7d21e"/>
+<path d="M19.5 10 L20.1 11.3 L21.5 11.5 L20.4 12.4
+L20.8 13.8 L19.5 13 L18.2 13.8 L18.6 12.4
+L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
+<circle cx="20" cy="22.5" r="4.5" fill="#a1daf8"/>
+</svg></div>
     <h1>Accesso non autorizzato</h1>
     <p class="sub" id="denied-msg">Il tuo account non risulta tra gli operatori.</p>
     <button class="btn ghost" id="btn-denied-logout">Esci e cambia account</button>
@@ -236,7 +256,18 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 <div id="app" class="hidden">
 <header class="topbar">
   <div class="topbar-inner">
-    <div class="brand"><div class="brandmark" aria-hidden="true"><span></span><span></span></div><span>Sviluppo Cognitivo</span></div>
+    <div class="brand"><div class="brandmark"><svg width="42" height="28" viewBox="0 0 42 28"
+role="img" aria-label="Logo Sviluppo Cognitivo">
+<circle cx="27" cy="14" r="12" fill="#10b3b8"/>
+<circle cx="15" cy="13" r="12" fill="#34388f"/>
+<path d="M12 6.5 L12.9 8.5 L15 8.7 L13.4 10.1
+L13.9 12.2 L12 11.1 L10.1 12.2 L10.6 10.1
+L9 8.7 L11.1 8.5 Z" fill="#f7d21e"/>
+<path d="M19.5 10 L20.1 11.3 L21.5 11.5 L20.4 12.4
+L20.8 13.8 L19.5 13 L18.2 13.8 L18.6 12.4
+L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
+<circle cx="20" cy="22.5" r="4.5" fill="#a1daf8"/>
+</svg></div><span>Sviluppo Cognitivo</span></div>
     <nav class="tabs" id="nav-tabs" aria-label="Sezioni"></nav>
     <div class="topbar-right">
       <div class="userchip">
@@ -703,7 +734,13 @@ async function saveRecord(key,record){
   if(_spId){
     await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items/'+_spId+'/fields',{method:'PATCH',body:JSON.stringify(fields)});
     const updated={...payload,_spId};
-    if(isArray){const i=arr.findIndex(r=>r._spId===_spId);if(i>=0)arr[i]=updated;return arr[i];}
+    // Aggiorna l'oggetto esistente sul posto (Object.assign) invece di sostituirlo in arr[i]: chi tiene un
+    // riferimento allo stesso record (es. una scheda modale aperta) resta sincronizzato con state.data[key].
+    if(isArray){
+      const i=arr.findIndex(r=>r._spId===_spId);
+      if(i>=0){const cur=arr[i];Object.keys(cur).forEach(k=>{if(!(k in updated))delete cur[k];});Object.assign(cur,updated);return cur;}
+      arr.push(updated);return updated;
+    }
     state.data[key]=updated;return updated;
   }else{
     const created=await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items',{method:'POST',body:JSON.stringify({fields})});
@@ -835,14 +872,17 @@ function openSessionDetail(s){
 function openSessionModal(s={}){
   const isNew=!s.id;const ops=state.data.operatori.filter(o=>o.attivo!==false);const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));
   const sedeVal=s.sede||SEDI[0];
-  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(sedeVal===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((sedeVal==='Cesate'||sedeVal==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((sedeVal==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  let seBaseline=null;
+  function collectSeState(){return JSON.stringify({data:$('#se-data').value,oraInizio:$('#se-inizio').value,oraFine:$('#se-fine').value,utenteId:$('#se-utente').value,progettoId:$('#se-progetto').value,operatoreId:$('#se-operatore').value,sede:$('#se-sede').value,aula:$('#se-aula')?$('#se-aula').value:'',stato:$('#se-stato').value,note:$('#se-note').value.trim()});}
+  openModal('<h3>'+(isNew?'Nuova sessione':'Modifica sessione')+'</h3><div class="grid3"><div class="field"><label>Data *</label><input type="date" id="se-data" value="'+esc(s.data||todayISO())+'"></div><div class="field"><label>Ora inizio *</label><input type="time" id="se-inizio" value="'+esc(s.oraInizio||s.ora_inizio||'09:00')+'"></div><div class="field"><label>Ora fine</label><input type="time" id="se-fine" value="'+esc(s.oraFine||s.ora_fine||'10:00')+'"></div></div><div class="grid2"><div class="field"><label>Utente *</label><select id="se-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(s.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Progetto</label><select id="se-progetto"></select></div></div><div class="grid2"><div class="field"><label>Operatore *</label><select id="se-operatore"><option value="">— Seleziona —</option>'+sortN(ops).map(o=>'<option value="'+o.id+'" '+(s.operatoreId===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select></div><div class="field"><label>Sede</label><select id="se-sede">'+SEDI.map(x=>'<option '+(sedeVal===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="grid2"><div class="field" id="se-aw" style="'+((sedeVal==='Cesate'||sedeVal==='Busto Arsizio')?'':'display:none')+'"><label>Aula</label><select id="se-aula"><option value="">—</option>'+((sedeVal==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE).map(a=>'<option '+(s.aula===a?'selected':'')+'>'+a+'</option>')).join('')+'</select></div><div class="field"><label>Stato</label><select id="se-stato">'+STATI_SESS.map(x=>'<option '+((s.stato||'proposta')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="field"><label>Note</label><textarea id="se-note">'+esc(s.note||'')+'</textarea></div><div id="se-warn"></div><div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="se-save">'+(isNew?'Crea':'Salva')+'</button></div>',null,()=>seBaseline!==null&&collectSeState()!==seBaseline,()=>{const b=$('#se-save');if(b)b.click();});
   function fillProj(){const uid_=$('#se-utente').value;const prs=state.data.progetti.filter(p=>!uid_||p.utenteId===uid_);$('#se-progetto').innerHTML='<option value="">— Nessuno —</option>'+prs.map(p=>'<option value="'+p.id+'" '+(s.progettoId===p.id?'selected':'')+'>'+esc(p.nome)+'</option>').join('');}
   fillProj();$('#se-utente').addEventListener('change',fillProj);
   $('#se-sede').addEventListener('change',e=>{const v=e.target.value;$('#se-aw').style.display=(v==='Cesate'||v==='Busto Arsizio')?'':'none';const al=$('#se-aula');const opts=v==='Busto Arsizio'?AULE_BUSTO:AULE_CESATE;al.innerHTML='<option value="">—</option>'+opts.map(a=>'<option>'+a+'</option>').join('');});
+  seBaseline=collectSeState();
   $('#se-save').addEventListener('click',async()=>{
     const rec={...s,id:s.id||uid(),data:$('#se-data').value,oraInizio:$('#se-inizio').value,oraFine:$('#se-fine').value,utenteId:$('#se-utente').value,progettoId:$('#se-progetto').value,operatoreId:$('#se-operatore').value,sede:$('#se-sede').value,aula:($('#se-sede').value==='Cesate'||$('#se-sede').value==='Busto Arsizio')?($('#se-aula').value||null):null,stato:$('#se-stato').value,note:$('#se-note').value.trim(),noteOperatore:s.noteOperatore||''};
     if(!rec.data||!rec.oraInizio||!rec.utenteId||!rec.operatoreId){$('#se-warn').innerHTML='<div class="banner warn">Compila i campi obbligatori.</div>';return;}
-    await withBusy(()=>saveRecord('sessioni',rec),isNew?'Sessione creata':'Aggiornata');closeModal();refreshCurrent();
+    await withBusy(()=>saveRecord('sessioni',rec),isNew?'Sessione creata':'Aggiornata');seBaseline=null;closeModal();refreshCurrent();
   });
 }
 
@@ -857,7 +897,11 @@ function renderOperatori(){
 }
 function openOperatoreModal(o={}){
   const isNew=!o.id;const color=o.colore||OP_COLORS[state.data.operatori.length%OP_COLORS.length];
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#oe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();});
+  let oeBaseline=null;
+  // Stato di apertura del form (esclude le eccezioni: quelle sono salvate subito e già gestite dall'Annulla
+  // di renderMonthlyAvail — non devono far scattare due volte l'avviso di modifiche non salvate).
+  function collectOeState(){return JSON.stringify({nome:$('#oe-nome').value.trim(),cognome:$('#oe-cognome').value.trim(),telefono:$('#oe-tel').value.trim(),email:$('#oe-email').value.trim().toLowerCase(),sedi:Array.from($$('#oe-sedi input:checked')).map(i=>i.value),tipoContratto:$('#oe-contratto').value,oreSettimanali:$('#oe-ore-sett').value,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value,tempoCasa:$('#oe-tempo-casa').value,tempoBusto:$('#oe-tempo-busto').value,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value,disponibilita:readAvailEditor('oe-av'),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():[],note:$('#oe-note').value.trim()});}
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#oe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>oeBaseline!==null&&collectOeState()!==oeBaseline,()=>{const b=$('#oe-save');if(b)b.click();});
   renderMonthlyAvail('oe-monthly',o,true,'oe-av');
   renderAvailEditor('oe-av',o.disponibilita||o.avail||{},()=>{const w=$('#oe-monthly');if(w&&w._refresh)w._refresh();});
   $('#oe-contratto').addEventListener('change',e=>{$('#oe-assunto-wrap').style.display=e.target.value==='Assunto'?'':'none';});
@@ -871,6 +915,7 @@ function openOperatoreModal(o={}){
   opForm.forEach(f=>addFormChip(f));refreshFormDD();
   oeFormDD.addEventListener('change',()=>{const v=oeFormDD.value;if(v)addFormChip(v);});
   $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>{ch.classList.toggle('on');const bustoOn=Array.from($$('#oe-sedi input:checked')).some(i=>i.value==='Busto Arsizio');$('#oe-tempo-busto-wrap').style.display=bustoOn?'':'none';});});
+  oeBaseline=collectOeState();
   $('#oe-save').addEventListener('click',async()=>{
     const nome=$('#oe-nome').value.trim(),cognome=$('#oe-cognome').value.trim(),email=$('#oe-email').value.trim().toLowerCase();
     const dupOp=state.data.operatori.find(x=>x.id!==o.id&&(x.email||'').toLowerCase()===email);
@@ -878,9 +923,9 @@ function openOperatoreModal(o={}){
     if(!nome||!cognome||!email){$('#oe-warn').innerHTML='<div class="banner warn">Nome ed email obbligatori.</div>';return;}
     const sedi=Array.from($$('#oe-sedi input:checked')).map(i=>i.value);
     const rec={...o,id:o.id||uid(),nome,cognome,email,telefono:$('#oe-tel').value.trim(),tipoContratto:$('#oe-contratto').value,oreSettimanali:parseInt($('#oe-ore-sett').value)||0,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value||null,tempoCasa:parseInt($('#oe-tempo-casa').value)||0,tempoBusto:parseInt($('#oe-tempo-busto').value)||0,sedi,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value==='1',disponibilita:readAvailEditor('oe-av'),eccezioni:$('#oe-monthly')._getExceptions?$('#oe-monthly')._getExceptions():(o.eccezioni||[]),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():(o.credenziali||[]),note:$('#oe-note').value.trim()};
-    await withBusy(()=>saveRecord('operatori',rec),isNew?'Creato':'Aggiornato');closeModal();renderOperatori();
+    await withBusy(()=>saveRecord('operatori',rec),isNew?'Creato':'Aggiornato');oeBaseline=null;closeModal();renderOperatori();
   });
-  if(!isNew)$('#oe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('operatori',o),'Eliminato');closeModal();renderOperatori();});
+  if(!isNew)$('#oe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;oeBaseline=null;await withBusy(()=>deleteRecord('operatori',o),'Eliminato');closeModal();renderOperatori();});
 }
 
 /* ============================================================
@@ -900,17 +945,20 @@ function renderUtenti(){
 function openUtenteModal(u={}){
   if(state.role!=='Admin'){toast('Non autorizzato a modificare l\'anagrafica.',true);return;} // Solo l'Admin può modificare/creare/eliminare utenti; gli operatori hanno solo la vista in sola lettura (openUtenteReadonly)
   const isNew=!u.id;
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' utente</h3><div class="grid2"><div class="field"><label>Nome (ragazzo/a) *</label><input id="ue-nome" value="'+esc(u.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="ue-cognome" value="'+esc(u.cognome||'')+'"></div></div><div class="field"><label>Data di nascita</label><input id="ue-ddn" type="date" value="'+esc(u.dataNascita||'')+'"></div><div class="grid2"><div class="field"><label>Nome referente</label><input id="ue-ref-nome" value="'+esc(u.refNome||'')+'"></div><div class="field"><label>Cognome referente</label><input id="ue-ref-cognome" value="'+esc(u.refCognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="ue-tel" value="'+esc(u.telefono||'')+'"></div><div class="field"><label>Email</label><input id="ue-email" type="email" value="'+esc(u.email||'')+'"></div></div><div class="field"><label>Via e numero</label><input id="ue-via" value="'+esc(u.via||'')+'" placeholder="Via Roma 12"></div><div class="grid3"><div class="field"><label>Comune</label><input id="ue-comune" value="'+esc(u.comune||'')+'"></div><div class="field"><label>Provincia</label><input id="ue-prov" value="'+esc(u.provincia||'')+'" maxlength="2" placeholder="MI"></div><div class="field"><label>CAP</label><input id="ue-cap" value="'+esc(u.cap||'')+'" maxlength="5"></div></div><div class="field"><label>Paese di provenienza</label><select id="ue-paese"><option value="">— Seleziona —</option>'+COUNTRIES.map(c=>'<option '+(c===(u.paese||'')?'selected':'')+'>'+c+'</option>').join('')+'</select></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="ue-cred"></div></div><div class="field"><label>📁 Documenti (OneDrive / SharePoint)</label><div id="ue-docs"></div></div><div class="field"><label>Note</label><textarea id="ue-note">'+esc(u.note||'')+'</textarea></div><div class="grid2"><div class="field"><label>Stato</label><select id="ue-attivo"><option value="1" '+(u.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(u.attivo===false?'selected':'')+'>Archiviato</option></select></div><div></div></div><div id="ue-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="ue-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="ue-save">'+(isNew?'Crea':'Salva')+'</button></div>');
+  let ueBaseline=null;
+  function collectUeState(){return JSON.stringify({nome:$('#ue-nome').value.trim(),cognome:$('#ue-cognome').value.trim(),dataNascita:$('#ue-ddn').value||'',refNome:$('#ue-ref-nome').value.trim(),refCognome:$('#ue-ref-cognome').value.trim(),telefono:$('#ue-tel').value.trim(),email:$('#ue-email').value.trim(),via:$('#ue-via').value.trim(),comune:$('#ue-comune').value.trim(),provincia:$('#ue-prov').value.trim().toUpperCase(),cap:$('#ue-cap').value.trim(),paese:$('#ue-paese').value,credenziali:$('#ue-cred')._getCreds?$('#ue-cred')._getCreds():[],documenti:$('#ue-docs')._getDocs?$('#ue-docs')._getDocs():[],note:$('#ue-note').value.trim(),attivo:$('#ue-attivo').value});}
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' utente</h3><div class="grid2"><div class="field"><label>Nome (ragazzo/a) *</label><input id="ue-nome" value="'+esc(u.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="ue-cognome" value="'+esc(u.cognome||'')+'"></div></div><div class="field"><label>Data di nascita</label><input id="ue-ddn" type="date" value="'+esc(u.dataNascita||'')+'"></div><div class="grid2"><div class="field"><label>Nome referente</label><input id="ue-ref-nome" value="'+esc(u.refNome||'')+'"></div><div class="field"><label>Cognome referente</label><input id="ue-ref-cognome" value="'+esc(u.refCognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="ue-tel" value="'+esc(u.telefono||'')+'"></div><div class="field"><label>Email</label><input id="ue-email" type="email" value="'+esc(u.email||'')+'"></div></div><div class="field"><label>Via e numero</label><input id="ue-via" value="'+esc(u.via||'')+'" placeholder="Via Roma 12"></div><div class="grid3"><div class="field"><label>Comune</label><input id="ue-comune" value="'+esc(u.comune||'')+'"></div><div class="field"><label>Provincia</label><input id="ue-prov" value="'+esc(u.provincia||'')+'" maxlength="2" placeholder="MI"></div><div class="field"><label>CAP</label><input id="ue-cap" value="'+esc(u.cap||'')+'" maxlength="5"></div></div><div class="field"><label>Paese di provenienza</label><select id="ue-paese"><option value="">— Seleziona —</option>'+COUNTRIES.map(c=>'<option '+(c===(u.paese||'')?'selected':'')+'>'+c+'</option>').join('')+'</select></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="ue-cred"></div></div><div class="field"><label>📁 Documenti (OneDrive / SharePoint)</label><div id="ue-docs"></div></div><div class="field"><label>Note</label><textarea id="ue-note">'+esc(u.note||'')+'</textarea></div><div class="grid2"><div class="field"><label>Stato</label><select id="ue-attivo"><option value="1" '+(u.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(u.attivo===false?'selected':'')+'>Archiviato</option></select></div><div></div></div><div id="ue-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="ue-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="ue-save">'+(isNew?'Crea':'Salva')+'</button></div>',null,()=>ueBaseline!==null&&collectUeState()!==ueBaseline,()=>{const b=$('#ue-save');if(b)b.click();});
   buildCredUI('ue-cred',u.credenziali||[]);
   buildDocsUI('ue-docs',u.documenti||[]);
+  ueBaseline=collectUeState();
   $('#ue-save').addEventListener('click',async()=>{
     const nome=$('#ue-nome').value.trim(),cognome=$('#ue-cognome').value.trim();const ddnVal=$('#ue-ddn').value||'';
     if(nome&&cognome&&ddnVal){const dup=state.data.utenti.find(x=>x.id!==u.id&&(x.nome||'').toLowerCase()===nome.toLowerCase()&&(x.cognome||'').toLowerCase()===cognome.toLowerCase()&&x.dataNascita&&x.dataNascita===ddnVal);if(dup){$('#ue-warn').innerHTML='<div class="banner warn">⚠️ Esiste già un utente con lo stesso nome, cognome e data di nascita: <strong>'+esc(fullNameCN(dup))+'</strong></div>';return;}}
     if(!nome||!cognome){$('#ue-warn').innerHTML='<div class="banner warn">Nome e cognome obbligatori.</div>';return;}
     const rec={...u,id:u.id||uid(),nome,cognome,refNome:$('#ue-ref-nome').value.trim(),refCognome:$('#ue-ref-cognome').value.trim(),dataNascita:ddnVal,telefono:$('#ue-tel').value.trim(),email:$('#ue-email').value.trim(),via:$('#ue-via').value.trim(),comune:$('#ue-comune').value.trim(),provincia:$('#ue-prov').value.trim().toUpperCase(),cap:$('#ue-cap').value.trim(),paese:$('#ue-paese').value,credenziali:$('#ue-cred')._getCreds?$('#ue-cred')._getCreds():(u.credenziali||[]),documenti:$('#ue-docs')._getDocs?$('#ue-docs')._getDocs():(u.documenti||[]),note:$('#ue-note').value.trim(),attivo:$('#ue-attivo').value==='1'};
-    await withBusy(()=>saveRecord('utenti',rec),isNew?'Creato':'Aggiornato');closeModal();renderUtenti();
+    await withBusy(()=>saveRecord('utenti',rec),isNew?'Creato':'Aggiornato');ueBaseline=null;closeModal();renderUtenti();
   });
-  if(!isNew)$('#ue-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('utenti',u),'Eliminato');closeModal();renderUtenti();});
+  if(!isNew)$('#ue-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;ueBaseline=null;await withBusy(()=>deleteRecord('utenti',u),'Eliminato');closeModal();renderUtenti();});
 }
 
 /* Anagrafica cliente in sola lettura — usata dagli operatori (e come vista rapida dagli admin) dalla sessione/progetto. Nessun campo modificabile, nessun salvataggio/eliminazione. */
@@ -967,7 +1015,11 @@ function renderProgetti(){
 }
 function openProgettoModal(p={}){
   const isNew=!p.id;const uts=sortN(state.data.utenti.filter(u=>u.attivo!==false));const ops=sortN(state.data.operatori.filter(o=>o.attivo!==false));
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();});
+  let peBaseline=null;
+  // pMetodi/pTipi sono dichiarati più sotto (let), ma questa funzione viene invocata solo alla chiusura,
+  // quando sono già inizializzati.
+  function collectPeState(){return JSON.stringify({nome:$('#pe-nome').value.trim(),utenteId:$('#pe-utente').value,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value,frequenza:$('#pe-freq').value,durataSessione:$('#pe-dur').value,maxSessioniGiorno:$('#pe-maxday').value,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():'',domicilioTempo:$('#pe-domicilio-tempo')?$('#pe-domicilio-tempo').value:'',sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av')});}
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Presenza+Online','Presenza+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Presenza+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>peBaseline!==null&&collectPeState()!==peBaseline,()=>{const b=$('#pe-save');if(b)b.click();});
   renderMonthlyAvail('pe-monthly',p,false,'pe-av');
   renderAvailEditor('pe-av',p.disponibilita||p.avail||{},()=>{const w=$('#pe-monthly');if(w&&w._refresh)w._refresh();});
   const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
@@ -1013,13 +1065,14 @@ function openProgettoModal(p={}){
   renderTipi();
   $('#pe-add-tipo').addEventListener('click',()=>{pTipi.push({componenti:[{metodo:'',durata:0}]});renderTipi();});
   $('#pe-dur').addEventListener('change',()=>renderTipi());
+  peBaseline=collectPeState();
   $('#pe-save').addEventListener('click',async()=>{
     const nome=$('#pe-nome').value.trim(),utenteId=$('#pe-utente').value;
     if(!nome||!utenteId){$('#pe-warn').innerHTML='<div class="banner warn">Nome e utente obbligatori.</div>';return;}
     const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value||(pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0)||''),frequenza:parseInt($('#pe-freq').value)||3,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av'),eccezioni:$('#pe-monthly')._getExceptions?$('#pe-monthly')._getExceptions():(p.eccezioni||[])};
-    await withBusy(()=>saveRecord('progetti',rec),isNew?'Creato':'Aggiornato');closeModal();renderProgetti();
+    await withBusy(()=>saveRecord('progetti',rec),isNew?'Creato':'Aggiornato');peBaseline=null;closeModal();renderProgetti();
   });
-  if(!isNew)$('#pe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;await withBusy(()=>deleteRecord('progetti',p),'Eliminato');closeModal();renderProgetti();});
+  if(!isNew)$('#pe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;peBaseline=null;await withBusy(()=>deleteRecord('progetti',p),'Eliminato');closeModal();renderProgetti();});
 }
 
 /* ============================================================
@@ -1035,13 +1088,11 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
   // Fotografia dello stato all'apertura della scheda: l'Annulla la ripristina (anche su SharePoint se nel
   // frattempo un salvataggio immediato — giorno singolo o "Applica a più giorni" — l'ha già persa).
   const eccezioniSnapshot=JSON.parse(JSON.stringify(eccezioni));
-  let dirty=false;
   const now=new Date();let curY=now.getFullYear(),curM=now.getMonth()+1;
   function getWeekly(){return weeklyContainerId?(readAvailEditor(weeklyContainerId)||{}):{};}
   async function persistEccezioni(msg){
     if(!entity.id)return; // scheda non ancora creata: resta solo in memoria fino al primo salvataggio
     entity.eccezioni=eccezioni;
-    dirty=true;
     await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),msg||'Disponibilità salvata');
   }
   function render(){
@@ -1092,7 +1143,14 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
       const tipoOptions=isOperator?'<option value="disponibile" '+((!existing||!existing.tipo||existing.tipo==='disponibile')?'selected':'')+'>✓ Disponibile</option><option value="malattia" '+((existing&&existing.tipo==='malattia')?'selected':'')+'>🏥 Malattia</option><option value="permesso_visita" '+((existing&&existing.tipo==='permesso_visita')?'selected':'')+'>📋 Permesso visita medica</option><option value="permesso_studio" '+((existing&&existing.tipo==='permesso_studio')?'selected':'')+'>📚 Permesso studio</option><option value="ferie" '+((existing&&existing.tipo==='ferie')?'selected':'')+'>🏖 Ferie</option>':'<option value="disponibile" selected>✓ Disponibile</option>';
       const tipoConFascia=existing&&(existing.tipo==='ferie'||existing.tipo==='permesso_visita'||existing.tipo==='permesso_studio');
       const mh='<h3>'+dlabel+'</h3><div class="field"><label>Tipo</label><select id="mc-tipo">'+tipoOptions+'</select></div><div id="mc-disp-fields" style="'+((existing&&existing.tipo&&existing.tipo!=='disponibile')?'display:none':'')+'"><div class="field"><label>Fasce orarie</label><div id="mc-fasce"></div><button class="btn ghost small" id="mc-add-fascia" style="margin-top:6px">+ Fascia</button></div></div><div id="mc-malattia-fields" style="'+((existing&&existing.tipo==='malattia')?'':'display:none')+'"><div class="field"><label>Codice malattia</label><input id="mc-codice-mal" value="'+esc((existing&&existing.codiceMalattia)||'')+'"></div></div><div id="mc-fascia-assenza-fields" style="'+(tipoConFascia?'':'display:none')+'"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mc-fascia-da" value="'+esc((existing&&existing.da)||'')+'"> → <input type="time" id="mc-fascia-a" value="'+esc((existing&&existing.a)||'')+'"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div><div class="modal-actions"><button class="btn ghost" id="mc-rm">Rimuovi giorno</button><button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="mc-save">Salva</button></div>';
-      const closeDay=openModalStacked(mh);
+      function collectMcState(){
+        const tipo=$('#mc-tipo')?$('#mc-tipo').value:'';
+        const ff=[];
+        if(tipo==='disponibile')$('#mc-fasce').querySelectorAll('.avail-slot').forEach(sl=>{ff.push({from:sl.querySelector('.mc-f-from').value,to:sl.querySelector('.mc-f-to').value,sedi:Array.from(sl.querySelectorAll('.avail-sede input:checked')).map(i=>i.value)});});
+        return JSON.stringify({tipo,fasce:ff,codiceMalattia:$('#mc-codice-mal')?$('#mc-codice-mal').value.trim():'',da:$('#mc-fascia-da')?$('#mc-fascia-da').value:'',a:$('#mc-fascia-a')?$('#mc-fascia-a').value:''});
+      }
+      let mcBaseline=null;
+      const closeDay=openModalStacked(mh,null,()=>mcBaseline!==null&&collectMcState()!==mcBaseline,()=>{const b=$('#mc-save');if(b)b.click();});
       const fasceDiv=$('#mc-fasce');
       const fasce=(existing&&existing.fasce)||(weeklySlotNow.length?JSON.parse(JSON.stringify(weeklySlotNow)):[{from:"09:00",to:"13:00"}]);
       function renderFasce(){fasceDiv.innerHTML=fasce.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mc-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mc-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mc-rm-f" data-fi="'+i+'">✕</button></div>').join('');
@@ -1101,6 +1159,7 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
       }
       renderFasce();
       $('#mc-add-fascia').addEventListener('click',()=>{fasce.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasce();});
+      mcBaseline=collectMcState();
       $('#mc-tipo').addEventListener('change',()=>{const v=$('#mc-tipo').value;$('#mc-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mc-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mc-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
       $('#mc-rm').addEventListener('click',async()=>{
         const idx=eccezioni.findIndex(e=>e.data===ds);if(idx>=0)eccezioni.splice(idx,1);
@@ -1138,7 +1197,14 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
       (isOperator?'<div id="mcb-malattia-fields" style="display:none"><div class="field"><label>Codice malattia</label><input id="mcb-codice-mal"></div></div><div id="mcb-fascia-assenza-fields" style="display:none"><div class="field"><label>Fascia oraria (facoltativa)</label><div class="avail-slot"><input type="time" id="mcb-fascia-da"> → <input type="time" id="mcb-fascia-a"></div><p class="help">Lascia entrambi i campi vuoti per assenza sull\'intera giornata.</p></div></div>':'')+
       '<div id="mcb-warn"></div>'+
       '<div class="modal-actions"><button class="btn ghost" data-close>Annulla</button><button class="btn danger-o" id="mcb-remove">🗑 Rimuovi impostazioni</button><button class="btn primary" id="mcb-apply">Applica</button></div>';
-    const closeBulk=openModalStacked(bh);
+    function collectMcbState(){
+      const tipo=$('#mcb-tipo')?$('#mcb-tipo').value:'';
+      const ff=[];
+      if(tipo==='disponibile')$('#mcb-fasce').querySelectorAll('.avail-slot').forEach(sl=>{ff.push({from:sl.querySelector('.mcb-f-from').value,to:sl.querySelector('.mcb-f-to').value,sedi:Array.from(sl.querySelectorAll('.avail-sede input:checked')).map(i=>i.value)});});
+      return JSON.stringify({tipo,da:$('#mcb-da').value,a:$('#mcb-a').value,giorni:Array.from($$('#mcb-giorni input:checked')).map(i=>i.value),fasce:ff,codiceMalattia:$('#mcb-codice-mal')?$('#mcb-codice-mal').value.trim():'',fDa:$('#mcb-fascia-da')?$('#mcb-fascia-da').value:'',fA:$('#mcb-fascia-a')?$('#mcb-fascia-a').value:''});
+    }
+    let mcbBaseline=null;
+    const closeBulk=openModalStacked(bh,null,()=>mcbBaseline!==null&&collectMcbState()!==mcbBaseline,()=>{const b=$('#mcb-apply');if(b)b.click();});
     $$('#mcb-giorni input').forEach(cb=>cb.addEventListener('change',()=>{cb.closest('label').classList.toggle('on',cb.checked);}));
     const fasceBDiv=$('#mcb-fasce');const fasceB=[{from:"09:00",to:"13:00",sedi:["Cesate","Online"]}];
     function renderFasceB(){fasceBDiv.innerHTML=fasceB.map((f,i)=>'<div class="avail-slot" style="margin-bottom:4px"><input type="time" value="'+esc(f.from||'')+'" class="mcb-f-from"> → <input type="time" value="'+esc(f.to||'')+'" class="mcb-f-to"><div class="avail-sede">'+['Cesate','Busto','Online','Domicilio'].map(s=>'<label class="'+((f.sedi||["Cesate","Online"]).includes(s)?'on':'')+'" data-s="'+s+'"><input type="checkbox" value="'+s+'" '+((f.sedi||["Cesate","Online"]).includes(s)?'checked':'')+' style="display:none">'+s+'</label>').join('')+'</div><button class="icon-btn mcb-rm-f" data-fi="'+i+'">✕</button></div>').join('');
@@ -1148,6 +1214,7 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
     renderFasceB();
     $('#mcb-add-fascia').addEventListener('click',()=>{fasceB.push({from:"14:00",to:"19:00",sedi:["Cesate","Online"]});renderFasceB();});
     if(isOperator)$('#mcb-tipo').addEventListener('change',()=>{const v=$('#mcb-tipo').value;$('#mcb-disp-fields').style.display=(v==='disponibile')?'':'none';$('#mcb-malattia-fields').style.display=(v==='malattia')?'':'none';$('#mcb-fascia-assenza-fields').style.display=(v==='ferie'||v==='permesso_visita'||v==='permesso_studio')?'':'none';});
+    mcbBaseline=collectMcbState();
     function computeBulkDates(){
       const da=$('#mcb-da').value,a=$('#mcb-a').value;
       if(!da||!a||da>a)return{error:'Intervallo di date non valido.'};
@@ -1208,10 +1275,13 @@ function renderMonthlyAvail(containerId,entity,isOperator,weeklyContainerId){
   wrap._getExceptions=()=>eccezioni;
   wrap._refresh=render;
   wrap._restoreSnapshot=async()=>{
+    // Confronto di contenuto (non un flag "dirty" manuale): qualunque modifica intermedia già persistita
+    // su SharePoint da un percorso qualsiasi (click sul giorno, "Applica a più giorni", rimozione) viene
+    // rilevata e ripristinata, senza dipendere da chi l'ha impostata.
+    const changed=JSON.stringify(eccezioni)!==JSON.stringify(eccezioniSnapshot);
     eccezioni.splice(0,eccezioni.length,...JSON.parse(JSON.stringify(eccezioniSnapshot)));
     entity.eccezioni=eccezioni;
-    if(dirty&&entity.id){
-      dirty=false;
+    if(changed&&entity.id){
       await withBusy(()=>saveRecord(isOperator?'operatori':'progetti',entity),'Modifiche annullate');
     }
   };
@@ -2001,23 +2071,70 @@ function buildCredUI(containerId, credList){
 /* ============================================================
    Modal, feedback, init
    ============================================================ */
-let currentModalCancel=null;
+let currentModalCancel=null,currentModalDirty=null,currentModalSaveTrigger=null;
+/* Stack dei gestori Escape: solo quello in cima allo stack è agganciato a document, così una scheda, un
+   popup impilato sopra di essa e un dialogo di conferma sopra ancora non si contendono mai lo stesso tasto Esc. */
+let escStack=[];
+function pushEsc(fn){if(escStack.length)document.removeEventListener('keydown',escStack[escStack.length-1]);escStack.push(fn);document.addEventListener('keydown',fn);}
+function popEsc(){if(!escStack.length)return;document.removeEventListener('keydown',escStack.pop());if(escStack.length)document.addEventListener('keydown',escStack[escStack.length-1]);}
+/* Popup di conferma a 3 vie per le modifiche non salvate (Salva ed esci / Esci senza salvare / Continua a
+   modificare). Qualunque via di chiusura diversa dai pulsanti espliciti (backdrop, Esc) equivale a "Continua
+   a modificare": non si perdono mai dati per un click accidentale. */
+function confirmUnsavedChanges(){
+  return new Promise(resolve=>{
+    const wrap=document.createElement('div');wrap.className='modal-backdrop';
+    wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true"><h3>Modifiche non salvate</h3><p>Questa scheda ha modifiche non salvate. Cosa vuoi fare?</p><div class="modal-actions"><button class="btn ghost" id="udc-continue">Continua a modificare</button><button class="btn danger-o" id="udc-discard">Esci senza salvare</button><button class="btn primary" id="udc-save">Salva ed esci</button></div></div>';
+    let done=false;
+    function finish(choice){
+      if(done)return;done=true;wrap.remove();
+      popEsc();
+      resolve(choice);
+    }
+    function escUdc(e){if(e.key==='Escape')finish('continue');}
+    wrap.addEventListener('mousedown',e=>{if(e.target===wrap)finish('continue');});
+    $('#modal-root').appendChild(wrap);pushEsc(escUdc);
+    wrap.querySelector('#udc-continue').addEventListener('click',()=>finish('continue'));
+    wrap.querySelector('#udc-discard').addEventListener('click',()=>finish('discard'));
+    wrap.querySelector('#udc-save').addEventListener('click',()=>finish('save'));
+  });
+}
 /* onCancel (opzionale): invocato (atteso) prima della chiusura quando la modale viene abbandonata tramite
    backdrop/Esc/pulsante [data-close] — es. per ripristinare uno snapshot su annullamento. closeModal()
-   chiamata direttamente (es. dopo un salvataggio riuscito) NON lo invoca mai. */
-function openModal(html,onCancel){closeModal();currentModalCancel=onCancel||null;const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModalWithCancel();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModalWithCancel));$('#modal-root').appendChild(wrap);document.addEventListener('keydown',escClose);}
-function closeModal(){$('#modal-root').innerHTML='';document.removeEventListener('keydown',escClose);currentModalCancel=null;}
-async function closeModalWithCancel(){const fn=currentModalCancel;currentModalCancel=null;if(fn){try{await fn();}catch(e){console.error(e);}}closeModal();}
+   chiamata direttamente (es. dopo un salvataggio riuscito) NON lo invoca mai.
+   isDirty (opzionale): funzione che ritorna true se il form ha modifiche non salvate rispetto all'apertura.
+   onSaveTrigger (opzionale): simula il click sul pulsante di salvataggio della scheda (usato dalla scelta
+   "Salva ed esci" del dialogo di conferma). */
+function openModal(html,onCancel,isDirty,onSaveTrigger){closeModal();currentModalCancel=onCancel||null;currentModalDirty=isDirty||null;currentModalSaveTrigger=onSaveTrigger||null;const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModalWithCancel();});wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeModalWithCancel));$('#modal-root').appendChild(wrap);pushEsc(escClose);}
+function closeModal(){$('#modal-root').innerHTML='';popEsc();currentModalCancel=null;currentModalDirty=null;currentModalSaveTrigger=null;}
+async function closeModalWithCancel(){
+  if(currentModalDirty&&currentModalDirty()){
+    const choice=await confirmUnsavedChanges();
+    if(choice==='continue')return;
+    if(choice==='save'){if(currentModalSaveTrigger)currentModalSaveTrigger();return;}
+  }
+  const fn=currentModalCancel;currentModalCancel=null;currentModalDirty=null;currentModalSaveTrigger=null;
+  if(fn){try{await fn();}catch(e){console.error(e);}}
+  closeModal();
+}
 function escClose(e){if(e.key==='Escape')closeModalWithCancel();}
-/* Modale "impilata": si apre sopra una scheda già aperta senza distruggerla, e si chiude senza chiudere quella sottostante (usata per i popup giorno del calendario disponibilità/assenze) */
-function openModalStacked(html){
-  document.removeEventListener('keydown',escClose); // sospende l'Esc della scheda sottostante finché il popup impilato è aperto
+/* Modale "impilata": si apre sopra una scheda già aperta senza distruggerla, e si chiude senza chiudere quella sottostante (usata per i popup giorno del calendario disponibilità/assenze).
+   onCancel/isDirty/onSaveTrigger: stesso significato di openModal, applicati alla sola modale impilata. */
+function openModalStacked(html,onCancel,isDirty,onSaveTrigger){
   const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';
-  const close=()=>{wrap.remove();document.removeEventListener('keydown',escStacked);document.addEventListener('keydown',escClose);};
-  function escStacked(e){if(e.key==='Escape')close();}
-  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)close();});
-  wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',close));
-  $('#modal-root').appendChild(wrap);document.addEventListener('keydown',escStacked);
+  const close=()=>{wrap.remove();popEsc();};
+  async function closeGuarded(){
+    if(isDirty&&isDirty()){
+      const choice=await confirmUnsavedChanges();
+      if(choice==='continue')return;
+      if(choice==='save'){if(onSaveTrigger)onSaveTrigger();return;}
+    }
+    if(onCancel){try{await onCancel();}catch(e){console.error(e);}}
+    close();
+  }
+  function escStacked(e){if(e.key==='Escape')closeGuarded();}
+  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeGuarded();});
+  wrap.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeGuarded));
+  $('#modal-root').appendChild(wrap);pushEsc(escStacked);
   return close;
 }
 async function withBusy(fn,okMsg){try{await fn();if(okMsg)toast(okMsg);}catch(e){console.error(e);toast('Errore: '+e.message,true);throw e;}}
@@ -2089,11 +2206,11 @@ function renderImpostazioni(){
   const imp=state.data.impostazioni;
   // Formazioni
   const fDiv=$('#imp-formazioni');
-  fDiv.innerHTML=imp.formazioni.map((f,i)=>'<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px">'+esc(f)+'</span><button class="btn ghost small imp-f-rm" data-fi="'+i+'" style="font-size:11px;padding:2px 6px">✕</button></div>').join('');
+  fDiv.innerHTML=imp.formazioni.map((f,i)=>'<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px">'+(i+1)+'. '+esc(f)+'</span><button class="btn ghost small imp-f-rm" data-fi="'+i+'" style="font-size:11px;padding:2px 6px">✕</button></div>').join('');
   fDiv.querySelectorAll('.imp-f-rm').forEach(b=>b.addEventListener('click',async()=>{imp.formazioni.splice(parseInt(b.dataset.fi),1);try{await saveImp();}catch(e){console.error(e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();}));
   // Metodi
   const mDiv=$('#imp-metodi');
-  mDiv.innerHTML=imp.metodi.map((m,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis">'+esc(m.nome)+'</span><span class="tag '+(m.tipo==='digitale'?'info':m.tipo==='formazione'?'warn':'ok')+'" style="font-size:10px">'+esc(m.tipo)+'</span><span style="font-size:11px;color:var(--ink-soft);white-space:nowrap">'+(m.durate||[]).map(d=>fmtDurata(d)).join(', ')+'</span><button class="btn ghost small imp-m-dur" data-mi="'+i+'" style="font-size:11px;padding:2px 8px;white-space:nowrap">✏️ Durate</button><button class="btn ghost small imp-m-rm" data-mi="'+i+'" style="font-size:11px;padding:2px 6px;color:var(--danger)">✕</button></div>').join('');
+  mDiv.innerHTML=imp.metodi.map((m,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis">'+(i+1)+'. '+esc(m.nome)+'</span><span class="tag '+(m.tipo==='digitale'?'info':m.tipo==='formazione'?'warn':'ok')+'" style="font-size:10px">'+esc(m.tipo)+'</span><span style="font-size:11px;color:var(--ink-soft);white-space:nowrap">'+(m.durate||[]).map(d=>fmtDurata(d)).join(', ')+'</span><button class="btn ghost small imp-m-dur" data-mi="'+i+'" style="font-size:11px;padding:2px 8px;white-space:nowrap">✏️ Durate</button><button class="btn ghost small imp-m-rm" data-mi="'+i+'" style="font-size:11px;padding:2px 6px;color:var(--danger)">✕</button></div>').join('');
   mDiv.querySelectorAll('.imp-m-rm').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Rimuovere "'+imp.metodi[parseInt(b.dataset.mi)].nome+'"?'))return;imp.metodi.splice(parseInt(b.dataset.mi),1);try{await saveImp();}catch(e){console.error(e);toast('Errore nel salvataggio: '+e.message,true);}renderImpostazioni();}));
   mDiv.querySelectorAll('.imp-m-dur').forEach(b=>b.addEventListener('click',()=>{
     const mi=parseInt(b.dataset.mi);const m=imp.metodi[mi];if(!m)return;

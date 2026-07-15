@@ -74,6 +74,7 @@
 **15/07:**
 11. Aggiunto `CONTESTO.md` al repo (era solo locale, ora versionato e incluso nel deploy). Introdotta nel `CLAUDE.md` una regola permanente di manutenzione: a fine di ogni sessione con modifiche al codice, prima del commit finale, aggiornare qui la sezione "Cronologia lavori" (voce sintetica con data) e la sezione "Backlog" (nuove voci o completate), includendo sempre `CONTESTO.md` nello stesso commit del codice.
 12. Riepilogo/conferma del rilascio del 14/07 (fix dei 4 punti, punto 10 sopra): Annulla reale con snapshot, rimozione impostazioni multi-giorno, fasce settimanali visibili nel calendario mensile, bug `findIndex` sulle Impostazioni risolto, ordinamento "Cognome Nome" esteso a tutta l'app.
+13. Ciclo di 4 fix UX + documentazione (dettagli in `VERIFICA.md`): (1) Annulla disponibilità — trovato e corretto un difetto reale in `saveRecord` (sostituiva l'oggetto in `state.data[key]` invece di aggiornarlo sul posto, rompendo l'identità del riferimento tenuto dalla scheda aperta) e reso il ripristino via snapshot più robusto (confronto di contenuto invece di un flag `dirty` manuale) — **da confermare con test manuale**, non riprodotto dal vivo; (2) dialogo "modifiche non salvate" (Salva ed esci / Esci senza salvare / Continua a modificare) su operatori, utenti, progetti, sessioni e i popup di disponibilità (click-giorno, "Applica a più giorni"), con nuovo stack di gestori Escape (`pushEsc`/`popEsc`) per le modali annidate; (3) numerazione progressiva nelle liste Formazioni/Metodi in Impostazioni (solo visualizzazione); (4) nuovo logo SVG al posto dei "due pallini", esteso — su scelta di Simone — a header, login e accesso negato (era chiesto solo per l'header).
 
 **Stato dati**: inserimento in corso (14/07). Strategia test: prima set piccolo (2-3 operatori misti Assunto/P.IVA, 4-5 progetti rappresentativi), poi caricamento completo (import Excel disponibile). Realtà operativa: operatori multi-progetto nello stesso giorno, maggioranza sessioni online.
 
@@ -92,13 +93,14 @@
 10. Assenze tipizzate anche per progetti/utenti
 11. Pulizia ridondanza controllo gap 5 minuti
 12. Limite noto P3: niente scambi di aula, niente riassegnazione operatore del blocco
+13. Calendari famiglie via inviti Outlook/Graph (opzione C scelta): eventi calendario M365 con la famiglia invitata, aggiornamenti in tempo reale, solo sessioni confermate, attenzione alle rigenerazioni
 
 *Strumenti (rivalutare se il progetto cresce/diventa multi-file):*
-13. Graphify (knowledge graph del codice) — inutile su file singolo
-14. Ruflo (multi-agente) — sovradimensionato ora
-15. Caveman (output compresso) — sconsigliato: il flusso si regge sulle spiegazioni dettagliate
-16. Node.js sul PC (rete di sicurezza per check sintassi locali)
-17. claude doctor: ok, solo auto-update fallito una volta (fix: rilanciare `irm https://claude.ai/install.ps1 | iex`); Remote Control disabilitato da policy org
+14. Graphify (knowledge graph del codice) — inutile su file singolo
+15. Ruflo (multi-agente) — sovradimensionato ora
+16. Caveman (output compresso) — sconsigliato: il flusso si regge sulle spiegazioni dettagliate
+17. Node.js sul PC (rete di sicurezza per check sintassi locali)
+18. claude doctor: ok, solo auto-update fallito una volta (fix: rilanciare `irm https://claude.ai/install.ps1 | iex`); Remote Control disabilitato da policy org
 
 ## 7. Prassi operative da mantenere
 
