@@ -468,3 +468,50 @@ Applicato a tutte e 5 le schede richieste:
 
 ## Limiti di questa verifica
 Come per tutte le verifiche precedenti: analisi per lettura statica del codice, verifica di bilanciamento sintattico (parentesi graffe/tonde) sull'intero file prima e dopo le modifiche, nessuna esecuzione dal vivo dell'app (richiede login Microsoft 365 su dominio registrato, non disponibile in questo ambiente) né un motore JavaScript locale per test automatizzati. In particolare il punto 1 (Annulla disponibilità) andrebbe verificato manualmente con priorità, essendo l'unico dei 4 punti per cui non è stato possibile confermare con certezza la causa esatta del comportamento segnalato.
+
+---
+
+# Verifica — Nuova favicon e controllo della regola "pausa pranzo"
+
+Due interventi mirati. Data: 2026-07-15.
+
+## 1 — Nuova favicon con il marchio aziendale
+
+**Cosa è stato fatto**: sostituito l'unico `<link rel="icon" ...>` presente in `index.html` (riga 8, era l'unica favicon nel file — nessun `apple-touch-icon`/`shortcut icon` da rimuovere altrove, verificato con ricerca testuale su tutte le varianti di `rel`). Il nuovo tag ha `type="image/svg+xml"` esplicito e un `href` con l'SVG fornito incorporato come data URI: stessa griglia (`viewBox="0 0 42 28"`, 28×28), cielo navy (`#34388f`), tenda teal (`#10b3b8`), una sola stella grande gialla (`#f7d21e`), omino azzurro (`#a1daf8`) — nessuna coordinata o colore reinterpretato rispetto al testo fornito.
+
+**Codifica scelta**: ho seguito la stessa convenzione già usata dalla favicon precedente in questo stesso file (unica codifica realmente necessaria per un data URI SVG dentro un attributo HTML a doppi apici: attributi SVG tra apici singoli per non confliggere con le doppie virgolette di `href`, e solo il carattere `#` percent-encodato in `%23`, perché altrimenti verrebbe interpretato come inizio di un fragment e troncherebbe l'URI). Ho verificato la sostituzione due volte: la prima stesura conteneva un refuso nel `viewBox` (mancava lo `0` di min-y, `viewBox='0 42 28'` invece di `'0 0 42 28'`) generato tentando erroneamente una codifica percent-encoding integrale (`encodeURIComponent`-style) di tutti i caratteri — corretto tornando alla codifica leggera coerente col resto del file, con il `viewBox` esatto.
+
+| Parte | Stato |
+|---|---|
+| SVG esatto fornito (coordinate/colori invariati) | ✅ Fatto — verificato carattere per carattere |
+| `type="image/svg+xml"` esplicito | ✅ Fatto |
+| Data URI con codifica corretta (solo `#`→`%23`, apici singoli) | ✅ Fatto — stessa convenzione già in uso nel file, verificata funzionante |
+| Rimozione favicon precedenti/conflitti | ✅ Verificato — era l'unica presente, nessun'altra da rimuovere |
+
+**⚠️ Da verificare visivamente da Simone**: aprendo il sito, controllare che la scheda del browser mostri la nuova icona (cielo navy/tenda teal/omino azzurro/una stella) e non quella vecchia (due cerchi navy/ambra) — non è stato possibile controllare il rendering reale in questo ambiente (nessun browser con accesso al dominio pubblicato).
+
+## 2 — Verifica della regola "pausa pranzo" nel CLAUDE.md
+
+**Cosa è stato fatto**: la regola presente in `CLAUDE.md` (sezione "Regole di business pianificate", introdotta nel ciclo precedente) conteneva ancora la frase superata "pausa + viaggio devono concludersi entro le 14:30" e non distingueva il caso senza viaggio da quello con viaggio né prevedeva la tolleranza di riduzione. Sostituita integralmente con la versione definitiva fornita: pausa di 60 minuti nella finestra 12:00–14:30 (ultima fascia 13:30–14:30), implicita se si inizia alle 13:30 o dopo / si finisce entro le 13:30; **senza viaggio** (già in sede tutto il giorno o solo sessioni online) pausa tassativa di 60 minuti; **con viaggio casa→sede dopo la pausa** tolleranza solo in difetto fino a un minimo di 50 minuti (mai in eccesso, solo se serve a piazzare sessioni, l'algoritmo preferisce sempre i 60 minuti pieni); il viaggio avviene dopo la pausa e può estendersi oltre le 14:30 senza limite (con i due esempi numerici forniti); la Passata 2 può scegliere "online in sede" per far quadrare la pausa, nel qual caso l'operatore è considerato già in sede e la pausa torna tassativa di 60 minuti; il report può suggerire riduzioni oltre i limiti o spostamenti fuori finestra, mai eseguiti in automatico. Nessuna riga di codice toccata (`generateMonth`/`generateMonthAI`/`risolviOnlineDaCasa` restano invariati): la regola resta solo documentata, come richiesto ("da implementare in un prossimo ciclo").
+
+| Parte | Stato |
+|---|---|
+| Rilevamento della frase superata | ✅ Confermato presente ("pausa + viaggio devono concludersi entro le 14:30") |
+| Sostituzione integrale con la versione definitiva | ✅ Fatto |
+| Distinzione senza viaggio (tassativa) / con viaggio (tolleranza -10 min) | ✅ Fatto |
+| Esempi numerici (13:30–14:30/14:30–15:00 e 13:30–14:20/14:20–14:50) | ✅ Riportati integralmente |
+| Nessuna modifica al codice (regola solo pianificata) | ✅ Verificato — nessun file JS toccato |
+
+---
+
+## Verifica automatica finale (i 2 interventi)
+
+| Punto | Codice | Documentazione | Verificato dal vivo | Esito |
+|---|---|---|---|---|
+| 1. Nuova favicon | ✅ Fatto (`index.html`, riga 8) | n/a | ⚠️ No — consigliato controllo visivo | **Completo per il codice**, da confermare a video |
+| 2. Regola pausa pranzo | n/a (solo documentazione, come richiesto) | ✅ Fatto (`CLAUDE.md`) | n/a | **Completo** |
+
+**Cosa manca**: nessuna lacuna nota per questi due punti, a parte la verifica visiva della favicon in un browser reale (non eseguibile in questo ambiente).
+
+## Limiti di questa verifica
+Analisi per lettura statica del codice; verificato il bilanciamento sintattico (parentesi graffe/tonde) sull'intero file prima e dopo la modifica. Non è stato possibile aprire un browser con accesso al dominio pubblicato per controllare a video il rendering della favicon nella scheda del browser — si raccomanda una verifica visiva rapida dopo il deploy.

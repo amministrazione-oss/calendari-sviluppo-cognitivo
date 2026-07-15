@@ -57,7 +57,12 @@ When making changes, keep everything self-contained in `index.html` (no framewor
 
 ## Regole di business pianificate (non ancora implementate)
 
-- **Pausa pranzo** (da implementare in un prossimo ciclo): ogni operatore deve avere 60 minuti consecutivi liberi interamente dentro la finestra 12:00–14:30. La pausa si considera implicita (non richiede uno slot vuoto esplicito) se l'operatore inizia a lavorare alle 13:30 o dopo, oppure se finisce entro le 13:30. Se dopo la pausa c'è uno spostamento casa→sede, pausa + viaggio devono concludersi entro le 14:30. La Passata 2 (`risolviOnlineDaCasa`) può scegliere "online in sede" per far quadrare la pausa (l'aula resta occupata in quel caso). Il report di generazione può suggerire riduzioni o spostamenti della pausa per sbloccare sessioni, ma non deve mai eseguirli in automatico.
+- **Pausa pranzo** (da implementare in un prossimo ciclo): ogni operatore deve avere una pausa pranzo di 60 minuti consecutivi interamente dentro la finestra 12:00–14:30 (ultima fascia valida 13:30–14:30). La pausa è implicita (non richiede uno slot vuoto esplicito) se l'operatore inizia a lavorare alle 13:30 o dopo, oppure se finisce entro le 13:30.
+  - **Senza viaggio** (operatore già in sede tutta la giornata, oppure tutte le sessioni online): pausa tassativa di 60 minuti pieni, nessuna riduzione ammessa.
+  - **Con viaggio casa→sede dopo la pausa**: tolleranza solo in difetto, la pausa può scendere fino a un minimo di 50 minuti (riduzione massima 10 minuti), sempre interamente dentro la finestra, e solo se serve a piazzare sessioni. L'algoritmo preferisce sempre i 60 minuti pieni e riduce solo se necessario.
+  - Il viaggio casa→sede avviene **dopo** la pausa e può estendersi oltre le 14:30 senza limite. Esempio 1: pausa 13:30–14:30, viaggio 14:30–15:00, prima sessione alle 15:00. Esempio 2 (tolleranza con viaggio): pausa 13:30–14:20, viaggio 14:20–14:50, prima sessione alle 14:50.
+  - La Passata 2 (`risolviOnlineDaCasa`) può scegliere "online in sede" per far quadrare la pausa (l'aula resta occupata in quel caso); in tal caso l'operatore è considerato già in sede (il viaggio è stato fatto al mattino prima di iniziare) e la pausa torna tassativa di 60 minuti.
+  - Il report di generazione può suggerire riduzioni oltre i limiti sopra o spostamenti della pausa fuori finestra per sbloccare sessioni, ma non deve mai eseguirli in automatico.
 
 ## Manutenzione del CONTESTO.md
 
