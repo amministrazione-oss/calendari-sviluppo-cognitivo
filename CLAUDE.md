@@ -49,3 +49,12 @@ Everything lives in `index.html`: CSS in one `<style>` block, then several `<scr
 - **Chiusure**: center-wide closures (holidays/vacation) that block session generation on those dates; Italian public holidays (including computed Easter/Easter Monday) are precomputed via `getFestivita`/`getPasqua`.
 
 When making changes, keep everything self-contained in `index.html` (no framework or bundler is set up), preserve the JSON-blob-in-SharePoint-list persistence model, and be careful with the two scheduling code paths (`generateMonth` vs `generateMonthAI`) since they duplicate validation/session-shape logic independently.
+
+## Manutenzione del CONTESTO.md
+
+`CONTESTO.md`, nella root del repo, è il documento di contesto del progetto usato nelle conversazioni di consulenza con Claude (fuori da Claude Code). Regola permanente:
+
+- Alla fine di ogni sessione di lavoro che produce modifiche al codice, **prima del commit finale**, aggiorna `CONTESTO.md`:
+  - aggiungi alla sezione "Cronologia lavori" una voce sintetica con data e descrizione delle modifiche fatte in questa sessione;
+  - aggiorna la sezione "Backlog" se sono emerse nuove voci o se alcune sono state completate (rimuovile o segnale come fatte).
+- `CONTESTO.md` va sempre incluso nello stesso commit delle modifiche di codice a cui si riferisce, mai in un commit separato successivo.

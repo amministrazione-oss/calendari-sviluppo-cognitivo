@@ -71,6 +71,10 @@
 
 **Test manuali suggeriti a Simone (da fare)**: prova Annulla (inserire giorni sbagliati → Annulla → ricaricare → spariti); ricontrollare le voci Impostazioni inserite quando c'era l'errore findIndex (alcune scritture potrebbero non essere andate a buon fine).
 
+**15/07:**
+11. Aggiunto `CONTESTO.md` al repo (era solo locale, ora versionato e incluso nel deploy). Introdotta nel `CLAUDE.md` una regola permanente di manutenzione: a fine di ogni sessione con modifiche al codice, prima del commit finale, aggiornare qui la sezione "Cronologia lavori" (voce sintetica con data) e la sezione "Backlog" (nuove voci o completate), includendo sempre `CONTESTO.md` nello stesso commit del codice.
+12. Riepilogo/conferma del rilascio del 14/07 (fix dei 4 punti, punto 10 sopra): Annulla reale con snapshot, rimozione impostazioni multi-giorno, fasce settimanali visibili nel calendario mensile, bug `findIndex` sulle Impostazioni risolto, ordinamento "Cognome Nome" esteso a tutta l'app.
+
 **Stato dati**: inserimento in corso (14/07). Strategia test: prima set piccolo (2-3 operatori misti Assunto/P.IVA, 4-5 progetti rappresentativi), poi caricamento completo (import Excel disponibile). Realtà operativa: operatori multi-progetto nello stesso giorno, maggioranza sessioni online.
 
 ## 6. Backlog
