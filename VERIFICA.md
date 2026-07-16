@@ -791,3 +791,42 @@ Analisi per lettura statica del codice e calcolo di contrasto WCAG per formula (
 
 ## Limiti di questa verifica
 Analisi per lettura statica dei tre file coinvolti (`CLAUDE.md`, `CONTESTO.md`, `VERIFICA.md`); nessuna modifica a `index.html`, quindi nessun controllo di sintassi del codice necessario in questo ciclo.
+
+---
+
+# Verifica — Chiusura giornata 16/07: Audit doppio, procedura di apertura, Quadro di controllo
+
+**Nessuna modifica al codice in questo ciclo**: solo `CONTESTO.md` (e questo file). Data: 2026-07-16.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (3 punti numerati) conteneva già tutta la specifica di contenuto.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Aggiungere la voce di backlog "Audit doppio" **in coda** alla lista "Funzionalità" (dopo la voce 18 "Ciclo comunicazioni", come voce 19), non in mezzo alla lista: evita di dover rinumerare e ricontrollare tutti i riferimenti incrociati già presenti (voci 3/4/16/18), a differenza dei due cicli precedenti dove un inserimento a metà lista aveva reso stantii dei riferimenti. Gli unici numeri che si spostano sono quelli della sezione "Strumenti" (19-23→20-24), che non risultava referenziata altrove nel file (verificato).
+- Segnalare, non correggere in silenzio, che nessuna "tappa dell'audit" preesistente risultava scritta prima di oggi (il prompt chiedeva di "estendere" una tappa esistente) — stessa gestione già adottata per la discrepanza "riparazione interattiva" nel ciclo precedente.
+
+## Metodo di verifica: multi-passata a quattro fonti
+
+1. **Passata 1 — ricerca della "tappa dell'audit" citata dal prompt**: grep case-insensitive di `audit`/`collaudo` su `CONTESTO.md` e `CLAUDE.md` (stato prima di questo ciclo) → l'unico riscontro è "Collaudo automatico delle regole" nel Registro delle decisioni (voce 3, una scelta architetturale già presa, non una tappa di roadmap a sé) e i suoi due rimandi come prerequisito nella voce di backlog "Riparazione interattiva" (voce 4). **Nessuna voce di roadmap chiamata "audit" esisteva prima di oggi.**
+2. **Passata 2 — verifica che l'inserimento in coda non spezzi riferimenti incrociati**: grep di `voce (di backlog )?(19|20|21|22|23)` su tutto il file prima della modifica → nessun riscontro fuori dalla sezione "Strumenti" stessa: confermato che spostare Graphify/Ruflo/Caveman/Node.js/claude doctor da 19-23 a 20-24 non richiede correzioni altrove.
+3. **Passata 3 — coerenza interna dopo le modifiche**: riletti tutti i rimandi numerici del backlog (voce 3 → "voce 4 sotto" ✓, voce 4 → "voce 18 sotto" ✓, voce 18 → "voce 4 sopra" ✓, voce 19 nuova senza rimandi in entrata da correggere) e del Registro delle decisioni (voce 4 → "backlog 16" ✓, voce 7 → "backlog, voce 16" ✓, entrambi già corretti nel ciclo precedente e non toccati da questo): numerazione backlog 1→24 e Registro decisioni 1→11 sequenziali, senza salti né duplicati.
+4. **Passata 4 — confronto fra le tre richieste del prompt e il testo scritto**: (punto 1) voce 19 "Audit doppio" contiene entrambe le parti (a) statica e (b) funzionale, l'ordine "dopo il primo test di generazione con i dati reali", e la nuova voce 11 nel Registro delle decisioni con motivazione e alternativa scartata, come richiesto; (punto 2) la procedura di apertura giornata in §2 riporta tutti gli elementi elencati dal prompt nello stesso ordine (PowerShell → cd → claude → prompt zero: git pull, lettura dei tre file, riassunto senza modifiche, attesa prompt); (punto 3) il "Quadro di controllo" è descritto in §2 con tutti gli elementi richiesti (documento Word personale, generato/aggiornato da Claude in chat, consolida regole/verifiche/roadmap/mancanze, codici sezione.riga con i due esempi dati nel prompt).
+5. **Passata 5 — rilettura finale integrale di `CONTESTO.md`**: nessuna ulteriore incongruenza trovata (intestazione data 16/07/2026 = oggi, invariata e corretta; cronologia 16/07 con le voci 15-19 in ordine) → passata "vuota", ciclo chiuso a 5 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Backlog: "Audit doppio" (audit statico + collaudo funzionale con utenze ZZTEST) + voce nel Registro delle decisioni | ✅ Fatto | Backlog voce 19; Registro decisioni voce 11 |
+| 2 | Metodo di lavoro: procedura fissa di apertura giornata | ✅ Fatto | CONTESTO.md §2 |
+| 3 | Metodo di lavoro: menzione del "Quadro di controllo" | ✅ Fatto | CONTESTO.md §2 |
+
+**Discrepanza segnalata (non risolta in autonomia)**: la "tappa dell'audit" che il prompt chiedeva di "estendere" in "Audit doppio" non esisteva in nessuna delle quattro fonti prima di oggi — scritta per la prima volta con il nome definitivo, nota di fedeltà inclusa nella voce di backlog stessa. A differenza della discrepanza "riparazione interattiva" del ciclo precedente, qui non c'era alcuna tensione di contenuto da segnalare oltre alla semplice assenza pregressa.
+
+**Cosa manca**: nessuna lacuna nota sui 3 punti richiesti.
+
+## Limiti di questa verifica
+Analisi per lettura statica di `CONTESTO.md`; nessuna modifica a `index.html` o `CLAUDE.md` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
