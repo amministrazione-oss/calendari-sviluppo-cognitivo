@@ -752,3 +752,42 @@ Analisi per lettura statica del codice — nessuna modifica a `index.html` in qu
 
 ## Limiti di questa verifica
 Analisi per lettura statica del codice e calcolo di contrasto WCAG per formula (nessun motore JS/browser locale disponibile). Il controllo di bilanciamento sintattico è per conteggio di caratteri (non un parser reale), ma la natura chirurgica del diff (sole 5 righe, solo valori di colore) rende questo controllo sufficiente a escludere errori strutturali.
+
+---
+
+# Verifica — Nuovo stato "calendarizzata" e riparazione interattiva (documentale)
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md` e `CONTESTO.md` (e questo file). Data: 2026-07-16. Aggiornamento documentale di roadmap: due nuove regole di business pianificate (non ancora implementate).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (3 punti numerati) conteneva già tutta la specifica di contenuto.
+
+*Domande poste a Simone e risposte ricevute:* nessuna in questo ciclo (a differenza del ciclo colori precedente, qui non è emersa alcuna ambiguità che richiedesse di interrompere il lavoro per una conferma).
+
+*Decisioni prese di conseguenza:*
+- Scrivere le due nuove regole pianificate in `CLAUDE.md` nella stessa sezione ("Regole di business pianificate") già usata per pausa pranzo e pseudonimizzazione IA, senza toccare la sezione "Scheduling engine" (che documenta il comportamento *attuale* del codice, non quello pianificato) né la descrizione della Passata 3 in `CONTESTO.md` §4 (idem: quella sezione descrive cosa fa oggi `generateMonth`, non cosa farà).
+- Segnalare, non risolvere in autonomia, una discrepanza trovata durante la stesura (vedi sotto) invece di correggerla o ometterla in silenzio, come da regola permanente "verifica multi-passata".
+
+## Metodo di verifica: multi-passata a quattro fonti
+
+1. **Passata 1 — ricerca della voce di backlog preesistente citata dal prompt**: il punto 3 del prompt dice che "la voce riparazione interattiva assorbe questa specifica", il che presuppone che una voce con questo nome esistesse già. Grep case-insensitive di `interattiv`/`riparazione` su `CLAUDE.md` e `CONTESTO.md` (stato prima di questo ciclo): **nessun riscontro** in nessuno dei due file, nella sezione backlog o altrove. Verificata anche l'unica menzione di "collaudo automatico" citata come prerequisito (punto 2 del prompt): esiste solo come voce 3 del Registro delle decisioni (una scelta architetturale già presa), non come voce di backlog tracciata a sé — annotato come osservazione minore, non richiesta dal prompt, quindi non corretta in questo ciclo.
+2. **Passata 2 — stesura mirata**: scritte le due regole in `CLAUDE.md` (stato calendarizzata + Passata 3 a convergenza; riparazione interattiva a due fasi) nella sezione "Regole di business pianificate"; in `CONTESTO.md` nuova voce di backlog 4 "Riparazione interattiva + nuovo stato calendarizzata" (con conseguente rinumerazione 5→23 di tutta la lista funzionalità/strumenti), aggiornamento delle voci "pausa pranzo" (voce 3) e "Ciclo comunicazioni" (voce 18) con i rimandi incrociati richiesti dal punto 3, e tre nuove voci nel Registro delle decisioni (8, 9, 10).
+3. **Passata 3 — coerenza interna di `CONTESTO.md` dopo la rinumerazione**: la rinumerazione del backlog (inserimento della voce 4) rende stantii tutti i riferimenti a numeri di voce ≥4 scritti nei cicli precedenti. Cercati e corretti: Registro delle decisioni voce 4 ("vedi voce di backlog 15" → 16, la multisessione giornaliera è slittata di una posizione) e voce 7 ("backlog, voce 15" → 16). Verificato che non esistano altri riferimenti numerici stantii (cercati pattern "voce 1[4-9]" e "backlog 1[4-9]" in tutto il file dopo le modifiche).
+4. **Passata 4 — confronto incrociato fra le fonti**: verificato che `CLAUDE.md` (regole pianificate) e `CONTESTO.md` (backlog voce 4) raccontino la stessa specifica senza contraddirsi (stessa terminologia: calendarizzata/proposta/confermata/esiti, Fase 1/Fase 2, Applica/Attesa/Ignora, MAX_MOSSE=40 come tetto attuale citato in entrambi). Verificato che `CONTESTO.md` §3/§4 (stati sessione e Passata 3 *attuali*) non siano stati toccati, perché descrivono il codice presente, non la roadmap — coerenza con la prassi già seguita per pausa pranzo e GDPR nei cicli precedenti (regole pianificate mai anticipate nelle sezioni "stato attuale").
+5. **Passata 5 — rilettura finale integrale di `CONTESTO.md`**: numerazione backlog 1→23 sequenziale senza salti né duplicati; Registro delle decisioni 1→10 sequenziale; cronologia 16/07 con le voci 15-18 in ordine. Nessuna ulteriore incongruenza trovata → passata "vuota", ciclo chiuso a 5 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | CLAUDE.md: stato "calendarizzata" + Passata 3 a convergenza + passaggio automatico all'invio | ✅ Fatto | Sezione "Regole di business pianificate"; nota di revisione sulla catena di stati inclusa |
+| 2 | CLAUDE.md: riparazione interattiva a due fasi (Applica/Attesa/Ignora) | ✅ Fatto | Stessa sezione; blocco Fase 2 finché Fase 1 non è tutta Applica/Ignora incluso |
+| 3 | CONTESTO.md: backlog + Registro delle decisioni (3 voci con motivazione) | ✅ Fatto | Backlog voce 4 (nuova) + aggiornamento voci 3 e 18; decisioni 8, 9, 10 |
+
+**Discrepanza segnalata (non risolta in autonomia)**: la voce di backlog "riparazione interattiva" che il prompt indicava come preesistente non è stata trovata in nessuna delle quattro fonti prima di questo ciclo — scritta qui per la prima volta, con nota di fedeltà esplicita nel backlog stesso. Segnalata anche una tensione di sequenza non risolta: il punto 1 del prompt lega l'introduzione dello stato calendarizzata al cantiere di riparazione interattiva ("da implementare insieme a"), mentre il punto 3 lega la conversione di Passata 3 a convergenza al ciclo pausa pranzo (precedente, non lo stesso cantiere) — non è chiaro se lo stato calendarizzata debba esistere già prima del cantiere di riparazione interattiva vero e proprio. Entrambe le note sono state scritte nel backlog (voce 4) esattamente come emerse, senza risolverle per conto di Simone.
+
+**Cosa manca**: nessuna lacuna nota sui 3 punti richiesti. Restano aperte le due note di fedeltà/sequenza sopra, da chiarire con Simone in un prossimo ciclo — non bloccanti per la chiusura di questo, essendo entrambe di natura documentale/di pianificazione, non difetti introdotti da questo ciclo.
+
+## Limiti di questa verifica
+Analisi per lettura statica dei tre file coinvolti (`CLAUDE.md`, `CONTESTO.md`, `VERIFICA.md`); nessuna modifica a `index.html`, quindi nessun controllo di sintassi del codice necessario in questo ciclo.
