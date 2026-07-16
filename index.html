@@ -12,15 +12,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#F4F8FA; --surface:#FFFFFF; --ink:#1A2744; --ink-soft:#5A6E8A;
-  --primary:#15B4B7; --primary-dark:#0E8E91; --primary-soft:#E0F5F5;
+  --bg:#F4F8FA; --surface:#FFFFFF; --ink:#34388f; --ink-soft:#5A6E8A;
+  --primary:#10b3b8; --primary-dark:#0E8E91; --primary-soft:#E0F5F5;
   --accent:#E8A13D; --accent-soft:#FBF0DC;
   --danger:#C24437; --danger-soft:#F9E7E4;
   --ok:#2E7D4F; --ok-soft:#E4F2E9;
   --warn:#c98a3a; --warn-soft:#FDF3E4;
-  --border:#D6E2EC; --shadow:0 1px 3px rgba(26,39,68,.08),0 4px 14px rgba(26,39,68,.06);
+  --border:#D6E2EC; --shadow:0 1px 3px rgba(52,56,143,.08),0 4px 14px rgba(52,56,143,.06);
   --radius:12px;
-  --navy:#1A2744; --teal:#15B4B7; --teal-soft:#E0F5F5; --gold:#E8A13D;
+  --navy:#34388f; --teal:#10b3b8; --teal-soft:#E0F5F5; --gold:#E8A13D;
+  --celeste-soft:#E7F4FC;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -72,7 +73,7 @@ main{flex:1;max-width:1260px;width:100%;margin:0 auto;padding:22px 20px 60px}
 .view-title .grow{flex:1}
 .banner{border-radius:var(--radius);padding:12px 16px;font-size:13.5px;margin-bottom:16px}
 .banner.warn{background:var(--accent-soft);border:1px solid #EBCF9E}
-.banner.info{background:var(--primary-soft);border:1px solid #BEDCD7}
+.banner.info{background:var(--celeste-soft);border:1px solid #BFDFF3}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
 .card .card-pad{padding:18px}
 table.list{width:100%;border-collapse:collapse;font-size:14px}

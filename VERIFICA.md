@@ -708,3 +708,47 @@ Analisi per lettura statica del codice (nessun motore JavaScript locale, nessun 
 
 ## Limiti di questa verifica
 Analisi per lettura statica del codice — nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di bilanciamento sintattico necessario. Le citazioni di riga si riferiscono allo stato di `index.html` invariato dal 15/07/2026 (2325 righe).
+
+---
+
+# Verifica — Ciclo colori brand su index.html
+
+**Prima modifica al codice dal 14/07** (i due cicli precedenti erano solo documentali). Data: 2026-07-16.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna prima dell'inizio lavori. Durante l'esecuzione è emersa una discrepanza bloccante (vedi sotto), su cui è stata posta una domanda diretta.
+
+*Domande poste a Simone e risposte ricevute:* il prompt chiedeva di sostituire "ovunque il navy #38378d con #34388f". Verificando il codice reale (grep case-insensitive su tutto `index.html`), **#38378d non esiste da nessuna parte** — la variabile CSS realmente usata per il navy/testo principale è `--navy`/`--ink`:#1A2744 (un blu-grigio scuro diverso da quello sempre documentato in `CONTESTO.md`). Il teal invece corrispondeva davvero al codice (#15B4B7 → variabili `--primary`/`--teal`). Domanda posta: come procedere, dato che il colore letterale da sostituire non esiste? Tre opzioni proposte (sostituire #1A2744 con #34388f; non toccarlo e fare solo il teal; indicare un altro colore). **Risposta di Simone**: sostituire #1A2744 con #34388f (opzione consigliata) — il "navy" da allineare al logo è la variabile CSS reale usata per il testo principale, non il valore mai esistito nella documentazione.
+
+*Decisioni prese di conseguenza:*
+- Sostituire `--ink`/`--navy` (#1A2744→#34388f) e `--primary`/`--teal` (#15B4B7→#10b3b8), inclusa la `--shadow` che incorpora la stessa tinta navy in formato `rgba(26,39,68,...)`→`rgba(52,56,143,...)` (riscontro diretto della stessa costante di colore, non un valore indipendente).
+- Introdurre il celeste #a1daf8 come accento SOLO su `.banner.info` (nuova variabile `--celeste-soft:#E7F4FC`), scartando l'idea di applicarlo a `--primary-soft` (condivisa da bottoni/chip/nav/spinner: un cambiamento lì avrebbe alterato il linguaggio visivo di hover/stati attivi in tutta l'app, non un semplice accento decorativo — violando il vincolo "senza stravolgere layout").
+- Non modificare `--primary-dark`:#0E8E91 (sfumatura scura derivata del teal, usata per stati hover): il prompt chiedeva la sostituzione del teal base, non delle sfumature derivate, e i due valori di teal (vecchio #15B4B7, nuovo #10b3b8) sono comunque quasi identici visivamente.
+- Segnalare la discrepanza nella documentazione (non correggerla in silenzio prima di aver avuto conferma) come da regola permanente "verifica multi-passata" — la conferma di Simone sana la discrepanza per il codice; resta comunque annotata in `CONTESTO.md` come nota di fedeltà, a beneficio di chi legge in futuro.
+
+## Metodo di verifica: multi-passata a quattro fonti
+
+1. **Passata 1 — mappatura di tutte le occorrenze nel codice reale**: grep case-insensitive di `38378d` (0 occorrenze in tutto il file), di `1A2744`/`15B4B7` (4 righe: 15, 16, 21, 23) e di `rgba(26,39,68` (dentro la riga 21, stessa costante di colore in altro formato). Verificato che i colori funzionali NON compaiono in queste righe: sedi (riga 107, `.ev.cesate`/`.ev.busto`/`.ev.online`/`.ev.domicilio`, tutti valori distinti tipo #2B5BA0/#2E7D4F/#8A4A7D/#B65E2E), `ASSENZA_COLORI` (riga 514, valori distinti), logo SVG e favicon (righe 217-270, già in #10b3b8/#34388f/#a1daf8 dal ciclo precedente, non toccate).
+2. **Passata 2 — applicazione mirata**: sostituiti i 4 valori individuati (righe 15,16,21,23) e aggiunta `--celeste-soft:#E7F4FC` (nuova dichiarazione, nessuna riga esistente toccata); cambiata una sola regola CSS (`.banner.info`, riga ~75) per l'accento celeste.
+3. **Passata 3 — verifica che nessun colore funzionale sia stato toccato**: rieseguito il grep di sedi/`ASSENZA_COLORI`/logo-favicon dopo la modifica → tutti i valori risultano identici a prima (nessuna riga cambiata all'infuori delle 5 individuate in Passata 1-2).
+4. **Passata 4 — sintassi e struttura**: conteggio dei caratteri `{ } ( ) [ ]` sull'intero file, confrontato fra la versione committata (`git show HEAD:index.html`) e la copia di lavoro modificata → **identico** in entrambi i casi (1028/1028 `{}`,4179/4179 `()`,457/457 `[]`), a conferma che la modifica è una pura sostituzione di valori senza impatto strutturale. Nessun motore Node/Python disponibile in questo ambiente (confermato, coerente con `CONTESTO.md` §2) per un parse JS completo; il controllo per bilanciamento caratteri è il metodo alternativo già in uso nei cicli precedenti.
+5. **Passata 5 — contrasto testo/sfondo dove i colori sono cambiati** (calcolo WCAG, luminanza relativa sRGB): nuovo `--ink` #34388f su sfondo bianco/`--surface` → contrasto ≈9,95:1 (era ≈14,8:1 col vecchio #1A2744: il contrasto **diminuisce ma resta ampiamente sopra la soglia AAA di 7:1** per testo normale); `--ink` su nuovo `--celeste-soft` #E7F4FC (banner info) → contrasto ≈8,9:1, ampiamente sopra AA (4,5:1) e AAA; nav attiva (`--teal-soft` di sfondo, testo `--navy` nuovo) → contrasto ≈8,8:1. Nessun problema di leggibilità riscontrato in nessuno dei punti dove il colore è cambiato.
+6. **Passata 6 — rilettura finale integrale del diff** (`git diff -- index.html`): 3 righe di variabili CSS modificate + 1 riga nuova (`--celeste-soft`) + 1 riga di regola `.banner.info` modificata, nessun'altra riga toccata nell'intero file di 2325 righe → passata "vuota", nessuna ulteriore incongruenza trovata. Ciclo chiuso a 6 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Richiesta | Stato | Riscontro |
+|---|---|---|
+| Sostituire navy #38378d→#34388f (var. CSS + occorrenze dirette, ogni case) | ⚠️ **Discrepanza chiarita in sessione**, poi ✅ Fatto | #38378d non esisteva; sostituito il navy reale `--ink`/`--navy` (#1A2744→#34388f) su conferma di Simone |
+| Sostituire teal #15b4b7→#10b3b8 (var. CSS + occorrenze dirette, ogni case) | ✅ Fatto | `--primary`/`--teal` righe 16,23; nessun'altra occorrenza nel file |
+| Celeste #a1daf8 come accento solo su tinte chiare decorative esistenti | ✅ Fatto, ambito minimo | Solo `.banner.info`, unico sfondo chiaro decorativo isolato individuato senza impatto su elementi condivisi |
+| Non toccare colori funzionali (sedi/assenze/stati/logo/favicon) | ✅ Verificato (Passata 1 e 3) | Nessuna di queste righe compare nel diff |
+| Verificare contrasto testo/sfondo dove i colori cambiano | ✅ Fatto (Passata 5) | Tutti i contrasti ≥8,8:1, ben sopra AA/AAA |
+| Aggiornare sezione colori di CONTESTO.md, attuazione completata | ✅ Fatto | CONTESTO.md §3, con nota di fedeltà sulla discrepanza #38378d |
+| Verifica automatica + Registro di sessione + controllo sintassi + cronologia + commit/push | ✅ Fatto | Questa voce; cronologia CONTESTO.md voce 17; commit/push in coda |
+
+**Cosa manca**: nessuna lacuna nota. Consigliato — non bloccante — un controllo visivo rapido a video dopo il deploy (nessun browser con accesso al dominio pubblicato disponibile in questo ambiente).
+
+## Limiti di questa verifica
+Analisi per lettura statica del codice e calcolo di contrasto WCAG per formula (nessun motore JS/browser locale disponibile). Il controllo di bilanciamento sintattico è per conteggio di caratteri (non un parser reale), ma la natura chirurgica del diff (sole 5 righe, solo valori di colore) rende questo controllo sufficiente a escludere errori strutturali.
