@@ -666,3 +666,45 @@ Come da regola del prompt, queste discrepanze **non sono state corrette nel codi
 
 ## Limiti di questa verifica
 Analisi per lettura statica del codice (nessun motore JavaScript locale, nessun browser con accesso al dominio pubblicato in questo ambiente). Tutte le citazioni di riga si riferiscono allo stato di `index.html` al 16/07/2026 (2325 righe) prima di questo ciclo, che non ha toccato il codice. Verificati con `wc -l` i conteggi di riga dei quattro file coinvolti; nessun controllo di bilanciamento sintattico necessario in questo ciclo poiché `index.html` non è stato modificato.
+
+---
+
+# Verifica — Ciclo di pulizia del CONTESTO.md
+
+**Nessuna modifica al codice in questo ciclo**: solo `CONTESTO.md` (e verifica, senza modifiche, di `CLAUDE.md`) e questo file. Data: 2026-07-16. Ciclo di chiusura delle 3 discrepanze lasciate aperte dal ciclo precedente ("Grande ciclo di allineamento documentale", voce sopra).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt iniziale (10 punti numerati) conteneva già tutte le specifiche di contenuto, incluse le tre decisioni datate 16/07 (colori, multisessione giornaliera, ciclo comunicazioni).
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:* eseguire i 10 punti in autonomia, verificando ogni affermazione tecnica citata nel prompt contro il codice reale di `index.html` prima di scriverla in `CONTESTO.md`, e correggendo — quando trovati durante la rilettura finale — anche riferimenti incrociati diventati stantii per effetto delle modifiche stesse (vedi Passata 4 sotto), come da regola "verifica multi-passata a quattro fonti".
+
+## Metodo di verifica: multi-passata a quattro fonti
+
+1. **Passata 1 — riscontro nel codice reale dei fatti citati nel prompt**: `wc -l index.html` → 2325 righe (invariato, già allineato in `CONTESTO.md` §1); grep di `maxSessioniGiorno` → righe 1559, 1699, 1750, 1859 (tetto massimo usato in Passata 1/3, nessun campo `minSessioniGiorno`/pausa presente); grep di `cal-send-month` → righe 298 (markup) e 800 (solo toggle visibilità admin), nessun `addEventListener` collegato, confermato non funzionante; righe 1926-1929 (`sediAmmesse`/"Sessione scartata") → confermato che la sede composita proposta dall'IA è validata e **scartata** se non ammessa, mai corretta; righe 1979-1988/2311-2312 (`mkWeekMsg`, `#btn-wa`, `#btn-mail`) → confermato che l'invio settimanale esistente copre solo un singolo utente, nessun ambito/filtro stato/destinatario multiplo.
+2. **Passata 2 — stesura**: applicati i 10 punti a `CONTESTO.md` punto per punto (rimozione voce §2 su `BACKLOG.md`, sezione test manuali, backlog pausa pranzo/multisessione/ciclo comunicazioni, sezione colori, Registro delle decisioni, §4 sul percorso IA, cronologia), ciascuno con riscontro di riga dove il punto lo richiedeva (8, 9, 10).
+3. **Passata 3 — coerenza interna di `CONTESTO.md`**: la riscrittura della voce di backlog "multisessione giornaliera" (da 14 a 15, con lo spostamento di una posizione dovuto all'inserimento della nuova voce "pausa pranzo" come voce 3) ha reso stantio il riferimento "voce di backlog 14" nella decisione 4 del Registro delle decisioni (scritta nel ciclo precedente) — **trovato e corretto** in questa stessa passata: aggiornato a "voce di backlog 15" e il rimando alla discrepanza `maxSessioniGiorno` sostituito con un rimando alla nuova decisione 7, che la chiarisce. Verificata anche la numerazione della sezione Strumenti (ora 18-22, invariata nel contenuto, solo scalata di due posizioni per le due voci funzionali aggiunte prima).
+4. **Passata 4 — confronto incrociato con le altre tre fonti**: `CLAUDE.md` (sezione "Comunicazioni nell'inventario architettura", riga 44) già descrive correttamente il pulsante "Invio mese" come non funzionante ("non ha alcun listener collegato... è un elemento UI non funzionante") — **nessuna correzione necessaria** (punto 9 del prompt chiedeva di correggerla solo se citava un export mensile come già esistente: non lo fa). La formulazione precisa sul percorso IA già scritta in `CLAUDE.md` (sezione Scheduling engine, tabella "generateMonthAI: risoluzione online...") è coerente con la nuova formulazione scritta in `CONTESTO.md` §4 in questo ciclo (stessa distinzione: Passata 2 ricalcolata, sede composita validata/scartata non corretta). Le tre discrepanze lasciate aperte dal ciclo precedente (vedi sezione "Discrepanze da discutere" sopra) sono ora tutte risolte da decisioni esplicite di Simone datate 16/07: la 1 (multisessione) dalla nuova specifica minimo+pausa, la 2 (pulsante Invio mese) dalla nuova voce di backlog "Ciclo comunicazioni" che ne prevede la rimozione, la 3 (formulazione IA) dalla correzione diretta del testo in `CONTESTO.md` §4.
+5. **Passata 5 — rilettura finale integrale** di `CONTESTO.md` dopo tutte le modifiche: nessuna ulteriore incongruenza trovata (numerazione backlog 1-22 sequenziale e senza salti, Registro delle decisioni 1-7 sequenziale, cronologia 16/07 con le voci 15 e 16 in ordine) → passata "vuota", ciclo di verifica chiuso a 5 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto
+
+| Punto | Richiesta | Stato | Riscontro |
+|---|---|---|---|
+| 1 | Conteggio righe `index.html` allineato | ✅ Confermato, nessuna modifica necessaria | `wc -l` → 2325, già scritto in CONTESTO.md §1 dal ciclo precedente |
+| 2 | Rimuovere voce superata su `BACKLOG.md` | ✅ Fatto | Rimossa da CONTESTO.md §2 (il backlog vive in §6) |
+| 3 | Test manuali segnati eseguiti con esiti + test residuo | ✅ Fatto | CONTESTO.md, cronologia 14/07: Annulla = bug confermato e corretto (ciclo 15/07, voce 13); Impostazioni = ok dopo fix `findIndex`; aggiunto test residuo per ritestare l'Annulla |
+| 4 | Backlog pausa pranzo, priorità alta | ✅ Fatto | Backlog voce 3, con rimando alla specifica già in CLAUDE.md |
+| 5 | Registro decisioni colori + sezione colori aggiornata | ✅ Fatto | CONTESTO.md §3 (colori) e §7 (decisione 6); nessun colore funzionale sedi/assenze toccato; nessun codice toccato (attuazione rimandata) |
+| 6 | Data intestazione aggiornata a oggi | ✅ Confermato, nessuna modifica necessaria | Intestazione già "16/07/2026" = data odierna |
+| 7 | Voce "Cognome Nome" segnata completata | ✅ Fatto | CONTESTO.md §3, completata il 14/07 |
+| 8 | Backlog multisessione riscritto (min+pausa) + decisione di chiarimento | ✅ Fatto | Backlog voce 15 riscritta; decisione 7 nel Registro; verificato nel codice che solo `maxSessioniGiorno` esiste (righe 1559,1699,1750,1859), nessun minimo/pausa |
+| 9 | Backlog "Ciclo comunicazioni" + verifica CLAUDE.md | ✅ Fatto | Backlog voce 17; CLAUDE.md verificato, già corretto (non cita export mensile come esistente), nessuna modifica |
+| 10 | Correzione frase imprecisa su percorso IA | ✅ Fatto | CONTESTO.md §4, distinzione Passata 2 ricalcolata / sede composita validata-scartata |
+
+**Cosa manca**: nessuna lacuna nota. Le tre discrepanze del ciclo precedente sono chiuse da decisioni esplicite di Simone in questo prompt, non da correzioni autonome. Resta, come sempre, il test residuo sull'Annulla (punto 3) da eseguire dal vivo da Simone.
+
+## Limiti di questa verifica
+Analisi per lettura statica del codice — nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di bilanciamento sintattico necessario. Le citazioni di riga si riferiscono allo stato di `index.html` invariato dal 15/07/2026 (2325 righe).
