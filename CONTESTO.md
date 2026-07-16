@@ -1,5 +1,5 @@
 # Piano B — Gestionale Centro Sviluppo Cognitivo
-## Documento di contesto per nuove chat (aggiornato al 14/07/2026, ore pomeridiane)
+## Documento di contesto per nuove chat (aggiornato al 16/07/2026)
 
 > Fornire questo file a inizio conversazione per riprendere il lavoro senza perdere il contesto.
 
@@ -8,7 +8,7 @@
 ## 1. Chi e cosa
 
 - **Simone**: amministrazione/contabilità/commerciale del Centro Sviluppo Cognitivo Coop. Soc. (cooperativa sociale, training cognitivo BrainRx e Metodo Feuerstein). Non è un programmatore: le spiegazioni tecniche vanno date in modo chiaro e in italiano.
-- **Piano B**: gestionale (scheduling/CRM) in **un singolo file `index.html`** (~2100 righe) su GitHub Pages, dominio `https://calendari-sviluppo-cognitivo.it`.
+- **Piano B**: gestionale (scheduling/CRM) in **un singolo file `index.html`** (~2325 righe) su GitHub Pages, dominio `https://calendari-sviluppo-cognitivo.it`.
 - **Stack**: MSAL.js (login Microsoft 365), Microsoft Graph API, SharePoint Lists come database. Nessun build step, nessun framework.
 - **Repo**: `amministrazione-oss/calendari-sviluppo-cognitivo` (pubblico). Push su `main` = deploy automatico.
 - **Copia locale**: `C:\Users\simob\Documents\calendari-sviluppo-cognitivo` (Windows, PowerShell).
@@ -77,13 +77,16 @@
 13. Ciclo di 4 fix UX + documentazione (dettagli in `VERIFICA.md`): (1) Annulla disponibilità — trovato e corretto un difetto reale in `saveRecord` (sostituiva l'oggetto in `state.data[key]` invece di aggiornarlo sul posto, rompendo l'identità del riferimento tenuto dalla scheda aperta) e reso il ripristino via snapshot più robusto (confronto di contenuto invece di un flag `dirty` manuale) — **da confermare con test manuale**, non riprodotto dal vivo; (2) dialogo "modifiche non salvate" (Salva ed esci / Esci senza salvare / Continua a modificare) su operatori, utenti, progetti, sessioni e i popup di disponibilità (click-giorno, "Applica a più giorni"), con nuovo stack di gestori Escape (`pushEsc`/`popEsc`) per le modali annidate; (3) numerazione progressiva nelle liste Formazioni/Metodi in Impostazioni (solo visualizzazione); (4) nuovo logo SVG al posto dei "due pallini", esteso — su scelta di Simone — a header, login e accesso negato (era chiesto solo per l'header).
 14. Nuova favicon con il marchio aziendale (versione semplificata a una stella, leggibile a 16-32px), sostituita l'unica favicon presente in `index.html` con lo stesso stile di codifica data-URI già in uso nel file. Verificata e corretta la regola "pausa pranzo" nel `CLAUDE.md`: conteneva ancora la versione superata ("pausa + viaggio devono concludersi entro le 14:30"), sostituita con la versione definitiva (distinzione senza/con viaggio, tolleranza di riduzione fino a 50 min solo con viaggio, esempi numerici) — resta solo documentata, nessun codice toccato.
 
+**16/07:**
+15. Grande ciclo di allineamento documentale (nessuna modifica al codice, solo `CLAUDE.md`/`CONTESTO.md`/`VERIFICA.md`): sezione "Scheduling engine" del `CLAUDE.md` corretta da due a tre passate con la Passata 3 (riparazione completezza) descritta fedelmente dal codice, documentato il Report completo di generazione e i limiti di `generateMonthAI` (no tipi sessione, no Passata 3); "Key domain concepts" arricchito con le regole verificate nel codice (orari, esclusione domenica, online-in-sede occupa aula, requisito TUTTE le formazioni, rotazione tipi sessione continua/Approccio A, assenze operatore e limite alle fasce dichiarate, disponibilità per fascia senza implicazione Cesate→Online, progetti `noMonteOre` esclusi dalla generazione, non sovrapposizione fra progetti diversi dello stesso utente, `operatoreFisso`); corretto il conteggio righe stantio; nuova sezione "Prassi di chiusura ciclo" (chiusura standard, Registro di sessione in ogni VERIFICA.md, verifica multi-passata a quattro fonti — applicata già in questo ciclo); nuova regola pianificata GDPR/sicurezza sulla pseudonimizzazione dei dati verso `CFG.claudeProxy`; corretta la descrizione di `claudeProxy` (client in formato Claude, backend che oggi traduce verso Gemini 2.0 Flash, fatturazione in sospeso); nuova avvertenza su credenziali in chiaro su SharePoint; aggiunta all'inventario architettura la funzione "Comunicazioni" (WhatsApp/email settimanali), con nota di fedeltà sul pulsante "Invio mese" trovato senza listener collegato (non funzionante). Nel `CONTESTO.md`: nuove voci di backlog (multisessione giornaliera — con discrepanza segnalata sul campo `maxSessioniGiorno` già presente nel codice; invio automatico calendari domenica 15) e nuova sezione "Registro delle decisioni". Dettagli completi, incluso il Registro di sessione e le discrepanze trovate, in `VERIFICA.md`.
+
 **Stato dati**: inserimento in corso (14/07). Strategia test: prima set piccolo (2-3 operatori misti Assunto/P.IVA, 4-5 progetti rappresentativi), poi caricamento completo (import Excel disponibile). Realtà operativa: operatori multi-progetto nello stesso giorno, maggioranza sessioni online.
 
 ## 6. Backlog
 
 *Funzionalità:*
 1. IA a supporto dell'algoritmo (spiegazione anomalie, suggerimenti, comandi naturali) — priorità alta, prima del gruppo
-2. Pseudonimizzazione dati inviati all'IA (GDPR: ID/iniziali al posto dei nomi in generateMonthAI) — priorità alta
+2. Pseudonimizzazione dati inviati all'IA (GDPR: ID/iniziali al posto di nomi/cognomi/contatti/credenziali, sia in generateMonthAI sia nell'assistente sendChat) — priorità alta, ora anche regola documentata in CLAUDE.md come vincolo per ogni modifica alle funzioni IA nel frattempo
 3. Passata 3 "estetica" (ricompattamento giornate; criteri da definire con i dati del report)
 4. Tipi di sessione nel generatore IA
 5. Vista "I miei progetti" per gli operatori (oggi l'operatore vede l'anagrafica solo dal dettaglio sessione)
@@ -95,15 +98,27 @@
 11. Pulizia ridondanza controllo gap 5 minuti
 12. Limite noto P3: niente scambi di aula, niente riassegnazione operatore del blocco
 13. Calendari famiglie via inviti Outlook/Graph (opzione C scelta): eventi calendario M365 con la famiglia invitata, aggiornamenti in tempo reale, solo sessioni confermate, attenzione alle rigenerazioni
+14. Multisessione giornaliera nei progetti (più sessioni al giorno per lo stesso progetto): promessa il 10/07, mai implementata, CONFERMATA necessaria da Simone, gravità media — **nota 16/07**: il codice ha già un campo `maxSessioniGiorno` (editabile in Progetti, usato in Passata 1/3) che sembra fare esattamente questo; discrepanza segnalata in `VERIFICA.md`, da chiarire con Simone prima di considerare la voce ancora aperta o già risolta
+15. Invio automatico dei calendari ogni domenica alle 15: proposto a inizio progetto, decisione in sospeso
 
 *Strumenti (rivalutare se il progetto cresce/diventa multi-file):*
-14. Graphify (knowledge graph del codice) — inutile su file singolo
-15. Ruflo (multi-agente) — sovradimensionato ora
-16. Caveman (output compresso) — sconsigliato: il flusso si regge sulle spiegazioni dettagliate
-17. Node.js sul PC (rete di sicurezza per check sintassi locali)
-18. claude doctor: ok, solo auto-update fallito una volta (fix: rilanciare `irm https://claude.ai/install.ps1 | iex`); Remote Control disabilitato da policy org
+16. Graphify (knowledge graph del codice) — inutile su file singolo
+17. Ruflo (multi-agente) — sovradimensionato ora
+18. Caveman (output compresso) — sconsigliato: il flusso si regge sulle spiegazioni dettagliate
+19. Node.js sul PC (rete di sicurezza per check sintassi locali)
+20. claude doctor: ok, solo auto-update fallito una volta (fix: rilanciare `irm https://claude.ai/install.ps1 | iex`); Remote Control disabilitato da policy org
 
-## 7. Prassi operative da mantenere
+## 7. Registro delle decisioni
+
+Regola permanente: questa sezione va alimentata a ogni ciclo con le nuove decisioni prese (non solo tecniche), ciascuna con motivazione e alternativa scartata — non solo il "cosa", anche il "perché" e cosa si è scelto di non fare.
+
+1. **Pausa pranzo riducibile a 50 minuti solo con viaggio** (16/07) — perché il viaggio è l'unico caso in cui il tempo stringe. Scartata la tolleranza generalizzata: senza viaggio i 60 minuti sono un diritto.
+2. **Calendari famiglie con inviti Outlook/Graph (opzione C)** — perché gli aggiornamenti arrivano in tempo reale. Scartati: file `.ics` statici e feed di sottoscrizione (lenti, e problema GDPR su hosting pubblico).
+3. **Collaudo automatico delle regole come funzione interna di Piano B**, non come app esterna — perché riusabile in produzione e indipendente dal codice di generazione. Scartato l'uso di orchestratori multi-agente esterni (Ruflo): taglia sbagliata per un progetto a file unico senza test automatici.
+4. **Multisessione giornaliera confermata necessaria** (16/07) — vedi voce di backlog 14 sopra e la discrepanza segnalata in `VERIFICA.md` sul campo `maxSessioniGiorno` già presente nel codice.
+5. **Verifiche sempre multi-passata a quattro fonti** (16/07), minimo 4 passate e si continua finché una passata non trova più nulla di nuovo — perché passate aggiuntive in sessioni precedenti hanno trovato errori reali (proxy verso Gemini documentato male, regola GDPR assente dal CLAUDE.md). Scartato un numero fisso di passate.
+
+## 8. Prassi operative da mantenere
 
 - Prompt per Claude Code: in blocco codice copiabile, un paragrafo per punto (le righe vuote a volte spezzano l'incolla su Windows), sempre chiusi da "verifica automatica + commit e push con messaggio descrittivo in italiano".
 - Approvazioni in Claude Code: comandi di lettura (grep/status/find) → sempre sì; rm/delete → controllare i percorsi (ok se Temp o file suoi); "accept edits" (Shift+Tab) ok per lavori lunghi già ben specificati.

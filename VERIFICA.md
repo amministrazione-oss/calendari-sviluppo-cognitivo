@@ -515,3 +515,154 @@ Due interventi mirati. Data: 2026-07-15.
 
 ## Limiti di questa verifica
 Analisi per lettura statica del codice; verificato il bilanciamento sintattico (parentesi graffe/tonde) sull'intero file prima e dopo la modifica. Non è stato possibile aprire un browser con accesso al dominio pubblicato per controllare a video il rendering della favicon nella scheda del browser — si raccomanda una verifica visiva rapida dopo il deploy.
+
+---
+
+# Verifica — Grande ciclo di allineamento documentale
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md`, `CONTESTO.md` e questo file. Data: 2026-07-16.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale delle 9 richieste:*
+- Dopo il prompt iniziale, un primo tentativo di modifica a `CLAUDE.md` (la correzione del conteggio righe) è stato respinto dallo strumento di editing; Simone ha chiarito che il rifiuto era involontario ("per errore"), ha chiesto di riproporre la stessa modifica e proseguire con **tutti** i punti del prompt, e ha esplicitamente **autorizzato tutte le modifiche di questa sessione** (a `CLAUDE.md`/`CONTESTO.md`/`VERIFICA.md` — nessuna modifica al codice era comunque richiesta né autorizzata).
+
+*Domande poste a Simone e risposte ricevute:* nessuna. Il prompt iniziale conteneva già tutte le specifiche di contenuto (i 9 punti); l'unico scambio fuori dal prompt è quello riportato sopra (chiarimento sul rifiuto accidentale).
+
+*Decisioni prese di conseguenza:*
+- Proseguire in autonomia su tutti i 9 punti, verificando ogni affermazione tecnica nel codice reale di `index.html` prima di scriverla in `CLAUDE.md`/`CONTESTO.md`, come richiesto esplicitamente dal prompt ("leggendo il codice reale", "verificandole nel codice").
+- Dove la verifica nel codice ha mostrato uno scostamento rispetto a quanto atteso dal prompt (vedi "Discrepanze da discutere" sotto), non toccare il codice e non correggere in silenzio il testo richiesto da Simone: la voce richiesta è stata comunque scritta come richiesto (es. la voce di backlog "multisessione giornaliera mai implementata"), con una nota di rinvio alla discrepanza accanto, così che la decisione su come interpretarla resti a Simone.
+- Applicare da subito (già in questo ciclo) la nuova regola permanente "verifica multi-passata a quattro fonti" richiesta al punto 4c, descritta di seguito.
+
+## Metodo di verifica: multi-passata a quattro fonti (prima applicazione)
+
+Come da nuova regola permanente (`CLAUDE.md`, sezione "Prassi di chiusura ciclo", punto c), questo ciclo è stato verificato con più passate ad angoli complementari, incrociando le quattro fonti `CLAUDE.md` / `CONTESTO.md` / `VERIFICA.md` / `index.html`:
+
+1. **Passata 1 — lettura del codice reale, punto per punto del prompt**: Passata 3 (righe 1728-1807), report di generazione e metriche (righe 1421-1480), limiti di `generateMonthAI` (righe 1915-1948), orari/domenica (righe 1874-1877, ricorrenze `dn==='Dom'`), formazioni (riga 1603), rotazione tipi sessione (righe 1516-1683), assenze/`effRng` (righe 603-628), disponibilità per fascia/`sedi` (righe 1541-1546), `noMonteOre` (righe 1359,1370), non sovrapposizione utente (righe 1563,1740,1758), `operatoreFisso` (riga 1860), `claudeProxy` (righe 1905-1908, 2001-2002), credenziali (righe 730, 967-968, 2056+), comunicazioni (righe 298, 1978-1988, 2311-2312), online-in-sede/aula (righe 1410-1417). Ogni riscontro è citato con numero di riga nei testi scritti.
+2. **Passata 2 — stesura**: redazione di `CLAUDE.md`/`CONTESTO.md`, con doppio controllo di ogni frase scritta contro la citazione di codice raccolta nella Passata 1 (nessuna frase scritta senza un riscontro di riga).
+3. **Passata 3 — coerenza interna**: rilettura di `CLAUDE.md`/`CONTESTO.md` aggiornati per contraddizioni interne — es. la sezione "Scheduling engine" non doveva più dire "two passes" da nessuna parte una volta introdotta la Passata 3; la nuova regola GDPR (punto 5) non doveva contraddire né duplicare senza coordinarsi la voce di backlog GDPR già esistente in `CONTESTO.md` (risolto allineando il testo della voce 2 del backlog al testo della nuova regola).
+4. **Passata 4 — confronto incrociato fra le quattro fonti**: la Passata 3 è già descritta (senza il dettaglio operativo) in `CONTESTO.md` §4 dal 13-14/07 ("Blocco C1+C2... Passata 3") — coerente con la nuova descrizione dettagliata in `CLAUDE.md`; l'assenza di Passata 3 nel percorso IA era già annotata in `CONTESTO.md` §4 ("NON implementa... né la Passata 3") — coerente col codice e riportata identica in `CLAUDE.md`.
+5. **Passata 5 (continuata perché ha trovato qualcosa di nuovo)** — verifica mirata sulla voce di backlog "multisessione giornaliera" del punto 9a: qui è emersa la discrepanza sul campo `maxSessioniGiorno` (vedi sotto), non individuata nelle passate 1-4 perché il punto 9a non richiedeva esplicitamente un riscontro nel codice (a differenza dei punti 1/2/6/7/8).
+6. **Passata 6 — rilettura finale integrale** dei tre file dopo tutte le modifiche: ha trovato due incongruenze **interne a CONTESTO.md** non causate dal codice ma dalla stesura di questo stesso ciclo, corrette seduta stante perché di puro allineamento documentale (non discrepanze codice/regole, quindi non spostate in "Discrepanze da discutere"): (1) doppia intestazione `## 7.` — la nuova sezione "Registro delle decisioni" aveva riusato per errore lo stesso numero della sezione preesistente "Prassi operative da mantenere", che è stata rinumerata `## 8.`; (2) CONTESTO.md §1 riportava ancora "~2100 righe" per `index.html`, non allineato al conteggio reale "~2325" appena corretto in CLAUDE.md (punto 3) — allineato anch'esso a 2325.
+7. **Passata 7 — rilettura finale bis** dopo le correzioni della Passata 6: nessuna ulteriore incongruenza trovata → passata "vuota", ciclo di verifica chiuso a 7 passate (minimo richiesto: 4).
+
+## 1 — Scheduling engine a tre passate + Report completo (CLAUDE.md)
+
+| Parte | Stato | Riscontro nel codice |
+|---|---|---|
+| Architettura corretta da "two passes" a "three passes" | ✅ Fatto | Commenti `PASSATA 1/2/3` nel codice (righe 1394,1556,1728,1809,1917,1941) |
+| Passata 3: opera solo su utenti/progetti sotto il target settimanale | ✅ Descritto fedelmente | `carenze=riepiloghi.filter(r=>r.piazzate<r.richieste&&...)`, riga 1733 |
+| Passata 3: sposta/scambia SOLO proposte in ambito | ✅ Descritto fedelmente | `movibile=newS.includes(blocco)&&blocco.stato==='proposta'&&scopeIds.has(...)`, riga 1782 |
+| Passata 3: prima Assunti, poi tutti gli ammessi | ✅ Descritto fedelmente | `fasi=[poolCompleto.filter(o=>o.tipoContratto==='Assunto'),poolCompleto]`, riga 1742 |
+| Passata 3: massimo 40 mosse | ✅ Descritto fedelmente | `MAX_MOSSE=40`, riga 1732 |
+| Passata 3: niente scambi di aula, solo di operatore | ✅ Descritto fedelmente | Commento esplicito riga 1770; nessuna riga cambia `aula` di una sessione bloccante |
+| Passata 3: fuori ambito/confermate → non esegue, suggerimento nel report | ✅ Descritto fedelmente | `suggerimentiFuoriAmbito.push(...)`, righe 1783-1788 |
+| Report completo: richieste vs piazzate per utente/settimana | ✅ Documentato | `costruisciReportGenerazione`, righe 1454-1480 |
+| Report completo: cause delle carenze | ✅ Documentato | `causeLbl` (disponibilità utente, aule piene, nessun operatore), righe 1461-1467 |
+| Report completo: suggerimenti azionabili | ✅ Documentato | `suggerimentiRichieste`, righe 1472-1477 |
+| Report completo: metriche (buchi, % online da casa, saturazione aule, carico Assunti/P.IVA) | ✅ Documentato | `calcolaMetricheReport`, righe 1421-1451 |
+| generateMonthAI: NON tipi sessione, NON Passata 3 | ✅ Documentato | Nessun uso di `tipiSessione` in `generateMonthAI`; commento esplicito riga 1945 |
+| generateMonthAI: risoluzione online ricalcolata deterministicamente post-risposta | ✅ Documentato, con precisazione | `risolviOnlineDaCasa` (Passata 2) gira sempre dopo la risposta IA (riga 1942) per `onlineDaCasa`/aula — **ma** la sede composita (`Presenza+Online`→Cesate/Online) proposta dall'IA viene solo validata e **scartata se non ammessa** (righe 1926-1929), non ricalcolata/corretta. Vedi nota in "Discrepanze" sulla formulazione preesistente in CONTESTO.md. |
+
+## 2 — Key domain concepts arricchito (CLAUDE.md)
+
+| Regola | Stato | Riscontro nel codice |
+|---|---|---|
+| Orari centro 09:00–19:30 | ✅ Verificato | `tmin('09:00')`/`tmin('19:30')`, righe 1581,1702,1754,1874 |
+| Domenica esclusa dalla generazione | ✅ Verificato | `if(dn==='Dom')continue`, righe 1492,1570,1695,1747; prompt IA riga 1877 |
+| Online in sede = aula resta occupata | ✅ Verificato | `s.aula=aula; auB[aula].push(...)` quando `daCasa===false`, righe 1412-1415 |
+| Requisito formazioni: TUTTE le formazioni richieste | ✅ Verificato | `reqForms.every(rf=>opForms.includes(rf))`, riga 1603 |
+| Rotazione tipi sessione continua sul mese, non si azzera a settimana | ✅ Verificato | `sessionCountByProject` per progetto, mai reimpostato a inizio settimana, righe 1516,1659,1680-1682 |
+| Approccio A: un solo operatore per l'intera sessione | ✅ Verificato | Un solo `operatoreId` per sessione con tutti i `componenti` in `composizione`, righe 1643,1683 |
+| Assenze: malattia sempre giornata intera | ✅ Verificato | `if(ex.tipo==='malattia')return[]`, riga 611 |
+| Assenze: permesso/ferie con fascia facoltativa | ✅ Verificato | Righe 613-616 |
+| Resto della giornata disponibile SOLO dentro le fasce dichiarate | ✅ Verificato | `subtractWindow(weekly(), ex.da, ex.a)` sottrae dalla disponibilità settimanale propria, non dall'intera giornata, riga 614 |
+| Disponibilità per fascia: Cesate non implica Online | ✅ Verificato | `sdComp`/righe 1541-1546: uno slot deve elencare esplicitamente la sede remota |
+| Progetti `noMonteOre` esclusi dalla generazione automatica | ✅ Verificato | `!p.noMonteOre&&...`, righe 1359,1370 |
+| Sessioni di progetti diversi dello stesso utente non si sovrappongono mai | ✅ Verificato | `allPU`/`uBN` su tutti i progetti dell'utente, non solo quello in piazzamento, righe 1563,1586-1587,1740,1758-1759 |
+| `operatoreFisso` già nel codice | ✅ Verificato | Campo su progetto, usato/mostrato riga 1860; checkbox `#pe-fisso` riga 1022 |
+
+## 3 — Conteggio righe (CLAUDE.md)
+
+| Parte | Stato |
+|---|---|
+| Conteggio reale (`wc -l index.html`) | **2325 righe** (era documentato "~1600") |
+| Corretto in CLAUDE.md | ✅ Fatto |
+
+## 4 — Prassi di chiusura ciclo (CLAUDE.md)
+
+| Regola | Stato |
+|---|---|
+| (a) Chiusura standard (verifica + CONTESTO.md + commit descrittivo) | ✅ Aggiunta, e applicata in questo stesso ciclo |
+| (b) Registro di sessione in ogni VERIFICA.md | ✅ Aggiunta, e applicata per la prima volta in questa stessa voce (sezione sopra) |
+| (c) Verifica multi-passata a quattro fonti, minimo 4, senza numero fisso | ✅ Aggiunta, e applicata per la prima volta in questo ciclo (6 passate, vedi sopra) |
+
+## 5 — Regola GDPR pseudonimizzazione verso l'IA (CLAUDE.md)
+
+| Parte | Stato |
+|---|---|
+| Nuova regola in "Regole di business pianificate", priorità alta | ✅ Fatto |
+| Copre sia `sendChat`/`bCtx` sia `generateMonthAI` | ✅ Fatto — entrambi chiamano `CFG.claudeProxy` (righe 1905,2001) |
+| Copre nomi/cognomi/contatti/credenziali | ✅ Fatto, come richiesto dal prompt |
+| Vincolo esplicito per ogni modifica alle funzioni IA fino all'implementazione | ✅ Fatto |
+| Coerenza con backlog CONTESTO.md (voce preesistente) | ✅ Allineata — la voce 2 del backlog CONTESTO.md esisteva già ma era più stretta (solo `generateMonthAI`, solo nomi); aggiornata per coprire lo stesso perimetro della nuova regola |
+
+## 6 — claudeProxy: client Claude / backend Gemini (CLAUDE.md)
+
+| Parte | Stato | Riscontro nel codice |
+|---|---|---|
+| Il client parla formato Claude (Messages API) | ✅ Verificato | `{model:'claude-sonnet-4-6',max_tokens,messages:[{role,content}]}` in entrambi i punti di chiamata, righe 1907,2001; risposta letta come `data.content` filtrato per `type==='text'`, righe 1910,2002 |
+| Il proxy traduce verso Gemini 2.0 Flash lato server | ⚠️ Non verificabile dal client | Informazione fornita da Simone (fatto lato server, fuori dal codice client); riportata come tale, non come riscontro di codice |
+| Fatturazione in sospeso | ✅ Riportato come detto da Simone | Decisione non ancora presa, documentata come tale |
+| Chiave API non presente nel file | ✅ Verificato | Nessuna stringa di chiave API in `index.html`, solo l'URL del proxy (riga 484) |
+
+## 7 — Credenziali in chiaro su SharePoint (CLAUDE.md)
+
+| Parte | Stato | Riscontro nel codice |
+|---|---|---|
+| Credenziali operatori e utenti salvate in chiaro | ✅ Verificato | Campo `credenziali[].password`, righe 909,951,967-968 |
+| Nessuna cifratura client o server | ✅ Verificato | `saveRecord`: `Data:JSON.stringify(payload)` senza trasformazioni, riga 730 |
+| Avvertenza aggiunta: solo per credenziali di lavoro, mai bancarie/critiche | ✅ Fatto |
+
+## 8 — Comunicazioni nell'inventario architettura (CLAUDE.md)
+
+| Parte | Stato | Riscontro nel codice |
+|---|---|---|
+| Messaggi settimanali WhatsApp/email per utente | ✅ Verificato e documentato | `mkWeekMsg`, righe 1979-1988; `#btn-wa`/`#btn-mail`, righe 2311-2312 |
+| Export mensile | ⚠️ **Discrepanza** — vedi sotto | Pulsante presente (`#cal-send-month`, riga 298) ma **senza alcun listener collegato** nel codice: nessuna funzione di export mensile esiste. Documentato in CLAUDE.md come nota di fedeltà, non come funzionalità esistente. |
+
+## 9 — CONTESTO.md: backlog + Registro delle decisioni
+
+| Parte | Stato |
+|---|---|
+| (a) Voce backlog multisessione giornaliera | ✅ Aggiunta come richiesto, con nota di discrepanza (vedi sotto) |
+| (b) Voce backlog invio automatico calendari domenica 15 | ✅ Aggiunta |
+| (c) Sezione "Registro delle decisioni" con le 5 voci richieste | ✅ Aggiunta, ciascuna con decisione/motivazione/alternativa scartata |
+| Regola permanente di alimentazione a ogni ciclo | ✅ Aggiunta (in CONTESTO.md §7 e richiamata in CLAUDE.md, sezione Manutenzione del CONTESTO.md) |
+
+## Discrepanze da discutere
+
+Come da regola del prompt, queste discrepanze **non sono state corrette nel codice** né risolte in autonomia nel testo: sono segnalate qui per una decisione di Simone.
+
+1. **"Multisessione giornaliera nei progetti" — possibile funzionalità già presente**: il prompt (punto 9a) chiede di registrare a backlog che questa funzionalità "mai implementata" è "CONFERMATA necessaria da Simone". Leggendo il codice, però, esiste già un campo `maxSessioniGiorno` per progetto (esposto in UI come "Max sessioni/giorno" in Progetti, `#pe-maxday`, riga 1559) che è attivamente usato sia in Passata 1 (riga 1559: `todayPlaced>=maxDay` non blocca una seconda sessione lo stesso giorno se `maxDay>1`) sia in Passata 3 (riga 1750) per permettere più sessioni dello stesso progetto nello stesso giorno. Non è chiaro se: (a) questo campo risolva già ciò che Simone intende per "multisessione giornaliera" e la voce di backlog sia da chiudere; (b) "multisessione giornaliera" indichi qualcosa di più specifico che `maxSessioniGiorno` non copre (es. orari/fasce diverse per le due sessioni, gestione UI, o un caso che in pratica non funziona nonostante il campo esista); (c) il campo esista ma sia stato introdotto dopo la promessa del 10/07 e non fosse ancora lì quando la promessa è stata fatta. La voce di backlog è stata comunque scritta come richiesto, con un rimando a questa nota.
+2. **Pulsante "📤 Invio mese" (Calendario) non funzionante**: presente in markup (riga 298, title "Esporta messaggi mese"), visibile solo per Admin, ma senza alcun `addEventListener` collegato nel codice attuale — nessuna funzione di generazione/export mensile esiste. Se questa funzionalità era attesa attiva (il punto 8 del prompt la cita come parte della funzione "comunicazioni" da documentare), va deciso se implementarla o rimuovere il pulsante morto; per ora è solo documentata come non funzionante, nessun codice toccato.
+3. **Formulazione preesistente "risoluzione sede/online ricalcolata deterministicamente" (già in CONTESTO.md §4 prima di questo ciclo, ripresa nel punto 1 del prompt)**: è imprecisa su un dettaglio. Nel percorso IA, solo la decisione "online da casa/in sede" (Passata 2, `risolviOnlineDaCasa`) è davvero ricalcolata deterministicamente dopo la risposta. La *sede composita* (`Presenza+Online`→Cesate/Online, `Presenza+Domicilio`→Cesate/Domicilio) proposta dall'IA non viene invece ricalcolata: se non ammessa, la sessione viene scartata (righe 1926-1929), non corretta. In CLAUDE.md è stata scritta la versione precisa (vedi punto 1 della tabella sopra); la frase preesistente in CONTESTO.md resta invece nella formulazione originale — segnalato qui per decidere se allinearla in un prossimo ciclo.
+
+## Verifica automatica finale (i 9 punti)
+
+| Punto | Stato |
+|---|---|
+| 1. Scheduling engine a tre passate + Report completo | ✅ Completo (una precisazione, vedi Discrepanza 3) |
+| 2. Key domain concepts arricchito | ✅ Completo |
+| 3. Conteggio righe corretto | ✅ Completo |
+| 4. Prassi di chiusura ciclo | ✅ Completo, applicata da subito |
+| 5. Regola GDPR pseudonimizzazione | ✅ Completo |
+| 6. claudeProxy Claude/Gemini | ✅ Completo (parte server non verificabile dal client, riportata come detto da Simone) |
+| 7. Credenziali in chiaro | ✅ Completo |
+| 8. Comunicazioni nell'inventario | ✅ Completo (con discrepanza sul pulsante mese, vedi sopra) |
+| 9. CONTESTO.md backlog + Registro decisioni | ✅ Completo (con discrepanza sulla voce multisessione, vedi sopra) |
+
+**Cosa manca / attenzione**: le tre discrepanze sopra restano aperte in attesa di una decisione di Simone; nessuna di esse blocca la chiusura di questo ciclo, essendo tutte discrepanze di documentazione/UI da chiarire, non difetti introdotti da questo ciclo.
+
+## Limiti di questa verifica
+Analisi per lettura statica del codice (nessun motore JavaScript locale, nessun browser con accesso al dominio pubblicato in questo ambiente). Tutte le citazioni di riga si riferiscono allo stato di `index.html` al 16/07/2026 (2325 righe) prima di questo ciclo, che non ha toccato il codice. Verificati con `wc -l` i conteggi di riga dei quattro file coinvolti; nessun controllo di bilanciamento sintattico necessario in questo ciclo poiché `index.html` non è stato modificato.
