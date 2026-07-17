@@ -553,6 +553,18 @@ function normalizeImpostazioni(s){
   return s;
 }
 function fmtDurata(min){if(min<60)return min+' min';const h=Math.floor(min/60),m=min%60;return h+'h'+(m?' '+m+'min':'');}
+// Parsing/formattazione ore:minuti sessantesimi per i campi monte ore / ore Metodo (S6, 17/07).
+// "1:30"/"1.30"/"1,30" -> 90 minuti (il separatore indica SEMPRE ore:minuti, mai un decimale); un numero senza separatore ("90") è già in minuti secchi.
+function parseHM(str){
+  if(str==null)return null;
+  const s=String(str).trim();
+  if(s==='')return null;
+  const m=s.match(/^(\d+)[:.,](\d{1,2})$/);
+  if(m)return parseInt(m[1],10)*60+parseInt(m[2],10);
+  const n=parseInt(s,10);
+  return isNaN(n)?null:n;
+}
+function fmtHM(min){min=Math.round(min||0);const h=Math.floor(min/60),m=min%60;return h+':'+pad2(m);}
 
 const OP_COLORS = ['#3b7dd8','#2E7D4F','#8A4A7D','#B65E2E','#14655F','#A4692B','#456B8C','#7D3B3B','#5B7A2E','#6B4FA0','#1F7A8C','#96562F'];
 
@@ -589,7 +601,8 @@ function prById(id){return state.data.progetti.find(p=>p.id===id)||null;}
 function opColor(op){return(op&&op.colore)||'#5C6C6A';}
 function sedeClass(s){if(!s)return'online';const l=s.toLowerCase();if(l.includes('cesate'))return'cesate';if(l.includes('busto'))return'busto';if(l.includes('domicilio'))return'domicilio';return'online';}
 function statoTag(st){const m={'proposta':'info','confermata':'warn','eseguita':'ok','assenza ingiustificata':'danger','annullata':'off'};return m[st]||'off';}
-function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00'))/60,0);}
+// Minuti erogati (eseguita+assenza ingiustificata) sul monte ore progetto — restituisce MINUTI, non più ore decimali (S6, 17/07)
+function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00')),0);}
 // Sottrae la fascia [da,a] da un elenco di fasce {from,to,...}, spezzando le fasce che la contengono
 function subtractWindow(slots,da,a){
   const wf=tmin(da),wt=tmin(a);const out=[];
@@ -627,6 +640,13 @@ function effRng(ent,ds,dn){
   // Fall back to weekly availability
   return weekly();
 }
+// Tempo di viaggio Busto Arsizio coerente con la posizione reale dell'operatore (S8, 17/07): se quel giorno
+// è già altrove in sede a Cesate usa "tempoBustoCesate" (Cesate<->Busto), altrimenti "tempoBustoCasa" (casa<->Busto).
+// Se manca ancora "tempoBustoCesate" (campo nato vuoto in migrazione), ripiega prudentemente su "tempoBustoCasa" e lo segnala.
+function tempoBustoOperatore(op,giaACesate){
+  if(giaACesate&&op.tempoBustoCesate!=null)return{min:op.tempoBustoCesate,fallback:false};
+  return{min:op.tempoBustoCasa||0,fallback:!!giaACesate};
+}
 // Decide se una sessione online si svolge da casa o in sede, in base al margine di viaggio rispetto alle presenze della giornata
 function decidiOnlineDaCasa(op,sessioniGiorno,st,en){
   // Anche una sessione online già risolta "in sede" conta come presenza fisica a quell'orario (l'operatore non è mai andato a casa)
@@ -638,15 +658,20 @@ function decidiOnlineDaCasa(op,sessioniGiorno,st,en){
     }
     return null;
   }).filter(Boolean).sort((a,b)=>a.from-b.from);
-  if(!presenze.length)return{daCasa:true,ancora:null};
+  if(!presenze.length)return{daCasa:true,ancora:null,bustoFallback:false};
   const first=presenze[0],last=presenze[presenze.length-1];
+  const giaACesate=presenze.some(pz=>pz.sede==='Cesate');
   if(en<=first.from){
-    const margine=first.sede==='Cesate'?(op.tempoCasa||0):(op.tempoBusto||0);
-    return{daCasa:(first.from-en)>=margine,ancora:first};
+    let margine,bustoFallback=false;
+    if(first.sede==='Cesate')margine=op.tempoCasa||0;
+    else{const tb=tempoBustoOperatore(op,giaACesate);margine=tb.min;bustoFallback=tb.fallback;}
+    return{daCasa:(first.from-en)>=margine,ancora:first,bustoFallback};
   }
   if(st>=last.to){
-    const margine=last.sede==='Cesate'?(op.tempoCasa||0):(op.tempoBusto||0);
-    return{daCasa:(st-last.to)>=margine,ancora:last};
+    let margine,bustoFallback=false;
+    if(last.sede==='Cesate')margine=op.tempoCasa||0;
+    else{const tb=tempoBustoOperatore(op,giaACesate);margine=tb.min;bustoFallback=tb.fallback;}
+    return{daCasa:(st-last.to)>=margine,ancora:last,bustoFallback};
   }
   // Sessione online "incastrata" tra due presenze nello stesso giorno: resta in sede (nessuna regola di margine per questo caso)
   const ancora=presenze.reduce((best,pz)=>{const d=Math.min(Math.abs(pz.to-st),Math.abs(en-pz.from));return(!best||d<best.d)?{...pz,d}:best;},null);
@@ -735,6 +760,29 @@ async function loadAll(){const keys=['operatori','utenti','progetti','sessioni',
   }
   if(migratedSede){for(const p of state.data.progetti)await saveRecord('progetti',p);console.log('Migration: sedi composite rinominate in Cesate+Online/Cesate+Domicilio');}
   }catch(e){console.warn('Migration sedi composite skipped:',e);}
+  // Migration: monte ore progetto e ore totali per Metodo, da ore decimali a minuti (17/07, Ciclo B/S6).
+  // Marcatore p.oreInMinuti: una volta impostato, il progetto è già in minuti e non va più riconvertito.
+  try{
+  let migratedOre=false;
+  for(const p of state.data.progetti){
+    if(p.oreInMinuti)continue;
+    if(p.monteOre)p.monteOre=Math.round(parseFloat(p.monteOre)*60);
+    if(Array.isArray(p.metodi))p.metodi.forEach(m=>{if(m.oreTotali)m.oreTotali=Math.round(parseFloat(m.oreTotali)*60);});
+    p.oreInMinuti=true;migratedOre=true;
+  }
+  if(migratedOre){for(const p of state.data.progetti)await saveRecord('progetti',p);console.log('Migration: monte ore e ore Metodo convertiti da ore decimali a minuti');}
+  }catch(e){console.warn('Migration monte ore skipped:',e);}
+  // Migration: tempo Busto Arsizio sdoppiato in tempoBustoCesate/tempoBustoCasa (17/07, Ciclo B/S8).
+  // Il valore preesistente diventa "da casa" (decisione di Simone del 17/07); "da Cesate" nasce vuoto.
+  try{
+  let migratedBusto=false;
+  for(const o of state.data.operatori){
+    if(o.hasOwnProperty('tempoBusto')&&!o.hasOwnProperty('tempoBustoCasa')){
+      o.tempoBustoCasa=o.tempoBusto;o.tempoBustoCesate=null;delete o.tempoBusto;migratedBusto=true;
+    }
+  }
+  if(migratedBusto){for(const o of state.data.operatori)await saveRecord('operatori',o);console.log('Migration: tempo Busto Arsizio sdoppiato in tempoBustoCesate/tempoBustoCasa (da casa = valore precedente, da Cesate vuoto)');}
+  }catch(e){console.warn('Migration tempo Busto skipped:',e);}
 }
 async function saveRecord(key,record){
   const listId=state.listIds[key];const{_spId,...payload}=record;const fields={Title:payload.id,Data:JSON.stringify(payload)};
@@ -910,8 +958,8 @@ function openOperatoreModal(o={}){
   let oeBaseline=null;
   // Stato di apertura del form (esclude le eccezioni: quelle sono salvate subito e già gestite dall'Annulla
   // di renderMonthlyAvail — non devono far scattare due volte l'avviso di modifiche non salvate).
-  function collectOeState(){return JSON.stringify({nome:$('#oe-nome').value.trim(),cognome:$('#oe-cognome').value.trim(),telefono:$('#oe-tel').value.trim(),email:$('#oe-email').value.trim().toLowerCase(),sedi:Array.from($$('#oe-sedi input:checked')).map(i=>i.value),tipoContratto:$('#oe-contratto').value,oreSettimanali:$('#oe-ore-sett').value,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value,tempoCasa:$('#oe-tempo-casa').value,tempoBusto:$('#oe-tempo-busto').value,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value,disponibilita:readAvailEditor('oe-av'),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():[],note:$('#oe-note').value.trim()});}
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div class="field" id="oe-tempo-busto-wrap" style="'+((o.sedi||[]).includes('Busto Arsizio')?'':'display:none')+'"><label>Tempo Busto Arsizio (min)</label><input id="oe-tempo-busto" type="number" min="0" value="'+(o.tempoBusto||0)+'" style="max-width:100px"><p class="help">Da Cesate a Busto e viceversa</p></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#oe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>oeBaseline!==null&&collectOeState()!==oeBaseline,()=>{const b=$('#oe-save');if(b)b.click();});
+  function collectOeState(){return JSON.stringify({nome:$('#oe-nome').value.trim(),cognome:$('#oe-cognome').value.trim(),telefono:$('#oe-tel').value.trim(),email:$('#oe-email').value.trim().toLowerCase(),sedi:Array.from($$('#oe-sedi input:checked')).map(i=>i.value),tipoContratto:$('#oe-contratto').value,oreSettimanali:$('#oe-ore-sett').value,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value,tempoCasa:$('#oe-tempo-casa').value,tempoBustoCesate:$('#oe-tempo-busto-cesate').value,tempoBustoCasa:$('#oe-tempo-busto-casa').value,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value,disponibilita:readAvailEditor('oe-av'),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():[],note:$('#oe-note').value.trim()});}
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' operatore</h3><div class="grid2"><div class="field"><label>Nome *</label><input id="oe-nome" value="'+esc(o.nome||'')+'"></div><div class="field"><label>Cognome *</label><input id="oe-cognome" value="'+esc(o.cognome||'')+'"></div></div><div class="grid2"><div class="field"><label>Telefono</label><input id="oe-tel" value="'+esc(o.telefono||'')+'"></div><div class="field"><label>Email M365 *</label><input id="oe-email" type="email" placeholder="nome@sviluppocognitivo.it" value="'+esc(o.email||'')+'"></div></div><div class="field"><label>Sedi abilitate</label><div id="oe-sedi" style="display:flex;flex-wrap:wrap;gap:8px">'+SEDI.map(s=>'<label class="chip '+((o.sedi||[]).includes(s)?'on':'')+'"><input type="checkbox" value="'+s+'" '+((o.sedi||[]).includes(s)?'checked':'')+'>'+s+'</label>').join('')+'</div></div><div class="field"><label>🔑 Credenziali piattaforme</label><div id="oe-cred"></div></div><div class="field"><label>🎓 Formazione</label><select id="oe-form-dd"><option value="">— Aggiungi formazione —</option></select><div id="oe-form-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div><div class="field"><label>Tipo contratto</label><select id="oe-contratto"><option value="PIVA" '+(o.tipoContratto==='PIVA'||!o.tipoContratto?'selected':'')+'>P.IVA</option><option value="Assunto" '+(o.tipoContratto==='Assunto'?'selected':'')+'>Assunto</option></select></div><div id="oe-assunto-wrap" style="'+((o.tipoContratto||'')==='Assunto'?'':'display:none')+'"><div class="grid2"><div class="field"><label>Ore settimanali</label><input id="oe-ore-sett" type="number" min="1" value="'+(o.oreSettimanali||0)+'"></div><div class="field"><label>Tipo</label><select id="oe-tipo-contr"><option value="Indeterminato" '+((o.tipoContrattoSpec||'Indeterminato')==='Indeterminato'?'selected':'')+'>Indeterminato</option><option value="Determinato" '+(o.tipoContrattoSpec==='Determinato'?'selected':'')+'>Determinato</option></select></div></div><div id="oe-det-wrap" style="'+(o.tipoContrattoSpec==='Determinato'?'':'display:none')+'"><div class="field"><label>Scadenza contratto</label><input id="oe-scadenza" type="date" value="'+(o.scadenzaContratto||'')+'"></div></div></div><div class="grid2"><div class="field"><label>Tempo casa (min)</label><input id="oe-tempo-casa" type="number" min="0" value="'+(o.tempoCasa||0)+'" style="max-width:100px"><p class="help">Da Cesate a casa propria</p></div><div id="oe-tempo-busto-wrap" style="gap:12px;flex-wrap:wrap;margin-bottom:13px;'+((o.sedi||[]).includes('Busto Arsizio')?'display:flex':'display:none')+'"><div class="field" style="margin-bottom:0"><label>Tempo Busto da Cesate (min)</label><input id="oe-tempo-busto-cesate" type="number" min="0" value="'+(o.tempoBustoCesate!=null?o.tempoBustoCesate:'')+'" style="max-width:100px" placeholder="—"><p class="help">Da Cesate a Busto e viceversa</p></div><div class="field" style="margin-bottom:0"><label>Tempo Busto da casa (min)</label><input id="oe-tempo-busto-casa" type="number" min="0" value="'+(o.tempoBustoCasa||0)+'" style="max-width:100px"><p class="help">Da casa propria a Busto e viceversa</p></div></div></div><div class="grid3"><div class="field"><label>Ruolo</label><select id="oe-ruolo"><option '+((o.ruolo||'Operatore')==='Operatore'?'selected':'')+'>Operatore</option><option '+(o.ruolo==='Admin'?'selected':'')+'>Admin</option></select></div><div class="field"><label>Colore</label><input id="oe-colore" type="color" value="'+esc(color)+'" style="height:38px;padding:3px"></div><div class="field"><label>Stato</label><select id="oe-attivo"><option value="1" '+(o.attivo!==false?'selected':'')+'>Attivo</option><option value="0" '+(o.attivo===false?'selected':'')+'>Disattivato</option></select></div></div><div class="field"><label>Disponibilità settimanale</label><div id="oe-av"></div></div><div class="field"><label>📅 Eccezioni e assenze giornaliere</label><div id="oe-monthly"></div></div><div class="field"><label>Note</label><textarea id="oe-note">'+esc(o.note||'')+'</textarea></div><div id="oe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="oe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="oe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#oe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>oeBaseline!==null&&collectOeState()!==oeBaseline,()=>{const b=$('#oe-save');if(b)b.click();});
   renderMonthlyAvail('oe-monthly',o,true,'oe-av');
   renderAvailEditor('oe-av',o.disponibilita||o.avail||{},()=>{const w=$('#oe-monthly');if(w&&w._refresh)w._refresh();});
   $('#oe-contratto').addEventListener('change',e=>{$('#oe-assunto-wrap').style.display=e.target.value==='Assunto'?'':'none';});
@@ -924,7 +972,7 @@ function openOperatoreModal(o={}){
   function addFormChip(fn){const ch=document.createElement('span');ch.className='chip on';ch.dataset.fn=fn;ch.innerHTML=esc(fn)+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button>';ch.querySelector('button').addEventListener('click',()=>{ch.remove();refreshFormDD();});oeFormChips.appendChild(ch);refreshFormDD();}
   opForm.forEach(f=>addFormChip(f));refreshFormDD();
   oeFormDD.addEventListener('change',()=>{const v=oeFormDD.value;if(v)addFormChip(v);});
-  $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>{ch.classList.toggle('on');const bustoOn=Array.from($$('#oe-sedi input:checked')).some(i=>i.value==='Busto Arsizio');$('#oe-tempo-busto-wrap').style.display=bustoOn?'':'none';});});
+  $$('#oe-sedi .chip').forEach(ch=>{ch.querySelector('input').addEventListener('change',()=>{ch.classList.toggle('on');const bustoOn=Array.from($$('#oe-sedi input:checked')).some(i=>i.value==='Busto Arsizio');$('#oe-tempo-busto-wrap').style.display=bustoOn?'flex':'none';});});
   oeBaseline=collectOeState();
   $('#oe-save').addEventListener('click',async()=>{
     const nome=$('#oe-nome').value.trim(),cognome=$('#oe-cognome').value.trim(),email=$('#oe-email').value.trim().toLowerCase();
@@ -932,7 +980,9 @@ function openOperatoreModal(o={}){
     if(dupOp){$('#oe-warn').innerHTML='<div class="banner warn">⚠️ Esiste già un operatore con questa email: <strong>'+esc(fullName(dupOp))+'</strong></div>';return;}
     if(!nome||!cognome||!email){$('#oe-warn').innerHTML='<div class="banner warn">Nome ed email obbligatori.</div>';return;}
     const sedi=Array.from($$('#oe-sedi input:checked')).map(i=>i.value);
-    const rec={...o,id:o.id||uid(),nome,cognome,email,telefono:$('#oe-tel').value.trim(),tipoContratto:$('#oe-contratto').value,oreSettimanali:parseInt($('#oe-ore-sett').value)||0,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value||null,tempoCasa:parseInt($('#oe-tempo-casa').value)||0,tempoBusto:parseInt($('#oe-tempo-busto').value)||0,sedi,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value==='1',disponibilita:readAvailEditor('oe-av'),eccezioni:$('#oe-monthly')._getExceptions?$('#oe-monthly')._getExceptions():(o.eccezioni||[]),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():(o.credenziali||[]),note:$('#oe-note').value.trim()};
+    const tbCesateRaw=$('#oe-tempo-busto-cesate').value.trim();
+    const rec={...o,id:o.id||uid(),nome,cognome,email,telefono:$('#oe-tel').value.trim(),tipoContratto:$('#oe-contratto').value,oreSettimanali:parseInt($('#oe-ore-sett').value)||0,tipoContrattoSpec:$('#oe-tipo-contr').value,scadenzaContratto:$('#oe-scadenza').value||null,tempoCasa:parseInt($('#oe-tempo-casa').value)||0,tempoBustoCesate:tbCesateRaw===''?null:(parseInt(tbCesateRaw)||0),tempoBustoCasa:parseInt($('#oe-tempo-busto-casa').value)||0,sedi,ruolo:$('#oe-ruolo').value,colore:$('#oe-colore').value,attivo:$('#oe-attivo').value==='1',disponibilita:readAvailEditor('oe-av'),eccezioni:$('#oe-monthly')._getExceptions?$('#oe-monthly')._getExceptions():(o.eccezioni||[]),formazione:Array.from($$('#oe-form-chips [data-fn]')).map(c=>c.dataset.fn),credenziali:$('#oe-cred')._getCreds?$('#oe-cred')._getCreds():(o.credenziali||[]),note:$('#oe-note').value.trim()};
+    delete rec.tempoBusto; // campo unico sostituito da tempoBustoCesate/tempoBustoCasa (S8, 17/07)
     await withBusy(()=>saveRecord('operatori',rec),isNew?'Creato':'Aggiornato');oeBaseline=null;closeModal();renderOperatori();
   });
   if(!isNew)$('#oe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;oeBaseline=null;await withBusy(()=>deleteRecord('operatori',o),'Eliminato');closeModal();renderOperatori();});
@@ -1018,8 +1068,8 @@ function renderProgetti(){
   const box=$('#pr-table');const list=[...state.data.progetti].sort((a,b)=>{const ua=utById(a.utenteId),ub=utById(b.utenteId);const na=((ua?.cognome||'')+(ua?.nome||'')),nb=((ub?.cognome||'')+(ub?.nome||''));return na.localeCompare(nb,'it')||a.nome.localeCompare(b.nome,'it');});
   if(!list.length){box.innerHTML='<div class="empty">Nessun progetto.</div>';return;}
   box.innerHTML='<table class="list"><thead><tr><th>Utente</th><th>Progetto</th><th>Frequenza</th><th>Monte ore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(p=>{
-    const ut=utById(p.utenteId);const ore=oreErog(p.id).toFixed(1);
-    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullNameCN(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+esc(p.monteOre)+' h':'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
+    const ut=utById(p.utenteId);const ore=fmtHM(oreErog(p.id));
+    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullNameCN(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+fmtHM(p.monteOre):'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#pr-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const p=prById(tr.dataset.id);if(p)openProgettoModal(p);}));
 }
@@ -1029,7 +1079,7 @@ function openProgettoModal(p={}){
   // pMetodi/pTipi sono dichiarati più sotto (let), ma questa funzione viene invocata solo alla chiusura,
   // quando sono già inizializzati.
   function collectPeState(){return JSON.stringify({nome:$('#pe-nome').value.trim(),utenteId:$('#pe-utente').value,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value,frequenza:$('#pe-freq').value,durataSessione:$('#pe-dur').value,maxSessioniGiorno:$('#pe-maxday').value,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():'',domicilioTempo:$('#pe-domicilio-tempo')?$('#pe-domicilio-tempo').value:'',sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av')});}
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale</label><input id="pe-ore" type="number" value="'+(p.monteOre||'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Cesate+Online','Cesate+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Cesate+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>peBaseline!==null&&collectPeState()!==peBaseline,()=>{const b=$('#pe-save');if(b)b.click();});
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale (h:mm)</label><input id="pe-ore" type="text" placeholder="es. 40:00" value="'+(p.monteOre?fmtHM(p.monteOre):'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Cesate+Online','Cesate+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Cesate+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>peBaseline!==null&&collectPeState()!==peBaseline,()=>{const b=$('#pe-save');if(b)b.click();});
   renderMonthlyAvail('pe-monthly',p,false,'pe-av');
   renderAvailEditor('pe-av',p.disponibilita||p.avail||{},()=>{const w=$('#pe-monthly');if(w&&w._refresh)w._refresh();});
   const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
@@ -1046,12 +1096,12 @@ function openProgettoModal(p={}){
   const peMetDD=$('#pe-met-dd'),peMetList=$('#pe-met-list');
   function renderMetodi(){
     peMetDD.innerHTML='<option value="">— Aggiungi metodo —</option>'+getMetodi().filter(m=>!pMetodi.some(pm=>pm.nome===m.nome)).map(m=>'<option>'+esc(m.nome)+'</option>').join('');
-    peMetList.innerHTML=pMetodi.map((m,i)=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="chip on">'+esc(m.nome)+'</span><label style="font-size:12px">Ore totali:</label><input type="number" min="1" value="'+(m.oreTotali||0)+'" style="width:60px;font-size:13px" class="met-ore" data-mi="'+i+'"><button class="icon-btn met-rm" data-mi="'+i+'">✕</button></div>').join('');
+    peMetList.innerHTML=pMetodi.map((m,i)=>'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="chip on">'+esc(m.nome)+'</span><label style="font-size:12px">Ore totali (h:mm):</label><input type="text" value="'+fmtHM(m.oreTotali||0)+'" placeholder="es. 40:00" style="width:70px;font-size:13px" class="met-ore" data-mi="'+i+'"><button class="icon-btn met-rm" data-mi="'+i+'">✕</button></div>').join('');
     peMetList.querySelectorAll('.met-rm').forEach(b=>b.addEventListener('click',()=>{pMetodi.splice(parseInt(b.dataset.mi),1);renderMetodi();renderTipi();}));
-    peMetList.querySelectorAll('.met-ore').forEach(inp=>inp.addEventListener('change',()=>{pMetodi[parseInt(inp.dataset.mi)].oreTotali=parseInt(inp.value)||0;updateMonteOre();}));
+    peMetList.querySelectorAll('.met-ore').forEach(inp=>inp.addEventListener('change',()=>{pMetodi[parseInt(inp.dataset.mi)].oreTotali=parseHM(inp.value)||0;updateMonteOre();}));
     updateMonteOre();
   }
-  function updateMonteOre(){const tot=pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0);$('#pe-met-totale').innerHTML='Monte ore totale: <strong>'+tot+'h</strong>';if(tot>0){$('#pe-ore').value=tot;$('#pe-ore').readOnly=true;$('#pe-ore').style.opacity='0.6';$('#pe-ore').title='Calcolato dalla somma dei metodi';}else{$('#pe-ore').readOnly=false;$('#pe-ore').style.opacity='1';$('#pe-ore').title='';}}
+  function updateMonteOre(){const tot=pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0);$('#pe-met-totale').innerHTML='Monte ore totale: <strong>'+fmtHM(tot)+'</strong>';if(tot>0){$('#pe-ore').value=fmtHM(tot);$('#pe-ore').readOnly=true;$('#pe-ore').style.opacity='0.6';$('#pe-ore').title='Calcolato dalla somma dei metodi';}else{$('#pe-ore').readOnly=false;$('#pe-ore').style.opacity='1';$('#pe-ore').title='';}}
   peMetDD.addEventListener('change',()=>{const v=peMetDD.value;if(v){pMetodi.push({nome:v,oreTotali:0});renderMetodi();renderTipi();}});
   renderMetodi();
   /* Tipi di sessione (6b-bis) */
@@ -1079,7 +1129,7 @@ function openProgettoModal(p={}){
   $('#pe-save').addEventListener('click',async()=>{
     const nome=$('#pe-nome').value.trim(),utenteId=$('#pe-utente').value;
     if(!nome||!utenteId){$('#pe-warn').innerHTML='<div class="banner warn">Nome e utente obbligatori.</div>';return;}
-    const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value||(pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0)||''),frequenza:parseInt($('#pe-freq').value)||3,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av'),eccezioni:$('#pe-monthly')._getExceptions?$('#pe-monthly')._getExceptions():(p.eccezioni||[])};
+    const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:parseHM($('#pe-ore').value)||(pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0)||null),oreInMinuti:true,frequenza:parseInt($('#pe-freq').value)||3,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseHM(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av'),eccezioni:$('#pe-monthly')._getExceptions?$('#pe-monthly')._getExceptions():(p.eccezioni||[])};
     await withBusy(()=>saveRecord('progetti',rec),isNew?'Creato':'Aggiornato');peBaseline=null;closeModal();renderProgetti();
   });
   if(!isNew)$('#pe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;peBaseline=null;await withBusy(()=>deleteRecord('progetti',p),'Eliminato');closeModal();renderProgetti();});
@@ -1403,13 +1453,15 @@ function minutiSettimana(op,ds,opB,Y,M){
 }
 // PASSATA 2 (condivisa da generateMonth e generateMonthAI): risolve onlineDaCasa/aula per le sessioni Online appena create
 // (newS), osservando in ordine cronologico TUTTE le sessioni dell'operatore in quel giorno — anche quelle conservate/fuori ambito.
-function risolviOnlineDaCasa(ms,newS,keep){
+// Se `anom` è passato, segnala (una volta per operatore) i casi in cui è mancato "tempoBustoCesate" ed è stato usato "tempoBustoCasa" come ripiego (S8, 17/07).
+function risolviOnlineDaCasa(ms,newS,keep,anom){
   const tutte=[...keep,...newS].filter(s=>s.data.startsWith(ms)&&s.stato!=='annullata');
   const byOpDay={};
   tutte.forEach(s=>{const key=s.operatoreId+'|'+s.data;(byOpDay[key]=byOpDay[key]||[]).push(s);});
   const auB={};
   tutte.forEach(s=>{if(s.aula)(auB[s.aula]=auB[s.aula]||[]).push({date:s.data,from:tmin(s.oraInizio||s.ora_inizio),to:tmin(s.oraFine||s.ora_fine)});});
   const newSet=new Set(newS);
+  const bustoWarned=new Set();
   Object.values(byOpDay).forEach(giorno=>{
     giorno.sort((a,b)=>tmin(a.oraInizio||a.ora_inizio)-tmin(b.oraInizio||b.ora_inizio));
     giorno.forEach(s=>{
@@ -1417,8 +1469,12 @@ function risolviOnlineDaCasa(ms,newS,keep){
       const op=opById(s.operatoreId);if(!op)return;
       const st=tmin(s.oraInizio||s.ora_inizio),en=tmin(s.oraFine||s.ora_fine);
       const altre=giorno.filter(x=>x!==s);
-      const{daCasa,ancora}=decidiOnlineDaCasa(op,altre,st,en);
+      const{daCasa,ancora,bustoFallback}=decidiOnlineDaCasa(op,altre,st,en);
       s.onlineDaCasa=daCasa;
+      if(bustoFallback&&anom&&!bustoWarned.has(op.id)){
+        bustoWarned.add(op.id);
+        anom.push({lbl:fullName(op),msg:'Manca "Tempo Busto da Cesate": usato "Tempo Busto da casa" come ripiego prudente per decidere online da casa/in sede.'});
+      }
       if(!daCasa&&ancora){
         const auList=ancora.sede==='Cesate'?AULE_CESATE:AULE_BUSTO;
         const aula=(ancora.aula&&auList.includes(ancora.aula))?ancora.aula:auList.find(a=>rfree((auB[a]||[]).filter(b=>b.date===s.data),st,en));
@@ -1522,6 +1578,7 @@ async function generateMonth(ms,spid,nameFilter){
   const{scopeProjects,scopeIds}=determinaAmbito(spid,nameFilter);
   const keep=sessioniDaConservare(ms,scopeIds);
   const newS=[],anom=[];const opB={},prB={},auB={},opRoom={};
+  const bustoFallbackWarned=new Set(); // avvisa una sola volta per operatore se manca "tempoBustoCesate" (S8, 17/07)
   const riepiloghi=[]; // {progettoId,wk,richieste,piazzate,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente} — alimenta il report finale
   const sessionCountByProject={}; // continua la rotazione dei "Tipi di sessione" anche per le sessioni recuperate in Passata 3
   // Le sessioni conservate (intoccabili o fuori ambito) restano vincoli attivi e occupano operatore/aula, tranne le annullate (slot libero)
@@ -1618,7 +1675,15 @@ async function generateMonth(ms,spid,nameFilter){
               // Travel time based on sede transitions
               const opDaySess=[...newS,...keep].filter(sx=>sx.operatoreId===op.id&&sx.data===ds);
               let travelMin=0;
-              if(sed==='Busto Arsizio'||opDaySess.some(sx=>sx.sede==='Busto Arsizio'))travelMin=Math.max(travelMin,op.tempoBusto||0);
+              if(sed==='Busto Arsizio'||opDaySess.some(sx=>sx.sede==='Busto Arsizio')){
+                const giaACesate=opDaySess.some(sx=>sx.sede==='Cesate');
+                const tb=tempoBustoOperatore(op,giaACesate);
+                travelMin=Math.max(travelMin,tb.min);
+                if(tb.fallback&&!bustoFallbackWarned.has(op.id)){
+                  bustoFallbackWarned.add(op.id);
+                  anom.push({lbl:fullName(op),msg:'Manca "Tempo Busto da Cesate": usato "Tempo Busto da casa" come ripiego prudente nel calcolo del tempo di viaggio.'});
+                }
+              }
               if(sed==='Domicilio')travelMin=Math.max(travelMin,p.domicilioTempo||0);
               const diffSede=opDaySess.some(sx=>sx.sede&&sx.sede!==sed);
               if(travelMin>0&&diffSede&&!rfree(opBusy,st-travelMin,en+travelMin))continue;
@@ -1817,7 +1882,7 @@ async function generateMonth(ms,spid,nameFilter){
   }
 
   // PASSATA 2 (ri-valutata dopo gli eventuali spostamenti della Passata 3): decide onlineDaCasa e l'aula per ogni sessione Online
-  risolviOnlineDaCasa(ms,newS,keep);
+  risolviOnlineDaCasa(ms,newS,keep,anom);
   // Mantieni solo le sessioni da conservare; le nuove vengono aggiunte una per una da saveRecord solo se il salvataggio su SharePoint riesce
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
@@ -1949,7 +2014,7 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
     newS.push(rec);
   }
   // PASSATA 2: per ogni operatore/giornata, in ordine cronologico su TUTTE le sue sessioni (anche fuori ambito), decide onlineDaCasa e l'aula eventuale
-  risolviOnlineDaCasa(ms,newS,keep);
+  risolviOnlineDaCasa(ms,newS,keep,anom);
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
   // Nessuna Passata 3 nel percorso IA: qui il piazzamento è deciso dal modello, non da una ricerca deterministica su cui intervenire con scambi.
@@ -1974,12 +2039,14 @@ function checkContractAlerts(){
   const wrap=document.createElement('div');wrap.innerHTML=h;wrap.style.cssText='margin-bottom:16px';const main=$('main');if(main.firstChild)main.insertBefore(wrap,main.firstChild);else main.appendChild(wrap);}
 }
 /* Ore straordinarie — calcolo per operatori assunti */
+// Calcolo interamente in minuti (S6, 17/07): totMin/previsteMin/extraMin sono i valori di calcolo, tot/previste/extra le stesse quantità formattate h:mm
 function calcStraordinari(opId,mese){
   const op=opById(opId);if(!op||op.tipoContratto!=='Assunto')return null;
   const sess=state.data.sessioni.filter(s=>s.operatoreId===opId&&s.data.startsWith(mese)&&(s.stato==='confermata'||s.stato==='eseguita'));
   const totMin=sess.reduce((s,se)=>{const f=tmin(se.oraInizio||se.ora_inizio),t=tmin(se.oraFine||se.ora_fine);return s+(t-f);},0);
-  const settimane=4.33;const previste=op.oreSettimanali*settimane;
-  return{totOre:Math.round(totMin/60*10)/10,previste:Math.round(previste*10)/10,extra:Math.max(0,Math.round((totMin/60-previste)*10)/10)};
+  const settimane=4.33;const previsteMin=Math.round(op.oreSettimanali*60*settimane);
+  const extraMin=Math.max(0,totMin-previsteMin);
+  return{totMin,previsteMin,extraMin,totOre:fmtHM(totMin),previste:fmtHM(previsteMin),extra:fmtHM(extraMin)};
 }
 
 /* ============================================================

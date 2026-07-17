@@ -1120,3 +1120,100 @@ Analisi per lettura statica di `CLAUDE.md` e `CONTESTO.md`; nessuna modifica a `
 
 ## Limiti di questa verifica
 Analisi per lettura statica del codice; verificato il bilanciamento sintattico (parentesi graffe/tonde/quadre) sull'intero file prima e dopo la modifica, nessun motore JavaScript locale né browser con accesso al dominio pubblicato disponibile in questo ambiente per un test dal vivo della migrazione o della generazione. Si raccomanda il test manuale descritto alla Passata 3 subito dopo il deploy.
+
+---
+
+# Verifica — Chiusura test dal vivo Ciclo A + novità Node.js — Ciclo B: S6 + S8
+
+Data: 2026-07-17.
+
+## Chiusura punto aperto dal ciclo precedente (Ciclo A/S4)
+
+Simone ha eseguito il test dal vivo raccomandato alla Passata 3 della verifica precedente: dopo il deploy, la console del browser ha mostrato il log `Migration: sedi composite rinominate in Cesate+Online/Cesate+Domicilio` e la scheda del progetto di test ha mostrato correttamente il campo Sede aggiornato a `Cesate+Online`/`Cesate+Domicilio`. **L'unico punto rimasto aperto nella verifica del Ciclo A è quindi chiuso**: la migrazione S4 è confermata funzionante anche dal vivo, non solo per lettura statica del codice.
+
+## Novità d'ambiente: Node.js v24 (LTS) installato
+
+Da questo ciclo, Node.js è disponibile sul PC (assente nei cicli precedenti — vedi `CONTESTO.md` §1 e backlog Strumenti). Questo cambia concretamente il tipo di verifica possibile:
+- **Prima** (cicli 13/07–17/07 Ciclo A): unico controllo sintattico disponibile era il conteggio di bilanciamento `{}`/`()`/`[]` prima/dopo la modifica — non un vero parser, non in grado di rilevare errori sintattici che non alterano il bilanciamento (es. virgole mancanti, operatori malformati).
+- **Da questo ciclo**: `node --check` su ciascun blocco `<script>` estratto da `index.html` — un parser JavaScript reale, in grado di rilevare qualunque errore di sintassi. Inoltre, per la prima volta, è stato possibile estrarre le funzioni pure toccate in questo ciclo (`parseHM`, `fmtHM`, `tempoBustoOperatore`, `decidiOnlineDaCasa`) **direttamente dal file reale** (non da una copia ritrascritta) ed eseguirle in Node con casi di test concreti — un livello di verifica comportamentale mai stato possibile nei cicli precedenti, che si fermavano alla lettura statica.
+- Registrato come prassi permanente in `CLAUDE.md` (sezione "Running / testing changes") e come voce di backlog Strumenti completata in `CONTESTO.md`.
+
+## S6 — Monte ore e ore per Metodo in formato h:mm
+
+**Cosa è stato fatto**:
+- Nuove funzioni condivise `parseHM(str)` (stringa → minuti interi, o `null` se vuota/non valida) e `fmtHM(min)` (minuti → stringa `H:MM`). `parseHM` riconosce `:`, `.` e `,` come separatore ore:minuti sessantesimi (mai come decimale: `1.30`/`1,30` → 90 minuti, non 1,3 ore); un numero senza separatore è interpretato come minuti secchi (`90` → 90 minuti), come richiesto.
+- `oreErog(pid)` ora restituisce **minuti** (prima ore decimali): rimossa la sola divisione `/60` nel reduce, nessun'altra modifica alla logica di filtro (eseguita+assenza ingiustificata, esclude annullata).
+- **Editor progetto**: campo "Monte ore totale" (`#pe-ore`) da `type="number"` a `type="text"`, mostra/accetta h:mm; al salvataggio `monteOre:parseHM(...)`. Campo "Ore totali" per ogni Metodo assegnato (`.met-ore`) stesso trattamento. `updateMonteOre()` (somma dei Metodi, mostrata sopra e autocompilata nel campo Monte ore quando ci sono Metodi assegnati) ora somma minuti e mostra/scrive h:mm.
+- **Lista progetti** (`renderProgetti`): colonna "Monte ore" mostra ora `fmtHM(oreErog)/fmtHM(monteOre)` invece di `X.Y h/Z h`.
+- **`calcStraordinari`** (funzione orfana, non collegata a UI — CLAUDE.md backlog voce 8): convertita a calcolo interamente in minuti (`totMin`/`previsteMin`/`extraMin`), con `totOre`/`previste`/`extra` ora stringhe h:mm invece di ore decimali arrotondate. Nessun punto del codice la invoca (verificato via grep, nessun consumer da aggiornare).
+- **Migrazione one-time** in `loadAll()`: per ogni progetto non ancora marcato (`!p.oreInMinuti`), converte `monteOre` e ciascun `metodi[].oreTotali` da ore decimali a minuti (`Math.round(parseFloat(v)*60)`), poi imposta `p.oreInMinuti=true` su **tutti** i progetti (marcatore di idempotenza, stesso ruolo di `hasOwnProperty('cognome')` nella migrazione nome/cognome). Il salvataggio da editor imposta `oreInMinuti:true` su ogni progetto creato/modificato da questo ciclo in poi, così un progetto nuovo non verrà mai ririconvertito da una `loadAll()` futura.
+
+### Nota di attenzione (non una correzione, un rischio d'uso da segnalare)
+La regola "numero senza separatore = minuti secchi" è quella esplicitamente richiesta, ma ha una conseguenza pratica: chi digita oggi "40" nel campo Monte ore pensando a 40 ore (comportamento pre-Ciclo-B) otterrebbe ora 40 **minuti**. Il rischio è mitigato dove il valore nasce automaticamente dalla somma dei Metodi (sempre in h:mm), ma resta per l'inserimento manuale diretto nel campo Monte ore quando non si usano i Metodi. Non ho corretto questo comportamento perché è esattamente quanto specificato nel prompt ("accetta anche '90' come minuti secchi") — segnalo qui il rischio, non lo risolvo in autonomia.
+
+| Parte | Stato |
+|---|---|
+| Parsing/formattazione h:mm condivisi (`parseHM`/`fmtHM`) | ✅ Fatto — testato con casi concreti estratti dal codice reale (vedi Passata 2 sotto) |
+| Salvataggio interno in minuti (monte ore progetto + ore Metodo) | ✅ Fatto |
+| Visualizzazione h:mm (editor, lista progetti, totali Metodi) | ✅ Fatto |
+| `oreErog`/calcoli monte ore (consumo, confronto con target generazione) | ✅ Fatto — `target=scopeProjects.filter(p=>!p.monteOre||oreErog(p.id)<p.monteOre)` invariato nella forma, coerente perché entrambi i lati sono ora minuti |
+| `calcStraordinari` (straordinari) | ✅ Fatto, convertito ai minuti (funzione orfana, nessun consumer da rompere) |
+| Migrazione one-time (monte ore + ore Metodo) | ✅ Fatto, stesso pattern (marcatore di idempotenza) delle migrazioni precedenti — non eseguibile dal vivo in questo ambiente (nessun login M365 disponibile), da confermare da Simone dopo il deploy |
+
+## S8 — Tempi di viaggio Busto Arsizio sdoppiati per operatore
+
+**Cosa è stato fatto**:
+- Editor operatore: campo unico "Tempo Busto Arsizio (min)" sostituito da due campi — "Tempo Busto da Cesate (min)" (`tempoBustoCesate`, può restare vuoto) e "Tempo Busto da casa (min)" (`tempoBustoCasa`). Il toggle di visibilità legato alla sede "Busto Arsizio" tra le sedi abilitate dell'operatore resta identico nel comportamento (corretto anche un dettaglio di CSS: il contenitore dei due campi ora usa un `display:flex` esplicito invece di ereditare `display:none` dalla stessa stringa di stile, per evitare un conflitto tra due dichiarazioni `display` nello stesso attributo `style` che avrebbe reso i campi sempre visibili anche a operatore non abilitato a Busto Arsizio — bug individuato e corretto durante l'implementazione, prima del commit).
+- **Nuova funzione condivisa `tempoBustoOperatore(op, giaACesate)`**: se `giaACesate` è vero e `tempoBustoCesate` non è `null`, restituisce quel valore; altrimenti restituisce `tempoBustoCasa||0` e segnala `fallback:true` solo se `giaACesate` era vero (cioè: si voleva il valore "da Cesate" ma non è ancora compilato).
+- **`decidiOnlineDaCasa`** (Passata 2): per ogni sessione online in valutazione, `giaACesate` è vero se, tra le presenze della stessa giornata dell'operatore, ce n'è almeno una a Cesate. Se l'ancora (prima/ultima presenza della giornata) è a Busto Arsizio, il margine di viaggio usa `tempoBustoOperatore(op, giaACesate)` invece del vecchio `op.tempoBusto` unico. Se l'ancora è a Cesate, invariato (`op.tempoCasa`).
+- **`generateMonth`, Passata 1** (vincolo di gap per cambi di sede nello stesso giorno): stessa logica — se l'operatore ha (o sta per avere) una sessione a Busto Arsizio quel giorno, il tempo di viaggio richiesto usa `tempoBustoOperatore(op, giaACesate)` dove `giaACesate` verifica se l'operatore ha già una sessione a Cesate quel giorno tra quelle piazzate finora in questo run + quelle conservate.
+- **Segnalazione del ripiego**: quando manca `tempoBustoCesate` e serve, viene aggiunta una voce in `anom` (una sola volta per operatore, sia nel percorso algoritmico sia — tramite `risolviOnlineDaCasa(ms,newS,keep,anom)`, ora con un quarto parametro opzionale — nel percorso IA), visibile nell'esito di generazione subito dopo il run (stesso meccanismo già usato per altri avvisi, es. sforamento ore settimanali Assunti).
+- **Migrazione one-time** in `loadAll()`: per ogni operatore con `tempoBusto` (vecchio campo) e senza ancora `tempoBustoCasa` (marcatore di idempotenza, stesso pattern della migrazione nome/cognome — `hasOwnProperty`), imposta `tempoBustoCasa=tempoBusto`, `tempoBustoCesate=null`, e rimuove il vecchio campo `tempoBusto`. Il salvataggio da editor operatore rimuove esplicitamente `tempoBusto` da ogni record salvato (`delete rec.tempoBusto`), così anche un operatore già in memoria con residuo del vecchio campo (per qualunque motivo) non lo riporta mai su SharePoint dopo un salvataggio.
+
+### Decisione interpretativa non esplicitata dalla richiesta (dichiarata, come richiesto per le scelte implementative non specificate)
+Il prompt descrive la regola come "usa il valore coerente con la posizione reale dell'operatore... da Cesate se è già in sede a Cesate, da casa altrimenti", senza specificare **come** il codice deve determinare se l'operatore è "già in sede a Cesate" in un dato istante — il codice attuale (sia in `decidiOnlineDaCasa` sia nella Passata 1) ragiona per confini di giornata (prima presenza/ultima presenza), non per un tracciamento posizione-per-istante. Ho scelto: **"già in sede a Cesate" = l'operatore ha almeno un'altra sessione a Cesate quella stessa giornata** (oltre a quella/e a Busto Arsizio). Motivazione: è l'unico segnale già disponibile nel codice esistente senza una ristrutturazione più ampia (che non è stata richiesta), rappresenta fedelmente il caso reale per cui questa specifica è nata — un operatore che nello stesso giorno lavora sia a Cesate sia a Busto Arsizio usa il tempo di trasferimento Cesate↔Busto, non quello casa↔Busto — e riusa lo stesso genere di segnale (presenze della giornata) già usato da `decidiOnlineDaCasa` per la decisione online-da-casa/in-sede. Scartata l'ipotesi di un tracciamento posizione-per-istante più fine (richiederebbe ricostruire la sequenza cronologica completa della giornata anche nella Passata 1, non solo in Passata 2): sproporzionato per il beneficio, dato che il caso "operatore su entrambe le sedi lo stesso giorno" è già interamente catturato dal segnale scelto. **Non risolta con una domanda a Simone in sessione** (il prompt non lasciava previsto uno scambio di domande per questo ciclo) — segnalata qui per eventuale revisione.
+
+| Parte | Stato |
+|---|---|
+| Due campi in editor operatore (`tempoBustoCesate`/`tempoBustoCasa`) | ✅ Fatto |
+| Passata 2 (`decidiOnlineDaCasa`) posizione-aware | ✅ Fatto — interpretazione dichiarata sopra |
+| Passata 1 (`generateMonth`, vincolo di gap) posizione-aware | ✅ Fatto — stessa interpretazione |
+| Ripiego prudente + segnalazione quando manca "da Cesate" | ✅ Fatto (`anom`, un avviso per operatore, entrambi i percorsi di generazione) |
+| Migrazione one-time (valore attuale → "da casa", "da Cesate" vuoto) | ✅ Fatto — non eseguibile dal vivo in questo ambiente, da confermare da Simone dopo il deploy |
+| Bug di visibilità CSS individuato e corretto durante l'implementazione | ✅ Corretto (vedi sopra) |
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — lettura del codice, punto per punto delle due specifiche**: rilette entrambe le implementazioni (S6, S8) contro il testo esatto del prompt, una voce per volta (formato input, salvataggio in minuti, visualizzazione h:mm, migrazione per S6; due campi, logica posizione-aware, ripiego+segnalazione, migrazione per S8). Nessun elemento richiesto risulta mancante.
+2. **Passata 2 — controllo sintattico reale con Node (novità di questo ciclo)**: `node --check` sui 3 blocchi `<script>` estratti da `index.html` (183, 1162, 185.934 caratteri) — **tutti OK**, nessun errore di sintassi. Inoltre, estratte le funzioni pure toccate (`parseHM`, `fmtHM`, `tempoBustoOperatore`, `decidiOnlineDaCasa`) **direttamente dal file reale** (non ritrascritte) ed eseguiti 19 casi di test in Node con `tmin`/`pad2`/`AULE_CESATE`/`AULE_BUSTO` reali: parsing/formattazione h:mm (incl. `1:30`/`1.30`/`1,30`→90, `90`→90, vuoto→`null`), `tempoBustoOperatore` nei 4 casi (senza Cesate, con Cesate e valore presente, con Cesate e valore mancante con fallback, valore `0` legittimo senza falso-fallback), `decidiOnlineDaCasa` nei 4 scenari (solo Busto→usa "da casa", margine sufficiente→da casa, presenza anche a Cesate→usa "da Cesate", "da Cesate" mancante→ripiega su "da casa" e segnala) — **tutti i 19 test passano**. Individuato e corretto in questa stessa passata il bug di visibilità CSS descritto sopra (rilevato leggendo con attenzione la concatenazione della stringa di stile, non dal test automatico).
+3. **Passata 3 — nessun calcolo rimasto in ore decimali**: grep di `toFixed`/`parseFloat` sull'intero file — le uniche due occorrenze di `parseFloat` sono nella migrazione S6 stessa (conversione una tantum, intenzionale); nessuna occorrenza residua di `toFixed`. Grep di `oreErog(` — 4 occorrenze (definizione + lista progetti + i due `target=scopeProjects.filter(...)` di `generateMonth`/`generateMonthAI`), tutte coerenti con minuti su entrambi i lati del confronto. Grep di `.tempoBusto\b` (vecchio campo singolo) — solo 2 occorrenze residue, entrambe intenzionali (la riga di migrazione che legge il vecchio valore, e la `delete rec.tempoBusto` difensiva nel salvataggio).
+4. **Passata 4 — migrazioni coerenti col pattern esistente**: confrontate le due nuove migrazioni (S6, S8) con le migrazioni preesistenti (nome→nome+cognome, sedi composite Ciclo A): stessa struttura `try/catch` con log di skip, stesso stile di marcatore di idempotenza (`hasOwnProperty`/flag dedicato invece di riconvertire ad ogni load), stesso salvataggio in blocco (`for(...)await saveRecord(...)`) solo se `migrated*` è vero, stesso posizionamento in `loadAll()` dopo le migrazioni esistenti (ordine: nome/cognome → sedi composite Ciclo A → monte ore/Metodo S6 → tempo Busto S8). Nessuna discrepanza di stile trovata.
+5. **Passata 5 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (sottosezione S6/S8, ora marcate ✅ Implementato) e questo file descrivono la stessa implementazione con gli stessi nomi di campo (`tempoBustoCesate`/`tempoBustoCasa`, `oreInMinuti`, `parseHM`/`fmtHM`/`tempoBustoOperatore`); nessuna discrepanza fra le sezioni "Modifiche dal campo" di `CLAUDE.md` e questa voce di `VERIFICA.md`. Verificato che la nota di rischio sul parsing "numero secco = minuti" (S6) non contraddica la specifica (è la specifica stessa), quindi non richiede una modifica al codice, solo la segnalazione fatta sopra.
+6. **Passata 6 — rilettura finale integrale** del diff completo di `index.html` (`git diff`) riga per riga: ogni modifica è o (a) una delle funzioni condivise nuove, (b) una sostituzione mirata in un punto già identificato nelle passate precedenti, o (c) uno dei due blocchi di migrazione — nessuna riga toccata fuori da queste zone, nessun'altra incongruenza trovata → passata "vuota", ciclo chiuso a 6 passate (minimo richiesto: 4).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt di questo ciclo conteneva già: la conferma del test dal vivo del Ciclo A da registrare, la novità Node.js con le due modifiche documentali richieste (CLAUDE.md, CONTESTO.md), e le specifiche tecniche complete di S6 e S8.
+
+*Domande poste a Simone e risposte ricevute:* nessuna — l'unico punto ambiguo (come determinare "già in sede a Cesate" per S8) non è stato chiesto in sessione ma risolto con una scelta implementativa dichiarata ed esplicitamente segnalata sopra, secondo la prassi già seguita per scelte analoghe nei cicli precedenti (es. l'interpretazione di `annullata` come vincolo non attivo, ciclo "Ristrutturazione a due passate").
+
+*Decisioni prese di conseguenza:*
+- Interpretazione di "posizione reale... già in sede a Cesate" per S8 come "presenza a Cesate nella stessa giornata" (vedi sezione dedicata sopra) — non confermata da Simone, segnalata per eventuale revisione.
+- Bug di visibilità CSS nel wrapper dei due campi Tempo Busto individuato e corretto senza attendere conferma (rientra nell'implementazione richiesta, non una richiesta a sé).
+- Nota di rischio sul parsing "numero secco = minuti" per il campo Monte ore: segnalata, non risolta in autonomia (il comportamento è quello esplicitamente specificato).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 0a | Chiusura test dal vivo Ciclo A | ✅ Registrato | Vedi sezione dedicata sopra |
+| 0b | Novità Node.js: prassi in CLAUDE.md | ✅ Fatto | "Running / testing changes" |
+| 0b | Novità Node.js: chiusura backlog Strumenti in CONTESTO.md | ✅ Fatto | Vedi `CONTESTO.md` |
+| S6 | Formato h:mm, salvataggio minuti, visualizzazione h:mm, migrazione | ✅ Fatto | Nota di rischio segnalata (non un difetto, comportamento specificato) |
+| S8 | Due campi, Passata 2 posizione-aware, migrazione, editor operatore | ✅ Fatto | Interpretazione "già a Cesate" dichiarata; estesa anche alla Passata 1 (stesso segnale) |
+| Verifica | Multi-passata (min. 4, incl. `node --check`, no calcoli decimali residui, migrazioni coerenti, Passata 2 corretta nei due scenari) | ✅ Fatto | 6 passate, incl. 19 test funzionali eseguiti su codice reale estratto |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Resta da confermare dal vivo (dopo il deploy, come per il Ciclo A) l'esecuzione delle due nuove migrazioni sui dati di test — non eseguibile in questo ambiente (nessun login M365 disponibile).
+
+## Limiti di questa verifica
+Per la prima volta disponibile un controllo sintattico reale (`node --check`) e un'esecuzione funzionale delle funzioni pure toccate, entrambi su codice estratto direttamente dal file reale — un salto di qualità rispetto ai cicli precedenti (solo lettura statica + bilanciamento parentesi). Resta non eseguibile in questo ambiente: il login Microsoft 365/SharePoint (le due migrazioni non sono state osservate scrivere davvero sui dati di test), e qualunque interazione DOM/browser reale (il test dei due campi Tempo Busto nell'editor operatore, il toggle di visibilità, il campo Monte ore in h:mm nell'editor progetto sono stati verificati leggendo il markup generato, non cliccando in un browser). Si raccomanda a Simone lo stesso test dal vivo già fatto per il Ciclo A: aprire un progetto/operatore di test dopo il deploy e verificare i log di migrazione in console, i nuovi campi visibili e corretti, e una generazione di prova su un caso con operatore su entrambe le sedi lo stesso giorno.
