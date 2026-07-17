@@ -1030,3 +1030,52 @@ Analisi per lettura statica di `CONTESTO.md` e `CLAUDE.md`; nessuna modifica a `
 
 ## Limiti di questa verifica
 Analisi per lettura statica di `CLAUDE.md` e `CONTESTO.md`; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
+
+---
+
+# Verifica — Ciclo 0: registrazione "Modifiche dal campo" del 17/07 (S1-S11)
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md`, `CONTESTO.md` e questo file. Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt conteneva già le 11 specifiche tecniche complete, il piano dei 7 cicli (A-G) con l'assegnazione di ciascuna specifica, e le istruzioni di collocazione (regole in CLAUDE.md, pianificazione in CONTESTO.md, decisioni con motivazione nel Registro).
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Collocata ciascuna delle 11 specifiche come voce a sé nel Registro delle decisioni (voci 15-25), invece di un'unica voce cumulativa: il prompt chiedeva esplicitamente "ogni decisione con motivazione", e le 11 specifiche sono decisioni indipendenti (ciascuna con un perché proprio), non sfaccettature di un'unica decisione. Aggiunta una dodicesima voce (26) per la decisione sul piano di rilascio in sé (l'ordine dei 7 cicli), distinta dalle decisioni sul contenuto delle singole specifiche.
+- La voce di backlog nuova (21, "Modifiche dal campo — piano cicli A-G") è stata inserita **in coda** alla lista Funzionalità (dopo "Audit doppio", voce 20) e non in mezzo, seguendo lo stesso criterio già adottato per "Audit doppio" nel ciclo del 16/07: evita di dover rinumerare e ricontrollare le voci 1-20 già referenziate altrove nel file. Solo la sezione Strumenti si è dovuta rinumerare (21-26→22-27), verificato che non fosse referenziata altrove (vedi Passata 4).
+- Per S3 (report persistenti, UI da decidere), registrata una **decisione esplicitamente aperta** nel Registro (voce 17) invece di una decisione chiusa: il prompt chiede di "registrare come decisione aperta, non implementare interfacce provvisorie" — coerente con lo stile del Registro (che normalmente registra decisioni prese), qui si registra la scelta di costruire subito la lista SharePoint ma di rimandare la sola collocazione UI, con la motivazione esplicita del perché rimandarla (non costruire un'interfaccia provvisoria).
+- Per S4 (rinomina sedi composite), aggiunta nella specifica stessa (non richiesta esplicitamente dal prompt, ma necessaria per non lasciare un buco) una nota che quando la rinomina sarà implementata andranno aggiornate anche le altre menzioni di `Presenza+Online`/`Presenza+Domicilio` nel file (non solo "Key domain concepts", citata nel prompt come sezione da tenere a mente): la Passata 1 (riga 37) e i limiti di `generateMonthAI` (riga 43) citano gli stessi nomi e andrebbero aggiornati insieme.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — ogni specifica presente e fedele al testo del prompt?** Rilette S1-S11 in `CLAUDE.md` una per una contro il testo esatto del prompt: tutti gli elementi tecnici richiesti sono presenti (avviso graduato per stato in S1, filtro a cascata in S2, schema Title+Data e UI da decidere in S3, migrazione + regola Busto invariata in S4, campo Sede in S5, minuti interni + nota vincolante in S6, "mai superata... nemmeno dalla Passata 3" in S7, due campi + migrazione in S8, permessi differenziati + esclusione esplicita di "calendarizzata" in S9, alternanza + rimando a riparazione interattiva in S10, finestra 23-30gg + vincolo cross-mese esplicito in S11). Nessuna specifica riassunta o tagliata.
+2. **Passata 2 — coerenza con le regole esistenti, nessun conflitto?** `S4` non contraddice la regola invariante "mai Busto Arsizio nelle composite" (Key domain concepts, riga 50): la specifica lo dice esplicitamente ("la regola invariante... resta identica — cambia solo l'etichetta"). `S7` non contraddice la descrizione attuale della Passata 3 (Architecture, riga 39): quella descrive cosa fa *oggi* il codice (recupera un deficit), S7 è una regola *pianificata* che si aggiunge come vincolo duro, non una correzione contraddittoria. `S9` non contraddice la sezione "Sessioni states" (Key domain concepts, riga 58): i 5 stati restano gli stessi, cambia solo il numero di campi che li rappresentano. `S1` non contraddice il sistema di ruoli esistente (Auth + role resolution, riga 32): "solo Admin" è coerente con la distinzione Admin/Operatore già in `TABS`. Nessun conflitto trovato.
+3. **Passata 3 — nessun conflitto con la sequenza calendarizzata (Registro decisioni voce 13)?** `S9` include esplicitamente la clausola "lo stato calendarizzata NON entra in questo ciclo... appartiene al cantiere dedicato" — coerente con la decisione 13 (la convergenza, e quindi lo stato calendarizzata, restano legati al cantiere "Riparazione interattiva", non anticipati altrove). `S10` rimanda esplicitamente al cantiere riparazione interattiva la sola parte che userebbe l'ordine dei tipi di sessione come leva di scambio, senza anticiparla. Nessuna delle 11 specifiche introduce lo stato `calendarizzata` o la Passata 3 a convergenza fuori dal cantiere dedicato: verificato con `grep` di "calendarizzata" nella nuova sottosezione — unica occorrenza è la clausola di esclusione in S9.
+4. **Passata 4 — il piano cicli è completo?** Mappatura incrociata specifiche↔cicli: S1→D, S2→E, S3→E, S4→A, S5→C, S6→B, S7→C, S8→B, S9→D, S10→G, S11→F — tutte e 11 le specifiche compaiono esattamente una volta, nessun duplicato, nessuna omessa, tutti e 7 i cicli (A-G) hanno almeno una specifica assegnata, corrispondente esattamente al piano dato nel prompt. Verificato anche (`grep` "voce 21".."voce 27" su `CONTESTO.md`) che la rinumerazione della sezione Strumenti (21-26→22-27) non lasci riferimenti incrociati rotti: nessun riscontro esterno alla sezione Strumenti stessa.
+5. **Passata 5 — coerenza incrociata backlog↔Registro delle decisioni↔CLAUDE.md**: la voce di backlog 21 cita "decisione aperta nel Registro delle decisioni" per S3 → corrisponde alla voce 17, effettivamente aperta. La specifica S9 in `CLAUDE.md` cita "Registro delle decisioni voce 8" per lo stato calendarizzata → confermato che la voce 8 è proprio "Stato di sessione calendarizzata". Numerazione del Registro delle decisioni (1-26) e del backlog (1-27) sequenziali, senza salti né duplicati.
+6. **Passata 6 — rilettura finale integrale** delle sezioni toccate di `CLAUDE.md` (sottosezione S1-S11 per intero) e `CONTESTO.md` (backlog 1-27, Registro delle decisioni 1-26, Cronologia lavori voce 25): nessun'altra incongruenza trovata → passata "vuota", ciclo chiuso a 6 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Specifica | In CLAUDE.md | Ciclo assegnato | Decisione nel Registro | Nota |
+|---|---|---|---|---|
+| S1 — Eliminazione multipla sessioni | ✅ | D | ✅ voce 15 | — |
+| S2 — Filtri utente→progetto | ✅ | E | ✅ voce 16 | — |
+| S3 — Report persistenti | ✅ | E | ✅ voce 17 | **Decisione aperta**: collocazione UI, come richiesto |
+| S4 — Rinomina sedi composite | ✅ | A | ✅ voce 18 | Nota aggiunta su altre menzioni da aggiornare (righe 37, 43 oltre a Key domain concepts) |
+| S5 — Disponibilità limitata alla sede | ✅ | C | ✅ voce 19 | — |
+| S6 — Monte ore/ore Metodo in h:mm | ✅ | B | ✅ voce 20 | — |
+| S7 — Vincolo duro frequenza settimanale | ✅ | C | ✅ voce 21 | — |
+| S8 — Tempo Busto sdoppiato | ✅ | B | ✅ voce 22 | — |
+| S9 — Campo stato unico | ✅ | D | ✅ voce 23 | Esclusione esplicita di "calendarizzata" verificata |
+| S10 — Tipi di sessione con sede | ✅ | G | ✅ voce 24 | Leva riparazione interattiva rimandata, come richiesto |
+| S11 — Frequenza mensile | ✅ | F | ✅ voce 25 | Vincolo cross-mese esplicito riportato |
+| Piano di rilascio A-G (voce a sé) | n/a | n/a | ✅ voce 26 | — |
+
+**Cosa manca**: nessuna lacuna sulle 11 specifiche né sul piano cicli. Registro di sessione e verifica multi-passata completati in questa stessa voce.
+
+## Limiti di questa verifica
+Analisi per lettura statica di `CLAUDE.md` e `CONTESTO.md`; nessuna modifica a `index.html` in questo ciclo (nessuna delle 11 specifiche è stata implementata: sono tutte pianificate), quindi nessun controllo di sintassi del codice necessario. Le specifiche restano da collaudare contro il codice reale nei rispettivi cicli di implementazione (A-G).
