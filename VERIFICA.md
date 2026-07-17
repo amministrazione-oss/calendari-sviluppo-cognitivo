@@ -955,3 +955,41 @@ Analisi per lettura statica di `CONTESTO.md`; nessuna modifica a `index.html` o 
 
 ## Limiti di questa verifica
 Analisi per lettura statica dei tre file; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario. La chiusura della discrepanza sul conteggio righe si basa sul riscontro già raccolto nel ciclo precedente (differenza attribuita al ciclo colori brand del 16/07) più il fatto che nessuna modifica a `index.html` è intervenuta da allora (confermato via `git log`).
+
+---
+
+# Verifica — Correzione di sequenza: convergenza legata a "calendarizzata", non alla pausa pranzo
+
+**Nessuna modifica al codice in questo ciclo**: solo `CONTESTO.md` e questo file (verificata, senza modifiche, la coerenza di `CLAUDE.md`). Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt conteneva già la spiegazione tecnica completa del perché la sequenza fosse sbagliata (la convergenza opera solo su sessioni `calendarizzata`, stato che nasce nel cantiere "riparazione interattiva", non nel ciclo pausa pranzo) e il testo esatto da inserire nel Registro delle decisioni.
+
+*Domande poste a Simone e risposte ricevute:* nessuna — questa correzione risolve direttamente la "tensione di sequenza" che era stata segnalata come aperta e non risolta in autonomia in due punti precedenti: la Cronologia lavori, voce 18 (16/07), e il riepilogo di stato dato a Simone a inizio di questa sessione (dopo `/clear`), dove era stata rimessa in evidenza come punto ancora da chiarire.
+
+*Decisioni prese di conseguenza:*
+- Corretta solo la voce di backlog 3 (pausa pranzo), che conteneva la "Nota 16/07" erronea; non toccata la voce di backlog 4 (riparazione interattiva + calendarizzata), che già descriveva correttamente la convergenza come esclusiva del proprio cantiere — nessuna correzione necessaria lì.
+- Non toccata la Cronologia lavori (voce 18, 16/07) che per prima aveva segnalato la tensione come "non risolta": è narrazione storica di cosa era vero quel giorno, coerente con la prassi già seguita in questo repo di non riscrivere le voci di Cronologia a posteriori. La nuova voce di Cronologia di oggi (23) richiama esplicitamente la voce 18 per chi legge in sequenza.
+- Aggiunta la decisione richiesta come voce 13 del Registro delle decisioni (testo di Simone riportato, con l'aggiunta di una riga "perché"/alternativa scartata per coerenza con le altre 12 voci della sezione, come richiesto dalla regola permanente lì presente).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — correttezza della correzione contro la spiegazione tecnica del prompt**: confermato che la voce di backlog 3 ora dice esplicitamente che la conversione a convergenza "non fa parte di questo ciclo" e appartiene al cantiere calendarizzata (voce 4), e che nel ciclo pausa pranzo "la Passata 3 resta invariata (tetto `MAX_MOSSE=40`)" — corrisponde esattamente alla correzione richiesta.
+2. **Passata 2 — grep di "convergenza" e "MAX_MOSSE" su `CLAUDE.md` e `CONTESTO.md`**: in `CONTESTO.md`, le uniche menzioni di "convergenza" restano nella voce di backlog 3 (ora corretta), nella voce di backlog 4 (già corretta, cantiere calendarizzata), nel Registro delle decisioni voce 8 (stato calendarizzata) e nella nuova voce 13; nessuna menzione residua che leghi la convergenza al ciclo pausa pranzo. In `CLAUDE.md`, "convergenza" compare solo nella regola "Nuovo stato di sessione calendarizzata" e in quella "Riparazione interattiva" — **mai** nella regola "Pausa pranzo": confermato che non serviva alcuna modifica a `CLAUDE.md`, come anticipato dal prompt ("verifica... se non lo è, allineala").
+3. **Passata 3 — coerenza incrociata con le voci correlate**: la voce di backlog 16 "Multisessione giornaliera" (che dice "da implementare nel ciclo pausa pranzo") non è stata toccata perché riguarda un campo diverso (`minSessioniGiorno`/pausa tra sessioni), non la Passata 3 a convergenza — nessuna confusione tra le due voci confermata per lettura diretta. Il rimando incrociato aggiunto nella nuova voce 13 del Registro delle decisioni ("backlog voce 4", "backlog voce 3") punta correttamente alle voci corrispondenti dopo tutte le rinumerazioni dei cicli precedenti (verificato che voce 3 = pausa pranzo e voce 4 = calendarizzata sono tuttora tali, invariate dai cicli precedenti).
+4. **Passata 4 — rilettura finale integrale della sezione Backlog e del Registro delle decisioni di `CONTESTO.md`**: numerazione sequenziale confermata (backlog 1-26, Registro delle decisioni 1-13, Cronologia 1-23), nessun'altra voce fa più riferimento a "convergenza...pausa pranzo" insieme → passata "vuota", ciclo chiuso a 4 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Correggere la voce di backlog che lega la convergenza al ciclo pausa pranzo | ✅ Fatto | `CONTESTO.md`, backlog voce 3 |
+| 2 | Verificare/allineare `CLAUDE.md` | ✅ Verificato, già coerente | Nessuna modifica necessaria (convergenza mai citata sotto "Pausa pranzo") |
+| 3 | Nuova voce nel Registro delle decisioni | ✅ Fatto | `CONTESTO.md` §7, voce 13 (testo di Simone + motivazione/alternativa scartata) |
+| 4 | Registro di sessione + verifica multi-passata (min. 4) + commit e push | ✅ Fatto (registro e verifica) | Commit e push a seguire |
+
+**Cosa manca**: nessuna lacuna sui 4 punti richiesti. La correzione chiude anche la segnalazione aperta nel ciclo precedente (VERIFICA.md, "Ciclo di chiusura code documentali") sulla "tensione di sequenza" non più tracciata: ora è tracciata di nuovo, in forma corretta, nella voce 13 del Registro delle decisioni.
+
+## Limiti di questa verifica
+Analisi per lettura statica di `CONTESTO.md` e `CLAUDE.md`; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
