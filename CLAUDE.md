@@ -101,10 +101,12 @@ When making changes, keep everything self-contained in `index.html` (no framewor
 
 ## Prassi di chiusura ciclo
 
-Tre regole permanenti, valide per ogni sessione di lavoro (anche quelle solo documentali, senza modifiche a `index.html`):
+Quattro regole permanenti, valide per ogni sessione di lavoro (anche quelle solo documentali, senza modifiche a `index.html`):
 
 **(a) Chiusura standard**: ogni sessione di lavoro si chiude con una verifica automatica documentata in `VERIFICA.md`, il conseguente aggiornamento di `CONTESTO.md` (vedi sezione sopra) e un commit (con push) con messaggio descrittivo in italiano.
 
 **(b) Registro di sessione**: ogni voce di `VERIFICA.md` deve includere una sezione "Registro di sessione" che riporta — a beneficio di un consulente esterno che verifica dal solo GitHub, senza accesso alla chat — le istruzioni date da Simone direttamente in sessione oltre al prompt iniziale, le domande poste a Simone e le risposte ricevute, e le decisioni prese di conseguenza. Nessuna istruzione, domanda/risposta o decisione presa a voce/in sessione deve andare persa: se non è nel prompt iniziale ma ha influenzato il lavoro, va registrata qui.
 
 **(c) Verifica multi-passata a quattro fonti**: ogni verifica richiesta da Simone va condotta con più passate di analisi, ad angoli diversi e complementari (es. una passata per punto/regola, una per coerenza interna di ciascun file, una di confronto incrociato fra file, una finale di rilettura completa) — senza numero di passate prefissato: **minimo 4**, e si continua finché una passata aggiuntiva non trova più nulla di nuovo. Ogni verifica deve incrociare le **quattro fonti**: `CLAUDE.md`, `CONTESTO.md`, `VERIFICA.md` e il codice reale di `index.html`. Per ogni informazione va controllato che sia presente in ogni fonte in cui deve stare, e che le fonti siano coerenti fra loro; ogni incongruenza trovata va **segnalata, mai corretta in silenzio** (le discrepanze fra queste regole e il codice reale vanno in fondo a `VERIFICA.md`, sezione "Discrepanze da discutere" — senza toccare il codice per farle sparire). Le informazioni e le decisioni non devono mai perdersi per strada.
+
+**(d) Igiene del contesto**: a ciclo chiuso (commit + push + registro di sessione aggiornato) Simone lancia `/clear` e riparte con il prompt zero di allineamento. Mai `/clear` a metà ciclo con decisioni non ancora scritte nei file: in quel caso usare `/compact` oppure chiudere prima il ciclo con un commit documentale.

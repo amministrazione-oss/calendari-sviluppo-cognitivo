@@ -993,3 +993,40 @@ Analisi per lettura statica dei tre file; nessuna modifica a `index.html` in que
 
 ## Limiti di questa verifica
 Analisi per lettura statica di `CONTESTO.md` e `CLAUDE.md`; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
+
+---
+
+# Verifica — Ciclo documentale doppio: igiene del contesto + collaudo automatico anticipato
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md`, `CONTESTO.md` e questo file. Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (3 punti numerati) conteneva già il testo esatto delle due aggiunte e della motivazione da registrare.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Aggiunta la regola "Igiene del contesto" come **(d)** in `CLAUDE.md` §"Prassi di chiusura ciclo", aggiornando "Tre regole permanenti" in "Quattro regole permanenti" in testa alla sezione (non richiesto esplicitamente ma necessario per coerenza interna, altrimenti il conteggio sarebbe rimasto stantio).
+- Inserita la decisione sul collaudo automatico **dentro** la voce di backlog 3 (pausa pranzo), in coda alla nota di correzione di sequenza del ciclo precedente, invece che come voce di backlog separata: il prompt la descrive come una specifica del *contenuto* di quel ciclo (cosa deve già coprire il collaudo automatico che vi nasce), non come un nuovo elemento di roadmap a sé.
+- Verificato che "collaudo automatico" (funzione interna di test, Registro delle decisioni voce 3, ora richiamata anche dalla nuova voce 14) e "Audit doppio" (backlog voce 20: audit statico + collaudo funzionale manuale con utenze ZZTEST) restano due concetti distinti e non sovrapposti — nessuna correzione necessaria, ma verificato esplicitamente per escludere confusione fra i due prima di scrivere la voce 14.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — le due aggiunte sono al posto giusto?** `CLAUDE.md`: la regola "Igiene del contesto" è stata inserita in §"Prassi di chiusura ciclo", la stessa sezione che già contiene le altre regole di prassi operativa/sessione (a-c) — posto corretto, non è una regola di dominio né un'istruzione tecnica. `CONTESTO.md`: la decisione sul collaudo automatico è stata inserita nella voce di backlog 3 (pausa pranzo), esattamente come richiesto dal prompt ("nella voce di roadmap/backlog del ciclo pausa pranzo"), e la voce 14 nel Registro delle decisioni, nella sezione che già raccoglie tutte le decisioni con motivazione — posto corretto per entrambe.
+2. **Passata 2 — nessun conflitto con le regole esistenti?** Verificato che la nuova regola (d) non contraddica (a)/(b)/(c): (a) chiede comunque commit+push+verifica prima della chiusura, (d) aggiunge solo cosa fare *dopo* quella chiusura (`/clear`) e cosa fare se si vuole interrompere *prima* (`/compact` o commit documentale) — non sovrapposizione, solo un caso nuovo coperto. Verificato che la decisione 14 (collaudo automatico deve coprire gli stati attuali) non contraddica la decisione 13, appena aggiunta nel ciclo precedente (convergenza legata a calendarizzata): le due sono complementari, non in tensione — la 13 dice *quando* la convergenza può iniziare (dopo che calendarizzata esiste), la 14 dice che il collaudo automatico, costruito prima e sulle regole di *oggi*, non ha bisogno di aspettare calendarizzata per coprire gli stati già in vigore.
+3. **Passata 3 — grep di conferma su entrambi i file**: `grep` di "Quattro regole permanenti"/"(d)" in `CLAUDE.md` → un solo riscontro, coerente; `grep` di "collaudo automatico" in `CONTESTO.md` → 5 riscontri (backlog voce 3 nuovo, backlog voce 4 preesistente, Registro decisioni voce 3 preesistente, Registro decisioni voce 14 nuovo, più l'occorrenza nel Registro di sessione di questa stessa voce) — nessuna occorrenza isolata o contraddittoria, tutte coerenti fra loro sul fatto che il collaudo automatico nasce nel ciclo pausa pranzo (backlog voce 3) e che il cantiere calendarizzata (backlog voce 4) viene dopo.
+4. **Passata 4 — rilettura finale integrale delle sezioni toccate**: `CLAUDE.md` §"Prassi di chiusura ciclo" (a-d) e `CONTESTO.md` backlog (1-26) + Registro delle decisioni (1-14) rilette per intero: numerazione sequenziale, nessun riferimento incrociato rotto, nessun'altra incongruenza trovata → passata "vuota", ciclo chiuso a 4 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Nuova regola "Igiene del contesto" in CLAUDE.md, sezione "Prassi di chiusura ciclo" | ✅ Fatto | `CLAUDE.md`, regola (d) |
+| 2 | Decisione sul collaudo automatico nella voce backlog pausa pranzo + voce nel Registro delle decisioni con la motivazione data | ✅ Fatto | `CONTESTO.md`, backlog voce 3 e Registro delle decisioni voce 14 |
+| 3 | Registro di sessione + verifica multi-passata (le due aggiunte al posto giusto, nessun conflitto) + commit e push | ✅ Fatto (registro e verifica) | Commit e push a seguire |
+
+**Cosa manca**: nessuna lacuna sui 3 punti richiesti.
+
+## Limiti di questa verifica
+Analisi per lettura statica di `CLAUDE.md` e `CONTESTO.md`; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
