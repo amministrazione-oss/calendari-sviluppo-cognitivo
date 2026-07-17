@@ -830,3 +830,90 @@ Analisi per lettura statica dei tre file coinvolti (`CLAUDE.md`, `CONTESTO.md`, 
 
 ## Limiti di questa verifica
 Analisi per lettura statica di `CONTESTO.md`; nessuna modifica a `index.html` o `CLAUDE.md` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
+
+---
+
+# Verifica — Snellimento di CLAUDE.md (regole operative vs storico)
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md`, `CONTESTO.md` e questo file. Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt iniziale (7 punti numerati) conteneva già tutta la specifica: classificare ogni blocco di `CLAUDE.md` in "regole/istruzioni operative" vs "storico/contesto", spostare il secondo gruppo in `CONTESTO.md` senza riassumere né tagliare, tenere in `CLAUDE.md` solo il primo gruppo riorganizzato in modo compatto, aggiungere una decisione datata 17/07 sul ruolo permanente dei tre file, verificare con almeno 4 passate incrociando anche `VERIFICA.md`/`index.html`, aggiornare il registro di sessione.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Classificare l'intero `CLAUDE.md` blocco per blocco contro le due categorie definite dal prompt, invece di assumere a priori che contenesse una sezione storica distinta da estrarre.
+- Dove un singolo blocco conteneva sia una regola operativa sia un'attribuzione/motivazione storica intrecciata (es. "decisione di Simone del 16/07..."), separare chirurgicamente: la regola resta in `CLAUDE.md`, l'attribuzione/cornice storica si sposta in `CONTESTO.md`, senza toccare il resto della frase.
+- Aggiungere la decisione richiesta (17/07, ruolo dei tre file come fonte di verità) come voce 12 del Registro delle decisioni esistente in `CONTESTO.md` §7, non come sezione a parte, per coerenza con la regola permanente già in vigore lì ("questa sezione va alimentata a ogni ciclo con le nuove decisioni prese").
+- Segnalare, non correggere in autonomia, la discrepanza di conteggio righe trovata durante l'incrocio con `index.html` (vedi Passata 5 sotto) — come da regola permanente "verifica multi-passata a quattro fonti".
+
+## Metodo di verifica: multi-passata a quattro fonti
+
+1. **Passata 1 — classificazione blocco per blocco di `CLAUDE.md` originale (108 righe)**: ogni sezione (Language, What this repo is, Running/testing, Architecture 1-11, Key domain concepts, Regole UX, Regole di business pianificate, Avvertenze di sicurezza, Manutenzione del CONTESTO.md, Prassi di chiusura ciclo) confrontata contro le due categorie del prompt. **Esito**: l'intero file risultava già regole/istruzioni operative (coerente con la prassi seguita nei cicli precedenti di tenere lo storico solo in `CONTESTO.md`), con la sola eccezione di **tre frammenti** di storico/attribuzione annidati dentro blocchi altrimenti operativi: (a) l'inciso datato "billing/vendor decision still pending as of 16/07/2026" dentro la descrizione di `CFG.claudeProxy` (Architecture, punto 2); (b) l'attribuzione "(decisione di Simone del 16/07, da implementare insieme alla riparazione interattiva sotto)" nella regola pianificata sullo stato "calendarizzata"; (c) l'attribuzione "(decisione di Simone del 16/07, cantiere dedicato dopo il collaudo automatico...)" nella regola pianificata sulla riparazione interattiva. Nessun blocco di regola di business invariante (sedi, aule, orari, gap 5 minuti, tre passate, stati sessione, pausa pranzo) o di convenzione tecnica (liste SharePoint, formato Title+Data, funzioni chiave) è risultato classificabile come storico: tutti sono rimasti in `CLAUDE.md`.
+2. **Passata 2 — spostamento e verifica di non perdita**: i tre frammenti (a)/(b)/(c) sono stati rimossi da `CLAUDE.md` (con riformulazione minima della frase circostante per restare grammaticalmente corretta) e copiati **integralmente, senza riassumere né tagliare**, nella nuova sezione `CONTESTO.md` §9 "Storico decisioni e implementazioni", ciascuno datato 16/07/2026 (data della decisione originale, non del ciclo odierno). Confermato per ciascuno che il testo copiato in `CONTESTO.md` riporta la stessa frase esatta rimossa da `CLAUDE.md` (confronto carattere per carattere).
+3. **Passata 3 — verifica che nessuna regola invariante sia finita nello storico**: riletta per intero la nuova sezione `CONTESTO.md` §9 confermando che contiene **solo** attribuzioni/cornici temporali ("chi ha deciso, quando, in che sequenza"), mai la specifica della regola stessa (che resta interamente in `CLAUDE.md`). Riletto anche l'intero `CLAUDE.md` risultante per confermare che tutte le regole esplicitamente citate dal prompt come esempio di categoria A — sedi/aule/orari/gap 5 minuti (Key domain concepts), tre passate (Scheduling engine), stati sessione (Key domain concepts), pausa pranzo (Regole di business pianificate), verifiche multi-passata e registro di sessione (Prassi di chiusura ciclo), struttura liste SharePoint e formato Title+Data (Architecture punto 3) — sono ancora presenti per intero.
+4. **Passata 4 — coerenza interna e riferimenti incrociati**: verificato che i nuovi rimandi aggiunti in `CLAUDE.md` ("vedi CONTESTO.md, Registro delle decisioni, voce 8" e "...voce 9") puntino alle voci corrette in `CONTESTO.md` §7 (voce 8 = stato "calendarizzata", voce 9 = domande interattive in due fasi — confermato, nessun disallineamento). Verificato che la nuova riga di rimando in testa a `CLAUDE.md` citi correttamente i nomi delle sezioni esistenti in `CONTESTO.md` ("Registro delle decisioni" §7, "Storico decisioni e implementazioni" §9). Verificata la numerazione di `CONTESTO.md` dopo le tre aggiunte (cronologia 1-20, backlog 1-24 invariato, Registro delle decisioni 1-12, nuova §9): sequenziale, senza salti né duplicati.
+5. **Passata 5 — incrocio con `VERIFICA.md` e `index.html`**: confrontate le regole/fatti tecnici rimasti in `CLAUDE.md` (architettura a tre passate, `MAX_MOSSE=40`, gap 5 minuti, finestra 09:00–19:30, domenica esclusa, requisito TUTTE le formazioni, rotazione tipi sessione continua, `noMonteOre` escluso, non sovrapposizione progetti stesso utente, `operatoreFisso`, credenziali in chiaro, `claudeProxy`→Gemini) contro i riscontri di riga già raccolti nel ciclo "Grande ciclo di allineamento documentale" (16/07, sopra in questo stesso file): nessuna discrepanza, `index.html` non è stato toccato da allora. Eseguito anche un controllo diretto su `index.html` in questo ciclo: `grep` di `MAX_MOSSE`/liste `Gestionale_`/`09:00`/`19:30`/`GAP` → tutti presenti (23 occorrenze complessive), coerenti con quanto documentato. **Discrepanza minore trovata**: `wc -l index.html` restituisce oggi **2326** righe, non le 2325 documentate sia in `CLAUDE.md` sia in `CONTESTO.md` (verificato che il file termina con un ritorno a capo finale dopo `</html>`, verosimile causa della differenza di una riga) — **segnalata qui e in `CONTESTO.md` (cronologia, voce 20), non corretta in questo ciclo puramente documentale** come da regola permanente "segnalare, mai correggere in silenzio".
+6. **Passata 6 — rilettura finale integrale** di `CLAUDE.md` e `CONTESTO.md` dopo tutte le modifiche: nessuna ulteriore incongruenza trovata (nessun blocco orfano, nessun rimando rotto, nessuna regola duplicata o mancante) → passata "vuota", ciclo di verifica chiuso a 6 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Lettura integrale dei tre file | ✅ Fatto | `CLAUDE.md` (108 righe), `CONTESTO.md` (154 righe), `VERIFICA.md` (832 righe) lette per intero prima di ogni modifica |
+| 2 | Classificazione di ogni blocco in categoria A/B | ✅ Fatto | Passata 1 sopra — esito: quasi tutto il file era già categoria A, solo 3 frammenti storici trovati |
+| 3 | Blocchi B spostati in CONTESTO.md, copia integrale, sezione datata | ✅ Fatto | Nuova sezione `CONTESTO.md` §9 "Storico decisioni e implementazioni", 3 voci datate 16/07/2026 |
+| 4 | CLAUDE.md solo blocchi A, compatto ma completo, riga di rimando in testa | ✅ Fatto | Riga di rimando aggiunta subito dopo il titolo; nessun'altra riorganizzazione necessaria (il file era già organizzato per regole, non per cronologia) |
+| 5 | Decisione 17/07 sui tre file come fonte di verità | ✅ Fatto | `CONTESTO.md` §7, Registro delle decisioni, voce 12 (testo fornito da Simone, riportato integralmente) |
+| 6 | Verifica finale multi-passata (min. 4, con elenco di cosa è stato spostato) | ✅ Fatto | 6 passate sopra, elenco degli spostamenti in Passata 1-2 |
+| 7 | Registro di sessione in VERIFICA.md | ✅ Fatto | Questa voce |
+
+**Cosa è stato spostato (riepilogo)**:
+1. L'inciso "(billing/vendor decision still pending as of 16/07/2026; keep the client-facing format in mind if this changes)" → tolto da `CLAUDE.md` Architecture punto 2, spostato in `CONTESTO.md` §9 (con il fatto operativo "il proxy traduce verso Gemini" lasciato in `CLAUDE.md`, perché necessario per modificare il codice IA).
+2. L'attribuzione "(decisione di Simone del 16/07, da implementare insieme alla riparazione interattiva sotto)" → tolta dalla regola "calendarizzata" in `CLAUDE.md`, spostata in `CONTESTO.md` §9 (la regola stessa resta intatta in `CLAUDE.md`).
+3. L'attribuzione "(decisione di Simone del 16/07, cantiere dedicato dopo il collaudo automatico — vedi CONTESTO.md, Registro delle decisioni)" → tolta dalla regola "riparazione interattiva" in `CLAUDE.md`, spostata in `CONTESTO.md` §9 (la regola stessa resta intatta in `CLAUDE.md`).
+
+**Cosa manca / attenzione**: nessuna lacuna sui 7 punti richiesti. Resta aperta, non bloccante, la discrepanza minore sul conteggio righe di `index.html` (2326 vs 2325 documentato) segnalata alla Passata 5.
+
+## Limiti di questa verifica
+Analisi per lettura statica dei tre file e di `index.html` (nessuna modifica al codice in questo ciclo, quindi nessun controllo di bilanciamento sintattico necessario). L'incrocio con `index.html` per i fatti tecnici già verificati riga per riga nel ciclo del 16/07 si è appoggiato a quel riscontro esistente (il file non è cambiato da allora, confermato via `git log`) più un controllo diretto mirato (grep di alcuni identificatori chiave e conteggio righe) in questo stesso ciclo.
+
+---
+
+# Verifica — Aggiornamento roadmap e backlog: Superpowers e Find Skills
+
+**Nessuna modifica al codice in questo ciclo**: solo `CONTESTO.md` e questo file. Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (4 punti numerati) conteneva già tutta la specifica di contenuto e di posizionamento ("immediatamente prima della tappa 4.1 (audit statico del codice)").
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Interpretare "tappa 4.1 (audit statico del codice)" come la parte (a) della voce di backlog 19 "Audit doppio" (l'unica tappa del backlog che si chiama esplicitamente "audit statico del codice"): inserita la nuova voce Superpowers come voce di backlog **19** a sé stante, spingendo "Audit doppio" alla voce **20** — invece di annidarla come terza parte dentro "Audit doppio" — perché il testo fornito da Simone descrive un'azione distinta (installare e provare un plugin su un ramo dedicato), non una parte dell'audit stesso; l'audit vi compare solo come "banco di prova" per valutarne l'esito.
+- Di conseguenza, rinumerata la sezione "Strumenti" (20-24 → 21-25) e aggiunta "Find Skills" come nuova voce Strumenti **26** (stessa sezione di Graphify/Ruflo/Caveman/Node.js/claude doctor, essendo anch'essa uno strumento di metodo per Claude Code da rivalutare al bisogno, non una funzionalità dell'app).
+- Non toccare le voci di Cronologia lavori del 16/07 che citano "voce 19" per "Audit doppio": sono narrazione storica di ciò che era vero quel giorno (coerente con il precedente già stabilito nel ciclo "Ciclo di pulizia del CONTESTO.md", dove riferimenti stantii nel Registro delle decisioni — non nella Cronologia — erano stati corretti, mentre le voci di Cronologia restano invariate come registrazione del passato).
+
+## Metodo di verifica
+
+1. **Passata 1 — mappatura di tutti i riferimenti numerici al backlog prima della modifica**: `grep` di "voce 19", "voce 20", ..., "voce 24" e "backlog 19".."backlog 24" su `CONTESTO.md`: nessun riscontro fuori dalla sezione backlog stessa (la voce 19 "Audit doppio" e la sezione Strumenti 20-24) — confermato che lo spostamento non avrebbe richiesto altre correzioni incrociate.
+2. **Passata 2 — inserimento e rinumerazione**: aggiunta la voce 19 Superpowers (testo fornito da Simone, integrale) subito prima di "Audit doppio" (rinumerata 19→20); rinumerata la sezione Strumenti (20-24→21-25); aggiunta "Find Skills" come voce Strumenti 26 (testo fornito da Simone, integrale).
+3. **Passata 3 — rilettura della sequenza completa della roadmap/backlog (voci 1-26)**: numerazione sequenziale senza salti né duplicati confermata; verificato che le voci 1-18 (invariate) mantengano intatti i propri rimandi interni ("voce 4 sopra/sotto", "voce 18 sotto", "voce 3", "backlog 16" nel Registro delle decisioni) — nessuno di questi rimandi cade nell'intervallo 19-24 toccato dallo spostamento, quindi nessuno è stato invalidato dalla rinumerazione.
+4. **Passata 4 — grep di conferma post-modifica**: rieseguito il grep "voce 19".."voce 26" su `CONTESTO.md` dopo le modifiche → unico riscontro esterno alla sezione backlog è la Cronologia lavori (voce 19 del 16/07, storica, corretta lasciarla invariata come da decisione sopra) e il rimando interno "(voce 20 sotto)" appena aggiunto nella nuova voce Superpowers, che punta correttamente ad "Audit doppio". Nessuna ulteriore incongruenza trovata → passata "vuota", ciclo chiuso a 4 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Nuovo passo Superpowers, immediatamente prima della tappa audit statico | ✅ Fatto | Backlog voce 19 (nuova), "Audit doppio" spostato a voce 20 |
+| 2 | Nuova voce di backlog "Find Skills" | ✅ Fatto | Sezione Strumenti, voce 26 |
+| 3 | Registro di sessione in VERIFICA.md | ✅ Fatto | Questa voce |
+| 4 | Verifica finale: ordine coerente, nessun passo precedente alterato | ✅ Fatto | Passate 3-4 sopra: voci 1-18 invariate nel testo, solo il numero delle voci 19 (ora 20) e 20-24 (ora 21-25) è cambiato per far posto alle due nuove voci |
+
+**Cosa manca**: nessuna lacuna nota sui 4 punti richiesti.
+
+## Limiti di questa verifica
+Analisi per lettura statica di `CONTESTO.md`; nessuna modifica a `index.html` o `CLAUDE.md` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
