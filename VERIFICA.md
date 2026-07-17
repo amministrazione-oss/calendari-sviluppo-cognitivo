@@ -1271,3 +1271,127 @@ Data: 2026-07-17. Emerso dal collaudo dal vivo di Simone sul Ciclo B appena depl
 
 ## Limiti di questa verifica
 Analisi statica + `node --check` + esecuzione in Node delle funzioni pure toccate (stesso livello di verifica introdotto nel Ciclo B); il comportamento visivo (bordo rosso, banner di blocco) è stato verificato leggendo il codice generato (markup, classi, listener), non osservato in un browser reale. Si raccomanda a Simone di riprovare dal vivo dopo il deploy proprio i casi che avevano fatto emergere il problema.
+
+---
+
+# Verifica — Ciclo C: strumento di collaudo stabile, rifiniture B.1, S5 + S7
+
+Data: 2026-07-17.
+
+## `check-sintassi.js` — strumento di collaudo ufficiale
+
+**Cosa è stato fatto**: creato `check-sintassi.js` nella radice del repo, sostituendo gli script temporanei riscritti nello scratchpad a ogni ciclo (B, B.1). Un solo comando, `node check-sintassi.js`, esegue in sequenza:
+1. `node --check` su ogni blocco `<script>` estratto da `index.html` (scritto in una cartella temporanea di sistema via `fs.mkdtempSync`, ripulita a fine esecuzione).
+2. Estrazione **diretta dal file reale** (non da una copia ritrascritta) delle funzioni pure toccate nei cicli di lavoro — liste `EXTRACT_FUNZIONI`/`EXTRACT_COSTANTI` in testa al file, oggi: `tmin`, `parseHM`, `fmtHM`, `tempoBustoOperatore`, `decidiOnlineDaCasa`, `bucketSettimana`, `maxNuoveSettimana`, `sediAmmesseProgetto` (funzioni) + `pad2`, `AULE_CESATE`, `AULE_BUSTO` (costanti di supporto).
+3. Una batteria di 40 test funzionali su queste funzioni (tutti i casi già coperti nei cicli B/B.1 più i nuovi di questo ciclo, vedi sotto), con un'uscita di processo non-zero se qualcosa fallisce (utilizzabile anche in automatismi futuri, es. hook pre-commit, se mai introdotto).
+
+Registrato come strumento ufficiale in `CLAUDE.md` (sezione "Running / testing changes"), con l'istruzione di estendere le liste di estrazione e la sezione test a ogni ciclo futuro che tocchi altre funzioni pure, invece di riscrivere script a parte.
+
+| Parte | Stato |
+|---|---|
+| Script unico `node check-sintassi.js` (sintassi + test funzionali) | ✅ Fatto |
+| Estrazione dal file reale (non da copie ritrascritte) | ✅ Fatto, stesso principio dei cicli B/B.1 |
+| Registrato in `CLAUDE.md` come strumento ufficiale | ✅ Fatto |
+
+## Rifinitura 1 (dal collaudo B.1): `parseHM("abc")` → NaN, non null
+
+**Cosa è stato fatto**: nel ramo "numero secco" (nessun separatore `:`/`.`/`,`) di `parseHM`, `isNaN(n)?null:n` → `isNaN(n)?NaN:n`. Un input non vuoto ma non numerico (es. `"abc"`) è ora un input **rifiutato** (bordo rosso, non conteggiato), mai confuso con un campo vuoto (che resta `null`, valido, significa "nessun valore"). Caso aggiunto al test.
+
+## Rifinitura 2 (dal collaudo dal vivo di Simone, caso `30:70`): somma live esclude i campi non validi
+
+**Causa del bug segnalato**: nel Ciclo B.1, il listener `input` di `.met-ore` **non richiamava affatto `updateMonteOre()`** quando il campo era invalido (`if(!invalid){...;updateMonteOre();}`) — il totale mostrato restava quindi fermo sull'**ultimo stato transitorio valido** prima dell'input invalido finale. Esempio concreto (quello di Simone): un Metodo già a `30:00` (1800 min) + un secondo Metodo che l'utente sta digitando verso `30:70` — durante la digitazione, allo stato intermedio `"30:7"` (valido: 30·60+7=1807 min), il totale si aggiornava correttamente a `60:07` (1800+1807); ma appena si completa `"30:70"` (non valido, minuti 70>59), il listener smetteva di richiamare `updateMonteOre()` **lasciando lo schermo fermo su quel `60:07`** invece di tornare a `30:00` (il solo contributo valido rimasto).
+**Correzione**: (a) il listener chiama **sempre** `updateMonteOre()`, anche quando il campo corrente è invalido (scrive nel modello `pMetodi` solo se valido, ma ricalcola comunque il totale mostrato); (b) `updateMonteOre()` non somma più `pMetodi` (il modello, che può essere disallineato dal campo appena digitato) ma legge **dal vivo** ogni input `.met-ore` presente nel DOM tramite `parseHM`, trattando ogni risultato `NaN` come contributo `0`. Un campo invalido non fa quindi mai comparire un valore transitorio nel totale, né lo blocca su uno stato precedente: contribuisce sempre e solo `0` finché non è corretto.
+**Verifica che valga ovunque ci sia una somma live di campi h:mm**: cercata ogni occorrenza di somma (`reduce`) su campi `.met-ore`/h:mm nel file — l'unica trovata è `updateMonteOre()` (Monte ore totale dei Metodi). Nessun'altra somma live di questo tipo esiste nel codice.
+
+| Parte | Stato |
+|---|---|
+| `parseHM("abc")` → NaN (rifinitura 1) | ✅ Fatto, testato |
+| Somma live "Monte ore totale" esclude campi NaN (rifinitura 2) | ✅ Fatto, testato con caso `30:00 + [invalido→0] + 10:00 = 40:00` |
+| Verificate altre somme live di campi h:mm nel codice | ✅ Verificato: nessun'altra esiste |
+
+## S5 — Disponibilità limitate alle sedi del progetto
+
+**Cosa è stato fatto**: nuova funzione condivisa `sediAmmesseProgetto(sede)` (sede singola → solo quel tag; composite → Cesate + il remoto; sede assente/sconosciuta → `null`, nessuna restrizione) e costante `AVAIL_SEDI_TAGS` (estratta dai tre punti che la duplicavano). Applicata in **tre** editor di disponibilità del progetto (tutti e tre quelli esistenti, non solo quello principale):
+1. **Fasce settimanali ricorrenti** (`renderAvailEditor`, `pe-av`) — nuovo 4° parametro `sediAmmesse`.
+2. **Eccezioni giornaliere "Disponibile"** (`renderFasce`, dentro `renderMonthlyAvail`) — nuovo 5° parametro `sediAmmesseIniziali`.
+3. **"Applica a più giorni"** (`renderFasceB`, `openBulkApply`, che vive nello stesso scope di `renderMonthlyAvail` e quindi eredita la stessa variabile) — stesso meccanismo.
+
+In tutti e tre, i tag proposti = sedi ammesse **∪** sedi già selezionate su quello specifico slot: un tag fuori dalle sedi ammesse ma già spuntato su un dato esistente **non sparisce mai** — resta visibile, spuntato, e marcato con la classe CSS `sede-extra` (bordo tratteggiato rosso + tooltip) invece di essere rimosso in silenzio.
+
+**Cambio Sede a metà modifica**: `#pe-sede` ha un nuovo listener `change` che (a) legge lo stato attuale (`readAvailEditor('pe-av')`, cattura anche modifiche non ancora salvate), (b) calcola le nuove sedi ammesse, (c) se qualche fascia esistente ha una sede non più ammessa mostra un banner esplicito con i giorni coinvolti (mai una cancellazione silenziosa), (d) ri-renderizza `pe-av` con **gli stessi dati** (nessuna perdita) e le nuove sedi ammesse, e (e) aggiorna anche l'editor delle eccezioni giornaliere/bulk tramite un nuovo metodo esposto `wrap._setSediAmmesse()` (la variabile `sediAmmesse` è catturata per riferimento dalle chiusure già agganciate ai click sui giorni, quindi si aggiorna senza dover ri-renderizzare tutto il calendario mensile).
+
+| Parte | Stato |
+|---|---|
+| Fasce settimanali limitate alla Sede del progetto | ✅ Fatto |
+| Eccezioni giornaliere "Disponibile" limitate | ✅ Fatto |
+| "Applica a più giorni" limitato | ✅ Fatto |
+| Cambio Sede: segnalazione esplicita, nessuna cancellazione silenziosa | ✅ Fatto (banner + classe `sede-extra`, dato mai perso) |
+| Operatori (editor disponibilità) invariati (nessuna restrizione) | ✅ Verificato — `sediAmmesse` omesso per gli operatori, comportamento identico a prima |
+
+## S7 — Vincolo duro sulla frequenza settimanale
+
+**Cosa è stato fatto**:
+- Nuove funzioni condivise `bucketSettimana(giorno)` (identifica la finestra di 7 giorni dal 1° del mese a cui appartiene una data — lo stesso schema già usato da `riepiloghi`/Passata 1/3 e da `riepilogoSettimanaleDaSessioni`, non settimane ISO lun-dom) e `maxNuoveSettimana(frequenza, giaEsistenti)` (quante sessioni nuove restano ammissibili in una finestra, mai negativo).
+- **Passata 1** (`generateMonth`): prima si contavano solo le sessioni **nuove** piazzate questo run contro `frequenza`, ignorando le sessioni **esistenti** (kept: confermate/eseguite/proposte fuori ambito) dello stesso progetto già presenti in quella finestra — un progetto con 2 confermate manuali e frequenza 2 poteva quindi ricevere fino a 2 nuove proposte in più dalla stessa settimana, arrivando a un totale di 4. Corretto: a inizio di ogni finestra si calcola `giaEsistenti` (dalle sessioni già in `prB[p.id]`, popolato prima della Passata 1 con le sessioni conservate) e si piazzano al massimo `maxNuoveSettimana(frequenza, giaEsistenti)` sessioni nuove, mai `frequenza` da sola.
+- **Riepiloghi/report**: `piazzate` in ogni riepilogo settimanale è ora il **totale** (esistenti + nuove), non solo le nuove — coerente con quanto già faceva `riepilogoSettimanaleDaSessioni` (usata dal percorso IA), che calcolava il totale a posteriori dall'insieme newS+keep e non aveva bisogno di correzioni.
+- **Passata 3**: **nessuna modifica di codice necessaria** — eredita automaticamente il vincolo, perché `missing = richieste - piazzate` ora usa il `piazzate` corretto (il vero totale); la Passata 3 non piazza mai più di `missing` sessioni per costruzione, quindi non può mai superare `frequenza`. Verificato inoltre che lo scambio "sposta il blocco altrove" (`trovaAlternativaBlocker`) cerchi un'alternativa **solo nella stessa finestra di 7 giorni** del progetto bloccante e **rilocalizzi** (non duplichi) la sua sessione — non altera mai il conteggio settimanale di quel progetto, quindi non introduce un rischio di violazione indiretta della sua frequenza.
+- **Percorso IA** (`generateMonthAI`): nuovo conteggio `settimanaConteggi` (chiave progetto+finestra), seminato dalle sessioni esistenti (`vincoli`) prima della validazione; ogni sessione proposta dall'IA che porterebbe il conteggio della sua finestra a superare la frequenza del progetto è **scartata** (stesso meccanismo di rigetto già usato per sede non ammessa/conflitti operatore/aula), con voce dedicata in `anom` ("Frequenza settimanale superata").
+- **Report — nuovo avviso strutturale** (`avvisiFrequenza`, sezione dedicata in `openGenReport`): per ogni progetto con monte ore residuo, calcola quante sessioni servirebbero per esaurirlo e le confronta con il massimo consentito dalla frequenza nelle settimane effettivamente in ambito questo run; se il residuo richiederebbe più sessioni di quelle ammesse, lo segnala esplicitamente — distinto dalle carenze settimanali già esistenti (che riguardano il non aver raggiunto la frequenza per mancanza di disponibilità/aule/operatori, non la relazione monte-ore/frequenza).
+- **Discrepanza documentale trovata e corretta** (non introdotta da questo ciclo): la sezione Architecture di `CLAUDE.md` sulla Passata 2 citava ancora il vecchio campo singolo `tempoBusto` per il margine di viaggio verso Busto Arsizio, superato dal Ciclo B/S8 (`tempoBustoCesate`/`tempoBustoCasa` via `tempoBustoOperatore`) — corretta.
+
+| Parte | Stato |
+|---|---|
+| Passata 1: non piazza mai oltre `frequenza - esistenti` | ✅ Fatto (`maxNuoveSettimana`) |
+| Passata 3: eredita il vincolo senza modifiche di codice | ✅ Verificato (dimostrazione sotto, Passata 2 del metodo di verifica) |
+| Percorso IA: sessione scartata se supera la frequenza | ✅ Fatto (`settimanaConteggi`) |
+| Sessioni manuali/confermate preesistenti contano fin da subito | ✅ Fatto (seminate in `giaEsistenti`/`settimanaConteggi` prima di ogni piazzamento) |
+| Report segnala monte ore che richiederebbe più sessioni della frequenza | ✅ Fatto (`avvisiFrequenza`) |
+
+### Scenario simulato (tracciato a mano sul codice, come richiesto)
+
+Progetto **"BrainRx, cliente Bianchi"**, frequenza 3/settimana, durata 60 min. Nella settimana 1 del mese (giorni 1-7) esistono già **2 sessioni confermate** (manuali, protette) il giorno 2 e il giorno 4.
+
+1. `sessioniDaConservare` conserva le 2 confermate (non sono `proposta`); la pre-popolazione di `prB` (righe prima della Passata 1) le registra in `prB[progettoId]` con le rispettive date.
+2. Passata 1, primo giro (`wk=1,we=7`): `dsWk='2026-07-01'`, `dsWe='2026-07-07'`. `giaEsistenti=(prB[p.id]||[]).filter(b=>b.date in [dsWk,dsWe]).length = 2`. `maxNuove=maxNuoveSettimana(3,2)=1`.
+3. Il day-loop tenta di piazzare **al massimo 1** nuova sessione `proposta` questa settimana (`placed<maxNuove` → `placed<1`), anche se in linea di principio ci fosse disponibilità per 3. Se riesce, `placed=1`, `totSettimana=1+2=3=frequenza` esatto — nessuna violazione.
+4. **Comportamento pre-Ciclo-C (bug)**: la condizione era `placed<freq` (cioè `placed<3`), quindi la Passata 1 avrebbe potuto piazzare fino a 3 nuove proposte oltre le 2 già confermate, arrivando a un totale di **5** sessioni quella settimana — la violazione che S7 chiede di correggere.
+5. Se in un secondo momento (settimana risultasse comunque corta, `totSettimana<freq`) Passata 3 tentasse di recuperare, il suo `missing=richieste-piazzate=3-3=0` (dopo il punto 3): nessuna mossa viene tentata per quella settimana, correttamente.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js` (sintassi reale + funzionale)**: 3 blocchi `<script>` tutti OK; 40 test funzionali (i 27 già coperti nei cicli B/B.1 + 13 nuovi: 1 su `parseHM("abc")`, 1 sulla somma con campo invalido, 4 su `bucketSettimana`, 4 su `maxNuoveSettimana` inclusi i due scenari "settimana parzialmente occupata" e "sovra-occupata da sessioni manuali", 5 su `sediAmmesseProgetto`) — **tutti passano**.
+2. **Passata 2 — S7 su Passata 3, dimostrazione che non serve alcuna modifica**: riletto `trovaAlternativaBlocker` riga per riga: la ricerca di un'alternativa per la sessione bloccante resta sempre `for(let d=wkB;d<=weB;d++)` con `wkB=bucketSettimana(day0)` — la **stessa** finestra di 7 giorni del progetto bloccante, mai un'altra; il blocco viene **rilocalizzato** (`blocco.data=alt.ds;...`), non duplicato — il conteggio settimanale di quel progetto resta invariato (ancora esattamente 1 sessione quella settimana, solo a un altro orario/giorno). Confermato quindi che la Passata 3 non necessita di modifiche dirette: eredita il vincolo dal `piazzate` (totale) corretto a monte in Passata 1/riepiloghi.
+3. **Passata 3 — scenario simulato S7 (settimana parzialmente occupata)**: vedi sezione dedicata sopra, tracciato a mano su `generateMonth` con valori concreti; confermato anche via test automatico (`maxNuoveSettimana(3,2)=1`, `maxNuoveSettimana(2,2)=0`, `maxNuoveSettimana(2,5)=0`) che l'aritmetica del vincolo è corretta nei casi limite (settimana già al completo, settimana sovra-occupata da sessioni manuali oltre la frequenza).
+4. **Passata 4 — scenario simulato S5 (cambio sede a posteriori)**: progetto con sede iniziale `Cesate+Online`, fasce già configurate `Lun:[sedi:['Cesate']]` e `Mer:[sedi:['Online']]`. Cambio Sede a `Cesate`: `nuoveAmmesse=['Cesate']`; il controllo trova Mercoledì con una sede (`Online`) non più ammessa → banner mostrato, `giorniFuoriAmbito=['Mer']`. Ri-render con gli stessi dati (`avAttuale`, non svuotati) e `nuoveAmmesse=['Cesate']`: per Mercoledì, `tagOptions` include sia `Cesate` (ammesso) sia `Online` (non ammesso ma già presente in `sedi`) → il tag `Online` compare con classe `on sede-extra` (ancora spuntato, evidenziato). Nessun dato perso, nessuna cancellazione silenziosa, segnalazione esplicita presente.
+5. **Passata 5 — nessuna regressione sui cicli precedenti**: rieseguiti tutti i 27 test di B/B.1 (inclusi in `check-sintassi.js`) — tutti invariati. Verificato che l'editor di disponibilità **operatore** (`oe-av`, `oe-monthly`) non riceva mai un `sediAmmesse`/`sediAmmesseIniziali` (chiamate invariate, senza il nuovo parametro) — comportamento identico a prima di questo ciclo, nessuna restrizione introdotta per gli operatori.
+6. **Passata 6 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (S5/S7 marcate ✅ Implementato, Architecture Passata 2/3 aggiornata, nuovo strumento `check-sintassi.js` registrato) e questo file descrivono la stessa implementazione con gli stessi nomi di funzione. Corretta una discrepanza pre-esistente trovata durante questa passata (non introdotta da questo ciclo): `CLAUDE.md`, sezione Passata 2, citava ancora il vecchio campo singolo `tempoBusto` invece di `tempoBustoOperatore`/`tempoBustoCesate`/`tempoBustoCasa` (Ciclo B/S8) — segnalata e corretta, come da prassi (le incongruenze si segnalano, non si nascondono).
+7. **Passata 7 — rilettura finale integrale del diff** (`git diff index.html`): confermato che ogni modifica rientra in una delle zone già descritte sopra (nuove funzioni condivise, i tre editor di disponibilità, Passata 1/IA di `generateMonth`/`generateMonthAI`, report) — nessuna riga toccata fuori da queste zone, nessun'altra incongruenza trovata → passata "vuota", ciclo chiuso a 7 passate (minimo richiesto: 4).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (check-sintassi.js, 2 rifiniture, S5, S7) conteneva già le specifiche tecniche complete.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- **S5, meccanismo di segnalazione al cambio Sede**: banner esplicito con i giorni coinvolti + classe CSS `sede-extra` sui tag non più ammessi ma già selezionati (mai nascosti/deselezionati). Scelto perché soddisfa contemporaneamente sia "propone solo le sedi ammesse" (per le nuove selezioni) sia "segnala, non cancella in silenzio" (per i dati già presenti), senza dover scegliere fra le due.
+- **S5, estensione a tutti e tre gli editor di disponibilità del progetto** (non solo quello principale `pe-av`, richiesto esplicitamente): trovati durante l'esplorazione anche l'editor delle eccezioni giornaliere e il pannello "Applica a più giorni" con lo stesso identico elenco di sedi hardcoded — estesa la stessa restrizione a tutti e tre per coerenza, altrimenti l'ammissione sarebbe stata parziale e incoerente tra le tre superfici.
+- **S7, nessuna modifica a Passata 3**: dimostrato (Passata 2 del metodo di verifica sopra) che il vincolo si eredita automaticamente dal `piazzate` corretto — scartata l'idea di aggiungere un controllo ridondante direttamente nel ciclo di Passata 3, per non introdurre due fonti di verità sulla stessa invariante.
+- **S7, avviso monte-ore-vs-frequenza collocato come nuova sezione del report** (`avvisiFrequenza`), non tra i suggerimenti generici esistenti: è concettualmente un vincolo strutturale progetto/mese, distinto dalle carenze settimanali per disponibilità/aule/operatori già presenti — tenerlo separato evita di confondere le due diagnosi.
+- **Discrepanza `tempoBusto` in `CLAUDE.md`**: corretta direttamente (non solo segnalata) perché è un refuso puramente documentale del Ciclo B (descrive lo stato attuale del codice, non una decisione storica), coerente con la prassi già seguita nei cicli precedenti di tenere accurate le sezioni operative.
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 0 | `check-sintassi.js` in radice, un comando, registrato in CLAUDE.md | ✅ Fatto | Sostituisce gli script temporanei dei cicli B/B.1 |
+| Rifinitura 1 | `parseHM("abc")` → NaN, non null | ✅ Fatto | Testato |
+| Rifinitura 2 | Somma live esclude campi invalidi, verificato ovunque serva | ✅ Fatto | Unica occorrenza trovata (`updateMonteOre`), testata |
+| S5 | Disponibilità limitate alla Sede, segnalazione su cambio sede | ✅ Fatto | Estesa a tutti e tre gli editor di disponibilità progetto |
+| S7 | Frequenza mai superata in nessuna passata, sessioni manuali contate, report | ✅ Fatto | Passata 1 + percorso IA modificati, Passata 3 eredita, avviso monte-ore-vs-frequenza aggiunto |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`, test S7 simulato, S5 con cambio sede, somma con campo invalido) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Non eseguibile in questo ambiente (nessun login M365/browser reale): il test dal vivo dell'intera generazione con un caso reale di settimana parzialmente occupata da sessioni confermate — raccomandato a Simone come primo test dopo il deploy di questo ciclo, insieme alla verifica visiva dei tre editor di disponibilità con una Sede composita.
+
+## Limiti di questa verifica
+`check-sintassi.js` verifica sintassi reale e comportamento delle funzioni pure estratte dal file reale — un livello di garanzia comportamentale genuino, non simulato. Non è stato invece possibile eseguire l'intera `generateMonth`/`generateMonthAI` (funzioni profondamente legate a `state`, MSAL, SharePoint) in questo ambiente: lo scenario S7 e quello S5 sopra sono stati tracciati a mano riga per riga sul codice reale con valori concreti, non osservati da un'esecuzione dal vivo. Si raccomanda il test manuale descritto nella sezione precedente subito dopo il deploy.
