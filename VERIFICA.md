@@ -917,3 +917,41 @@ Analisi per lettura statica dei tre file e di `index.html` (nessuna modifica al 
 
 ## Limiti di questa verifica
 Analisi per lettura statica di `CONTESTO.md`; nessuna modifica a `index.html` o `CLAUDE.md` in questo ciclo, quindi nessun controllo di sintassi del codice necessario.
+
+---
+
+# Verifica — Ciclo di chiusura code documentali (titolo sezione, conteggio righe, nota riparazione interattiva)
+
+**Nessuna modifica al codice in questo ciclo**: solo `CLAUDE.md`, `CONTESTO.md` e questo file. Data: 2026-07-17.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (4 punti numerati) conteneva già tutta la specifica di contenuto, incluso il testo esatto delle tre chiusure e della nuova regola permanente.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Applicare la sostituzione "~2325"→"~2300 righe (valore indicativo...)" **solo** alle due occorrenze di documentazione corrente (`CLAUDE.md` §"What this repo is", `CONTESTO.md` §1), non alle occorrenze di "2325" (senza tilde) presenti dentro voci storiche di `VERIFICA.md` e della Cronologia lavori di `CONTESTO.md` (voci 16 e 20): quelle sono narrazione di un fatto verificato in una data passata, non un valore "vivo" da tenere aggiornato — coerente con la prassi già seguita in questo repo di non riscrivere la Cronologia a posteriori (vedi ciclo precedente, decisione di non toccare "voce 19" nella Cronologia del 16/07).
+- Aggiornato anche il rimando interno nella voce di backlog 4 ("vedi nota di fedeltà sotto" → "vedi nota chiusa il 17/07 sotto"), non richiesto esplicitamente dal prompt ma necessario per coerenza interna dopo aver rinominato l'intestazione della nota.
+- **Segnalazione (non risolta in autonomia)**: la vecchia nota sulla riparazione interattiva conteneva due parti — (a) l'assenza di una voce preesistente con questo nome, e (b) una "tensione di sequenza" non risolta fra "calendarizzata implementata insieme alla riparazione interattiva" (voce 4) e "convergenza nel ciclo pausa pranzo" (voce 3). Il testo di chiusura fornito da Simone copre solo il punto (a). Il punto (b) non è più esplicitamente tracciato in nessuna delle tre fonti dopo questa sostituzione: se la tensione di sequenza è stata chiarita a voce e non richiedeva più annotazione, nessuna azione necessaria; se invece è ancora aperta, andrebbe ri-annotata in un prossimo ciclo. Non l'ho ripristinata di mia iniziativa perché il prompt chiedeva una sostituzione testuale esatta e integrale della nota.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — correttezza delle tre chiusure, verificate una per una contro il testo fornito**: (1) titolo sezione 5 → confermato ora "## 5. Cronologia lavori" in `CONTESTO.md`, senza il vecchio range di date; (2) conteggio righe → confermate le due sostituzioni esatte in `CLAUDE.md` e `CONTESTO.md` col testo richiesto ("~2300 righe (valore indicativo...)"), e nuova regola permanente aggiunta in `CLAUDE.md` §"Manutenzione del CONTESTO.md" nei termini richiesti; (3) nota riparazione interattiva → confermato il testo di chiusura fornito da Simone riportato integralmente in `CONTESTO.md`, backlog voce 4.
+2. **Passata 2 — grep di tutto il repo (file `.md`) per "2325" e per il vecchio titolo "Cronologia lavori (13"**: nessuna occorrenza di "~2325" residua in `CLAUDE.md`/`CONTESTO.md`; le uniche occorrenze rimaste di "2325" (senza tilde) sono nelle voci storiche di `VERIFICA.md` (verifiche del 15-16/07, narrazione di un conteggio confermato in quella data) e in due voci di Cronologia lavori di `CONTESTO.md` (16 e 20) che raccontano lo stesso fatto storico — lasciate intenzionalmente invariate (vedi Registro di sessione sopra). Nessuna occorrenza residua del vecchio titolo datato della sezione 5 in nessuno dei tre file.
+3. **Passata 3 — coerenza incrociata fra `CLAUDE.md` e `CONTESTO.md`**: la nuova regola permanente in `CLAUDE.md` ("non si scrive mai un conteggio esatto di righe") è coerente con il valore "~2300" ora usato in entrambi i file (nessuno dei due contiene più un numero esatto in un punto di documentazione corrente); il rimando aggiornato in `CONTESTO.md` backlog voce 4 ("vedi nota chiusa il 17/07 sotto") punta correttamente alla nota appena sotto, che riporta esattamente il testo fornito da Simone.
+4. **Passata 4 — rilettura finale integrale di `CLAUDE.md` e `CONTESTO.md`**: nessun'altra incongruenza trovata (numerazione di Cronologia/Backlog/Registro delle decisioni invariata e sequenziale rispetto al ciclo precedente; nessun altro blocco fa riferimento al vecchio titolo di sezione o al conteggio esatto) → passata "vuota", ciclo chiuso a 4 passate (minimo richiesto: 4).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Titolo sezione 5: "Cronologia lavori" senza date | ✅ Fatto | `CONTESTO.md` §5 |
+| 2 | Chiusura discrepanza conteggio righe: "~2325"→"~2300 (indicativo)" in CLAUDE.md/CONTESTO.md + nuova regola permanente | ✅ Fatto | `CLAUDE.md` §"What this repo is" e §"Manutenzione del CONTESTO.md"; `CONTESTO.md` §1 |
+| 3 | Nota riparazione interattiva sostituita col testo fornito | ✅ Fatto | `CONTESTO.md`, backlog voce 4 — **segnalazione**: il sub-punto "tensione di sequenza" della vecchia nota non è coperto dal nuovo testo, vedi Registro di sessione |
+| 4 | Registro di sessione + verifica multi-passata (min. 4) | ✅ Fatto | Questa voce |
+
+**Cosa manca / attenzione**: nessuna lacuna sui 4 punti richiesti nella lettera. Resta la segnalazione (non bloccante) sulla "tensione di sequenza" non più tracciata esplicitamente, riportata sopra per trasparenza.
+
+## Limiti di questa verifica
+Analisi per lettura statica dei tre file; nessuna modifica a `index.html` in questo ciclo, quindi nessun controllo di sintassi del codice necessario. La chiusura della discrepanza sul conteggio righe si basa sul riscontro già raccolto nel ciclo precedente (differenza attribuita al ciclo colori brand del 16/07) più il fatto che nessuna modifica a `index.html` è intervenuta da allora (confermato via `git log`).

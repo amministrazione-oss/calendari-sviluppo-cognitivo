@@ -10,7 +10,7 @@ Rispondi sempre in italiano, indipendentemente dalla lingua usata nel prompt.
 
 ## What this repo is
 
-A single-file client-side web app (`index.html`, ~2325 lines: inline `<style>` + inline `<script>`, no build step) for **Centro Sviluppo Cognitivo**, a cognitive-training center (BrainRx / Metodo Feuerstein) running sites in Cesate, Busto Arsizio, online and at-home. It's a scheduling/CRM tool ("Gestionale") for managing operators (therapists), clients ("utenti"), projects/treatment plans, and calendar sessions. UI and identifiers are in Italian.
+A single-file client-side web app (`index.html`, ~2300 righe: valore indicativo — il conteggio esatto si verifica con `wc -l` solo durante gli audit; inline `<style>` + inline `<script>`, no build step) for **Centro Sviluppo Cognitivo**, a cognitive-training center (BrainRx / Metodo Feuerstein) running sites in Cesate, Busto Arsizio, online and at-home. It's a scheduling/CRM tool ("Gestionale") for managing operators (therapists), clients ("utenti"), projects/treatment plans, and calendar sessions. UI and identifiers are in Italian.
 
 There is no package.json, build tool, linter, or test suite — this is intentionally a plain HTML/CSS/JS deploy. `CNAME` configures GitHub Pages for the custom domain `calendari-sviluppo-cognitivo.it`; pushing to `main` is the deploy.
 
@@ -97,6 +97,7 @@ When making changes, keep everything self-contained in `index.html` (no framewor
   - aggiorna la sezione "Backlog" se sono emerse nuove voci o se alcune sono state completate (rimuovile o segnale come fatte);
   - aggiorna la sezione "Registro delle decisioni" se in sessione sono state prese nuove decisioni non puramente tecniche (vedi Prassi di chiusura ciclo sotto).
 - `CONTESTO.md` va sempre incluso nello stesso commit delle modifiche di codice a cui si riferisce, mai in un commit separato successivo.
+- **Conteggio righe di `index.html`**: nei documenti (questo file, `CONTESTO.md`, `VERIFICA.md`) non si scrive mai un conteggio esatto di righe del codice, solo un valore indicativo (es. "~2300 righe"). Il conteggio esatto (`wc -l index.html`) si verifica solo durante gli audit, per non generare una discrepanza documentale a ogni piccola modifica al codice.
 
 ## Prassi di chiusura ciclo
 
