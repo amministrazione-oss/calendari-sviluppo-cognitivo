@@ -1217,3 +1217,57 @@ Il prompt descrive la regola come "usa il valore coerente con la posizione reale
 
 ## Limiti di questa verifica
 Per la prima volta disponibile un controllo sintattico reale (`node --check`) e un'esecuzione funzionale delle funzioni pure toccate, entrambi su codice estratto direttamente dal file reale — un salto di qualità rispetto ai cicli precedenti (solo lettura statica + bilanciamento parentesi). Resta non eseguibile in questo ambiente: il login Microsoft 365/SharePoint (le due migrazioni non sono state osservate scrivere davvero sui dati di test), e qualunque interazione DOM/browser reale (il test dei due campi Tempo Busto nell'editor operatore, il toggle di visibilità, il campo Monte ore in h:mm nell'editor progetto sono stati verificati leggendo il markup generato, non cliccando in un browser). Si raccomanda a Simone lo stesso test dal vivo già fatto per il Ciclo A: aprire un progetto/operatore di test dopo il deploy e verificare i log di migrazione in console, i nuovi campi visibili e corretti, e una generazione di prova su un caso con operatore su entrambe le sedi lo stesso giorno.
+
+---
+
+# Verifica — Ciclo B.1: rifinitura input h:mm (fix su S6)
+
+Data: 2026-07-17. Emerso dal collaudo dal vivo di Simone sul Ciclo B appena deployato: nessuna novità funzionale, solo correzione del parsing/validazione dei campi h:mm (monte ore progetto, ore per Metodo).
+
+## Cosa è stato fatto
+
+- **`parseHM`**: la regex passa da `^(\d+)[:.,](\d{1,2})$` (entrambi i lati obbligatori, minuti fino a 2 cifre senza limite di valore) a `^(\d*)[:.,](\d*)$` (ciascun lato può mancare). Se un lato manca viene trattato come `0`: `"30:"` → ore=30, minuti=0 → 1800; `":30"` → ore=0, minuti=30 → 30. Se **entrambi** i lati mancano (input = solo il separatore, es. `":"`) l'input è rifiutato. Se i minuti sono presenti ma **fuori dall'intervallo 00-59** (es. `"30:70"`), l'input è rifiutato — prima venivano accettati e usati così com'erano (`parseInt('70',10)=70`), producendo un valore in minuti "sporco" (30*60+70=1870, cioè 31:10, un totale silenziosamente sbagliato rispetto a quanto scritto in campo).
+- **Distinzione campo vuoto vs input non valido**: `parseHM` ora restituisce **`null`** per un campo vuoto (nessun valore, comportamento invariato — es. monte ore non impostato) e **`NaN`** per un input scritto ma non valido (nuovo). I due casi erano indistinguibili prima (non serviva, perché prima ogni stringa non vuota che superava la regex o il parse a numero secco produceva comunque un risultato "accettabile"); ora il chiamante controlla `Number.isNaN(...)` per decidere se rifiutare.
+- **UI — editor progetto**: campo "Monte ore totale" (`#pe-ore`) e ciascun campo "Ore totali" per Metodo (`.met-ore`) hanno un listener `input` (non più solo `change`, per un riscontro immediato mentre si digita) che: calcola `parseHM(valore)`; se `NaN` aggiunge la classe CSS `hm-invalid` (nuova regola: bordo e sfondo rossi, riusa le variabili `--danger`/`--danger-soft` già presenti nel foglio stile) e **non** scrive il valore nel modello (`pMetodi`) né aggiorna il totale — il valore starato resta quindi "in sospeso" solo a schermo, mai nei dati; se valido, rimuove la classe e procede come prima.
+- **Blocco al salvataggio**: il click su "Salva" del progetto ora controlla anche `Number.isNaN(parseHM($('#pe-ore').value))` e ciascun `.met-ore` prima di procedere; se uno qualunque è fuori regola, il salvataggio si ferma con un avviso ("Correggi i campi ore evidenziati in rosso...") nello stesso banner già usato per "Nome e utente obbligatori" — non basta quindi lasciare il campo rosso e uscire dal focus: il progetto non si salva finché il valore non è corretto o svuotato.
+
+| Parte | Stato |
+|---|---|
+| `parseHM`: lato mancante = 0 (`30:`→30:00, `:30`→0:30) | ✅ Fatto |
+| `parseHM`: minuti 00-59, fuori range rifiutato (mai normalizzato in silenzio) | ✅ Fatto — restituisce `NaN`, distinto da `null` (campo vuoto) |
+| UI: bordo rosso in tempo reale, totale non aggiornato finché non corretto | ✅ Fatto (`.hm-invalid`, listener `input` su `#pe-ore` e `.met-ore`) |
+| Blocco del salvataggio progetto se un campo ore resta fuori regola | ✅ Fatto (stesso banner di avviso esistente) |
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — i 3 casi del prompt, uno per uno**: `"30:"` (minuti assenti) → verificato a mano sulla nuova regex: gruppo minuti vuoto → trattato come `0` → 1800 corretto. `":30"` (ore assenti) → gruppo ore vuoto → trattato come `0` → 30 corretto. `"30:70"` → gruppo minuti `"70"` → `70>59` → `NaN`, e verificato che il percorso UI (listener `input` + blocco al salvataggio) impedisca sia l'aggiornamento del totale sia il salvataggio con quel valore.
+2. **Passata 2 — `node --check` + test funzionale esteso**: `node --check` sui 3 blocchi `<script>` di `index.html` — **tutti OK**. Estratta la nuova versione di `parseHM` direttamente dal file reale ed eseguiti gli 11 casi di parsing/formattazione (i 6 già coperti nel Ciclo B + i 5 nuovi di questo ciclo: `"30:"`→1800, `":30"`→30, `"30:00"`→1800, `"30:70"`→`NaN`, `":"`→`NaN`) più i 13 casi già coperti su `tempoBustoOperatore`/`decidiOnlineDaCasa` (invariati, non toccati in questo ciclo) — **tutti i 24 test passano**. Nota tecnica sul test stesso: `JSON.stringify(NaN)` restituisce `"null"`, quindi il confronto usato per gli altri casi (`JSON.stringify` di atteso vs ottenuto) avrebbe fatto passare un `NaN` scambiandolo per `null` — aggiunta una funzione di controllo dedicata (`checkNaN`, verifica esplicita `Number.isNaN`) per i 2 casi che si aspettano un rifiuto, cosa verificata rileggendo il codice del test stesso prima di fidarsi del risultato "tutto ok".
+3. **Passata 3 — nessuna regressione sui casi già validati nel Ciclo B**: rieseguiti i 6 casi di parsing precedenti (`1:30`, `1.30`, `1,30`, `90`, vuoto, null) — tutti invariati. Riletta la sezione "Nota di attenzione" del Ciclo B (numero secco = minuti, non toccata da questa rifinitura): confermato che resta valida e non in conflitto con la nuova regola (il ramo "numero secco" non passa mai dalla nuova regex con separatore, quindi il vincolo 00-59 non lo riguarda).
+4. **Passata 4 — percorso UI end-to-end letto sul codice**: seguito a mano il percorso di un input `"30:70"` in `.met-ore`: listener `input` → `parseHM` restituisce `NaN` → classe `hm-invalid` aggiunta, `pMetodi`/`updateMonteOre()` **non** chiamati (il valore precedente resta nel modello) → click su Salva → guardia rilegge lo stesso input da `$$('.met-ore')`, lo trova ancora `NaN` → salvataggio bloccato con banner, nessuna scrittura su SharePoint. Stesso percorso verificato per `#pe-ore`. Verificato che un campo lasciato vuoto (cancellato del tutto) non attivi il blocco (`parseHM('')` → `null`, non `NaN` → considerato valido, come un monte ore non impostato).
+5. **Passata 5 — coerenza fra le fonti**: aggiornata la nota S6 in `CLAUDE.md` ("Input validato 00-59") con lo stesso comportamento descritto qui; nessuna voce di `CONTESTO.md` (Cronologia, Backlog, Registro delle decisioni) cita dettagli di parsing h:mm da disallineare — solo la Cronologia riceve la nuova voce di questo ciclo.
+6. **Passata 6 — rilettura finale del diff** (`git diff index.html`): le uniche zone toccate sono `parseHM` (regex + gestione lati mancanti/fuori range), la nuova regola CSS `.hm-invalid`, i due listener `input` (`#pe-ore`, `.met-ore`) e la nuova guardia nel click di `#pe-save` — nessuna riga toccata fuori da queste zone, nessun'altra incongruenza trovata → passata "vuota", ciclo chiuso a 6 passate (minimo richiesto: 4).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt conteneva già i 3 punti tecnici completi (lati mancanti = 00, validazione 00-59 con segnalazione visiva, casi di test da aggiungere), lasciando a me la scelta del meccanismo di segnalazione ("scegli tu il meccanismo").
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:*
+- Meccanismo di segnalazione scelto: classe CSS `hm-invalid` (bordo/sfondo rossi, riusa `--danger`/`--danger-soft` già esistenti) applicata in tempo reale sull'evento `input`, **più** un blocco esplicito al salvataggio (non richiesto testualmente ma implicito in "il valore fuori regola non deve mai finire nei dati": senza il blocco al salvataggio, un campo lasciato rosso e un click diretto su Salva avrebbe comunque salvato il valore precedente al modello in silenzio, senza dare a Simone modo di accorgersene se non guardava lo schermo in quel momento).
+- Introdotta la distinzione `null` (campo vuoto, valido) vs `NaN` (input scritto ma fuori regola) nel valore di ritorno di `parseHM`, non richiesta esplicitamente ma necessaria per poter distinguere "nessun valore" da "valore da rifiutare" nei punti che chiamano la funzione.
+- Il ramo "numero secco = minuti" (S6) non è stato toccato: il vincolo 00-59 si applica solo quando è presente un separatore (`:`/`.`/`,`), perché in quel caso i "minuti" sono un componente ore:minuti, mentre un numero secco rappresenta minuti totali senza struttura ore:minuti da validare.
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | `"30:"`→30:00, `":30"`→0:30 | ✅ Fatto | Lato mancante trattato come `0` nella nuova regex |
+| 2 | Minuti solo 00-59, fuori range rifiutato (mai normalizzato in silenzio), segnalazione visiva | ✅ Fatto | `NaN` + classe `hm-invalid` + blocco al salvataggio (non solo segnalazione passiva) |
+| 3 | Casi di test aggiunti (`"30:"`, `":30"`, `"30:70"`, `"30:00"` + casi già coperti) | ✅ Fatto | 5 nuovi casi, 24 test totali, tutti passano |
+| Verifica | Multi-passata (min. 4, incl. `node --check` e test funzionale esteso) | ✅ Fatto | 6 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Come per i cicli precedenti, il test dal vivo nell'editor (digitare `"30:70"` in un campo reale e vedere il bordo rosso comparire, provare a salvare e vedere il blocco) non è stato eseguibile in questo ambiente — raccomandato a Simone dopo il deploy.
+
+## Limiti di questa verifica
+Analisi statica + `node --check` + esecuzione in Node delle funzioni pure toccate (stesso livello di verifica introdotto nel Ciclo B); il comportamento visivo (bordo rosso, banner di blocco) è stato verificato leggendo il codice generato (markup, classi, listener), non osservato in un browser reale. Si raccomanda a Simone di riprovare dal vivo dopo il deploy proprio i casi che avevano fatto emergere il problema.
