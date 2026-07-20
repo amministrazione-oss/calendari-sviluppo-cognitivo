@@ -1611,3 +1611,105 @@ Aggiunte alle liste di estrazione due nuove funzioni pure (`riepilogoStatoProget
 
 ## Limiti di questa verifica
 `check-sintassi.js` verifica sintassi reale e le 2 nuove funzioni pure con casi concreti. Il resto della logica di questo ciclo (cascata di filtri, riepilogo, persistenza su SharePoint, risoluzione lista opzionale) è profondamente legato a `state`/DOM/Graph e non è extraibile in una sandbox Node: tutti gli scenari sopra sono stati tracciati a mano leggendo il codice reale riga per riga con valori concreti, non osservati in esecuzione. In particolare, il comportamento di `tryResolveLists()` con la lista `Gestionale_Report` realmente assente su SharePoint non è stato osservato dal vivo (richiederebbe un ambiente con login M365 su un sito SharePoint reale, non disponibile qui) — raccomandato come primo test dopo il deploy, prima ancora di creare la lista, per confermare che l'app si comporti normalmente anche senza.
+
+---
+
+# Verifica — Ciclo E.1: HOTFIX (proposte non eliminate, report più robusto, cascata in Genera)
+
+Data: 2026-07-20. Tre correzioni emerse dal primo collaudo di generazione di Simone con dati reali.
+
+## FIX 1 — Le proposte sostituite non venivano mai eliminate da SharePoint (BUG GRAVE)
+
+**Cosa è stato fatto**:
+- **Diagnosi confermata leggendo il codice riga per riga**: in `generateMonth` e `generateMonthAI`, la riga finale `state.data.sessioni=keep;` sostituiva SOLO la variabile locale in memoria — nessuna chiamata a `deleteRecord` per le vecchie sessioni `proposta` in ambito che il run stava sostituendo. Quei record restavano sulla lista SharePoint `Gestionale_Sessioni`; al prossimo `loadAll()` (ricarica pagina, nuovo login) tornavano a far parte di `state.data.sessioni`, comparendo come sessioni duplicate accanto a quelle appena create (id diversi, stesso slot logico).
+- **Nuova funzione pura `proposteDaSostituire(sessioni,ms,scopeIds)`**: stessa identica condizione di `sessioniDaConservare` (`s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)`), **non negata** — il complemento esatto, non un'approssimazione. Presa come parametro esplicito (non letta da `state.data.sessioni` internamente) per restare testabile in isolamento.
+- **Entrambi i percorsi di generazione** (`generateMonth`, riga della Passata 2 finale; `generateMonthAI`, subito dopo `risolviOnlineDaCasa`): calcolano `daEliminare=proposteDaSostituire(state.data.sessioni,ms,scopeIds)` e le eliminano da SharePoint con `deleteRecord` **prima** di eseguire `state.data.sessioni=keep` e il ciclo di `saveRecord` per le nuove sessioni. Se una `deleteRecord` fallisce, viene lanciato un `Error` che interrompe immediatamente la funzione — **nessuna nuova sessione viene salvata** in quel caso, per non creare i duplicati che il fix esiste per evitare. L'errore risale al gestore del click (`try/catch` già esistente su entrambi i pulsanti "Genera") e appare come banner "Errore: ...", stesso canale già usato per ogni altro fallimento della generazione.
+- **Nessun rollback delle eliminazioni già riuscite in caso di fallimento a metà** (scelta esplicita, vedi `CONTESTO.md`, Registro delle decisioni, voce 46): `deleteRecord` aggiorna `state.data.sessioni` a ogni successo, quindi un tentativo successivo dello stesso run ricalcola naturalmente un `daEliminare` più piccolo (solo i residui non ancora eliminati) — converge da solo, senza bisogno di ricreare record già correttamente rimossi.
+- **Riuso in "🗑 Svuota proposte del mese"**: quel pulsante calcolava già inline la stessa identica condizione con un filtro separato — sostituito con una chiamata a `proposteDaSostituire`, eliminando una duplicazione pre-esistente (non richiesto esplicitamente dal prompt, ma occasione naturale trovata durante il fix, per non lasciare la stessa regola scritta in tre punti diversi che potrebbero disallinearsi in futuro).
+- **Nota di fedeltà richiesta dal prompt** ("probabile residuo dell'era localStorage, documentalo") — **verificato con la cronologia git, con un esito più preciso e più interessante dell'ipotesi originale**: un'era `localStorage` è realmente esistita in questo repository. Il primo commit che introduce `index.html` (7944aa8, 07/07/2026) usa davvero `localStorage.setItem('csdc:'+k,...)` per la persistenza (3 occorrenze, commento nel codice: "salvataggio immediato ad ogni modifica" — coerente con un modello dove riassegnare l'intero oggetto in memoria **è** l'intero passo di persistenza, nessun bug possibile in quel modello). La migrazione a SharePoint via Microsoft Graph è avvenuta il giorno dopo (prima occorrenza di `graph.microsoft.com` nel commit 3b7d29f, 08/07/2026). **Ma**: `generateMonth` non esiste ancora in nessuno dei due commit del 07-08/07 — è stata scritta successivamente (con tutta probabilità nel ciclo "Blocco C: architettura a tre passate" del 13/07, documentato in `CONTESTO.md`), cioè **dopo** che l'app era già passata a SharePoint. Il bug non è quindi un letterale "leftover" di codice mai aggiornato dall'era localStorage (quel codice specifico non è mai esistito prima della migrazione), ma verosimilmente un **disallineamento tra modello mentale e persistenza reale**: chi ha scritto `generateMonth` ha probabilmente ragionato nei termini più semplici ("sostituisci l'elenco delle sessioni") legittimi per un'app che tiene tutto in un unico oggetto in memoria — un'abitudine plausibilmente ereditata dal periodo, brevissimo ma reale, in cui l'app lo era — senza portare fino in fondo la conseguenza che, sotto SharePoint, "sostituire l'elenco" richiede un'eliminazione esplicita per ogni record che non fa più parte del nuovo elenco. Corretta quindi l'ipotesi dal prompt (non un "residuo di codice", ma un'abitudine di modello mentale coerente con quel periodo) invece di lasciarla passare come accertata senza verifica.
+
+| Parte | Stato |
+|---|---|
+| Diagnosi confermata (nessuna `deleteRecord` sulle proposte sostituite) | ✅ Confermata leggendo il codice |
+| `proposteDaSostituire` — funzione pura, complemento esatto di `sessioniDaConservare` | ✅ Fatto |
+| `generateMonth`: elimina prima di salvare, con interruzione su fallimento | ✅ Fatto |
+| `generateMonthAI`: stesso fix | ✅ Fatto |
+| Test funzionale incluso lo scenario "seconda generazione = zero zombie" | ✅ Fatto (`check-sintassi.js`) |
+| Documentata l'ipotesi "residuo dell'era localStorage" | ✅ Fatto, esplicitamente come ipotesi non accertata |
+| Riuso in "Svuota proposte del mese" (bonus, non richiesto) | ✅ Fatto |
+
+### Scenario tracciato a mano: genera → ricarica → rigenera → nessun duplicato
+
+**Stato iniziale**: progetto "BrainRx, cliente Rossi" (`pA`), nessuna sessione. Admin genera per "2026-08": `generateMonth('2026-08',pA,null)` piazza 2 sessioni `newS=[n1,n2]` (entrambe `proposta`, `progettoId:pA`). `keep` (calcolato all'inizio della funzione, su `state.data.sessioni` allora vuoto) è `[]`. Al punto del fix: `daEliminare=proposteDaSostituire([],'2026-08',{pA})=[]` (niente da eliminare, prima generazione) — nessuna `deleteRecord` chiamata. `state.data.sessioni=[]`; poi `n1`,`n2` salvate con `saveRecord`, che le aggiunge a `state.data.sessioni` (side-effect già esistente di `saveRecord`, non toccato da questo fix). Stato finale in memoria e su SharePoint: `[n1,n2]`. Coerente, nessuna differenza dal comportamento pre-fix in questo primo giro (il bug si manifesta solo alla **seconda** generazione).
+
+**Ricarica pagina**: `loadAll()` rilegge `Gestionale_Sessioni` da SharePoint — `state.data.sessioni=[n1,n2]` (corretto: solo le 2 sessioni realmente esistenti, perché il fix le aveva salvate correttamente e non ne aveva lasciate altre indietro).
+
+**Rigenerazione** (stesso progetto, stesso mese, es. per applicare una disponibilità aggiornata): `generateMonth('2026-08',pA,null)` di nuovo. `keep=sessioniDaConservare('2026-08',{pA})` — se `n1`/`n2` sono ancora `proposta` (non confermate nel frattempo), `keep=[]` (esclude entrambe, come sempre). L'algoritmo piazza `newS=[n3,n4]` (nuove sessioni, id diversi da n1/n2). **Punto critico**: `daEliminare=proposteDaSostituire([n1,n2],'2026-08',{pA})=[n1,n2]` — **questa volta trova le due sessioni della generazione precedente** (a differenza del primo giro, dove non c'era nulla da trovare). Vengono eliminate da SharePoint con `deleteRecord` (2 chiamate, entrambe riuscite in questo scenario). Solo dopo, `state.data.sessioni=keep=[]`, poi `n3`,`n4` salvate. **Stato finale**: `[n3,n4]`, esattamente 2 sessioni — non 4. Se il fix non ci fosse (comportamento pre-20/07): `daEliminare` non sarebbe mai stato calcolato/eliminato, `n1` e `n2` sarebbero rimaste su SharePoint (semplicemente "dimenticate" dalla variabile locale ma non dal server), e alla **prossima ricarica** `loadAll()` le avrebbe ripescate insieme a `n3`/`n4`: **4 sessioni per una richiesta di 2** — esattamente il bug segnalato da Simone.
+
+### Scenario tracciato a mano: fallimento di un'eliminazione a metà rigenerazione
+
+Stesso stato di partenza `[n1,n2]` (entrambe `proposta`, progetto `pA`). Rigenerazione: `daEliminare=[n1,n2]`. Il loop tenta `deleteRecord('sessioni',n1)` → riesce (SharePoint conferma, `state.data.sessioni` diventa `[n2]` per il side-effect di `deleteRecord`). Poi tenta `deleteRecord('sessioni',n2)` → **fallisce** (es. errore di rete transitorio). Il `catch` lancia un nuovo `Error` con un messaggio esplicito; la funzione `generateMonth` si interrompe **immediatamente** — `state.data.sessioni` resta `[n2]` (non ancora `keep`), nessuna `newS` viene salvata. Il gestore del click mostra il banner d'errore. Admin riprova: nuova chiamata a `generateMonth`. Questa volta `sessioniDaConservare`/`daEliminare` vengono ricalcolati da `state.data.sessioni=[n2]` (non più `[n1,n2]`, perché `n1` è stata davvero eliminata al tentativo precedente): `daEliminare=[n2]` — un solo elemento, non due. Il secondo tentativo elimina `n2` e procede normalmente. **Nessun duplicato, nessuna eliminazione ripetuta di `n1`** (che non esiste più, né nell'array né su SharePoint): il sistema converge da solo senza bisogno di logica di rollback, confermando la decisione presa (Registro delle decisioni, voce 46).
+
+---
+
+## FIX 2 — Report storico più robusto (ritentativo di risoluzione lista)
+
+**Cosa è stato fatto**: `persistReport(report)` ora, se `state.listIds.report` non è definito, ritenta `tryResolveLists(state.siteId)` (la stessa funzione usata al login) prima di arrendersi. Se questo ritentativo trova finalmente la lista `Gestionale_Report` (creata da Simone su SharePoint dopo che la pagina era già stata caricata), viene anche eseguito `loadListRecords('report')` per recuperare lo storico eventualmente già presente — senza questo passaggio aggiuntivo, "Report precedenti" avrebbe mostrato solo la generazione di adesso, non un vero storico, finché qualcuno non avesse ricaricato la pagina (Registro delle decisioni, voce 48). Solo se la lista resta assente anche dopo il ritentativo, la funzione salta con lo stesso comportamento silenzioso di prima.
+
+| Parte | Stato |
+|---|---|
+| Ritentativo di `tryResolveLists()` se la lista non è risolta | ✅ Fatto |
+| Recupero dello storico esistente se risolta solo ora | ✅ Fatto (bonus, coerente con lo scopo del ritentativo) |
+| Nessun impatto se la lista resta assente | ✅ Verificato — stesso comportamento silenzioso di prima |
+
+### Scenario tracciato a mano
+
+Admin ha caricato "Genera" prima che Simone creasse `Gestionale_Report` su SharePoint: `state.listIds.report` è `undefined`, "Report precedenti" mostra l'avviso. Simone crea la lista nel frattempo (stessa sessione browser di Admin, nessun ricaricamento). Admin genera un calendario: `persistReport(res.report)` trova `state.listIds.report` ancora `undefined` → chiama `tryResolveLists(state.siteId)`; questa volta la lista esiste → la funzione restituisce `true` e popola `state.listIds` (incluso `report`, ora trovato). Il codice prosegue: `state.listIds.report` è ora valorizzato → `state.data.report=await loadListRecords('report')` (in questo caso probabilmente `[]`, essendo una lista appena creata, ma il codice lo gestirebbe comunque correttamente se non lo fosse) → si procede al salvataggio del report appena prodotto e a `renderReportStorico()`. Alla generazione successiva, `state.listIds.report` è già valorizzato dal giro precedente: il ramo di ritentativo non viene nemmeno eseguito (`if(!state.listIds.report&&...)` è falso), comportamento identico a se la lista fosse sempre esistita.
+
+---
+
+## FIX 3 — Cascata utente→progetto nella pagina Genera
+
+**Cosa è stato fatto**: nel campo "Ambito" = "Singolo progetto", aggiunta una tendina "Utente" (`gen-utente-sel`) prima di "Progetto": selezionato un utente, `#gen-proj-sel` mostra solo i suoi progetti attivi (stesso pattern di `sess-f-utente`/`sess-f-progetto` e `cal-f-utente`/`cal-f-progetto`, S2). **Nessuna modifica ai tre punti che leggono `$('#gen-proj-sel').value`** (i due generatori e "Svuota proposte del mese"): l'id e il significato della tendina progetti restano identici, cambia solo quali opzioni vengono proposte (Registro delle decisioni, voce 49).
+
+| Parte | Stato |
+|---|---|
+| Cascata utente→progetto in Ambito "Singolo progetto" | ✅ Fatto (`gen-utente-sel`) |
+| Nessuna modifica necessaria ai punti che leggono `#gen-proj-sel` | ✅ Verificato |
+| Selezione utente/progetto preservata tra re-render (stesso meccanismo di S2) | ✅ Fatto |
+
+## Estensione di `check-sintassi.js`
+
+Aggiunta `proposteDaSostituire` alle funzioni estratte. 4 nuovi casi (69→73 totali): selezione corretta di proposta+in ambito+nel mese con quattro casi limite nella stessa asserzione (confermata nello stesso progetto/mese, proposta fuori ambito, proposta in ambito ma mese diverso), verifica di copertura totale/nessuna sovrapposizione col complemento, e lo scenario esplicito "seconda generazione = zero zombie" (una confermata mai toccata + due proposte del "run 1" — verificato che vengano individuate esattamente, senza residui né omissioni).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js`**: 3 blocchi `<script>` OK; 73 test funzionali (69 preesistenti + 4 nuovi) — **tutti passano**.
+2. **Passata 2 — verifica punto per punto del prompt** (FIX 1, FIX 2, FIX 3): vedi tabelle sopra.
+3. **Passata 3 — scenario tracciato a mano: genera → ricarica → rigenera → nessun duplicato** (FIX 1, il caso esplicitamente richiesto dalla verifica): vedi sopra, con il confronto esplicito fra comportamento pre-fix (4 sessioni per 2 richieste) e post-fix (2 sessioni).
+4. **Passata 4 — scenario tracciato a mano: fallimento di un'eliminazione a metà rigenerazione** (FIX 1, robustezza): vedi sopra, verificata la convergenza senza rollback.
+5. **Passata 5 — scenario tracciato a mano: ritentativo di risoluzione lista report** (FIX 2): vedi sopra.
+6. **Passata 6 — nessuna regressione sui cicli precedenti**: riletti `sessioniDaConservare`, `risolviOnlineDaCasa`, la Passata 3 di `generateMonth` — nessuno di questi punti è stato toccato dal fix, solo il punto di salvataggio finale; i 69 test preesistenti restano invariati e passano. Verificato che il nuovo blocco di eliminazione si trovi **dopo** la Passata 3/Passata 2 (quindi non interferisce con la logica di piazzamento/riparazione, che continua a leggere `keep` come vincolo attivo per tutta la durata dell'algoritmo) e **prima** di `state.data.sessioni=keep` (quindi `daEliminare` è calcolato sull'array ancora integro, con la stessa base usata per `keep`).
+7. **Passata 7 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (Architecture punto 8/Scheduling engine corretto con la cronologia del bug; S2/S3 aggiornate con i tre FIX), `CONTESTO.md` (Cronologia voce 32, Registro delle decisioni voci 46-49) e questo file descrivono la stessa implementazione con gli stessi nomi di funzione; nessuna incongruenza trovata.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (tre fix con specifica tecnica, incluso il nome suggerito `proposteDaSostituire` per FIX 1) conteneva già tutto il necessario.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 46-49 (nessun rollback delle eliminazioni riuscite; riuso di `proposteDaSostituire` in "Svuota proposte del mese"; ricaricamento dello storico esistente al momento della risoluzione tardiva; `#gen-proj-sel` invariato nell'id/comportamento).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| FIX 1 | Eliminare da SharePoint le proposte sostituite prima di salvare le nuove, funzione pura, test incluso "zero zombie", interrompere se un'eliminazione fallisce, documentare l'ipotesi localStorage | ✅ Fatto | `proposteDaSostituire`, entrambi i generatori, nessun salvataggio se l'eliminazione fallisce |
+| FIX 2 | Ritentare la risoluzione della lista report prima di arrendersi | ✅ Fatto | `persistReport`, con recupero dello storico se risolta solo ora |
+| FIX 3 | Cascata utente→progetto anche in Genera, Ambito "Singolo progetto" | ✅ Fatto | `gen-utente-sel`, nessuna modifica ai punti che leggono `#gen-proj-sel` |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`, scenario genera→ricarica→rigenera→nessun duplicato) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Non eseguibile in questo ambiente (nessun login M365/browser reale): il test dal vivo dello scenario completo — generare, ricaricare la pagina, rigenerare lo stesso mese/progetto, verificare che il numero di sessioni non raddoppi — è il collaudo più importante da fare per primo dopo il deploy, dato che verifica esattamente il bug segnalato da Simone. Raccomandato anche un controllo diretto su SharePoint (lista `Gestionale_Sessioni`) per confermare che le vecchie proposte siano davvero scomparse dalla lista, non solo dalla vista dell'app.
+
+## Limiti di questa verifica
+`check-sintassi.js` verifica la logica di selezione (`proposteDaSostituire`) con casi concreti, incluso lo scenario a due generazioni richiesto — un livello di garanzia comportamentale genuino sulla funzione pura. Non è stato invece possibile eseguire dal vivo l'intera `generateMonth`/`generateMonthAI` con vere chiamate `deleteRecord`/`saveRecord` verso Microsoft Graph (richiede login M365 su un sito SharePoint reale, non disponibile in questo ambiente): gli scenari "genera→ricarica→rigenera" e "fallimento a metà" sopra sono stati tracciati a mano riga per riga sul codice reale con valori concreti, non osservati in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente come priorità del prossimo collaudo, essendo la correzione di un bug che produceva dati duplicati reali.

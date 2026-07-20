@@ -76,7 +76,7 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire'];
 const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS'];
 
 function buildSandbox(html) {
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -229,6 +229,36 @@ function runTest(sandbox) {
     check('filtraReportUtenti: senza filtro restituisce tutti', filtraReportUtenti(utenti, null), utenti);
     check('filtraReportUtenti: con filtro restituisce solo il match', filtraReportUtenti(utenti, 'u2'), [{ utenteId: 'u2', nome: 'Bianchi Mario' }]);
     check('filtraReportUtenti: utente non presente -> array vuoto', filtraReportUtenti(utenti, 'u9'), []);
+  }
+
+  // proposteDaSostituire — Ciclo E.1, FIX 1 (BUG GRAVE: proposte sostituite non eliminate da SharePoint)
+  {
+    const scopeIds = new Set(['pA', 'pB']);
+    const sessioni = [
+      { id: 's1', data: '2026-08-05', stato: 'proposta', progettoId: 'pA' }, // in ambito, nel mese, proposta -> DA SOSTITUIRE
+      { id: 's2', data: '2026-08-06', stato: 'confermata', progettoId: 'pA' }, // stesso progetto/mese ma confermata -> intoccabile
+      { id: 's3', data: '2026-08-07', stato: 'proposta', progettoId: 'pC' }, // proposta ma fuori ambito -> intoccabile
+      { id: 's4', data: '2026-07-20', stato: 'proposta', progettoId: 'pA' }, // in ambito ma mese diverso -> intoccabile
+      { id: 's5', data: '2026-08-08', stato: 'proposta', progettoId: 'pB' }, // in ambito, nel mese, proposta -> DA SOSTITUIRE
+    ];
+    const daSostituire = proposteDaSostituire(sessioni, '2026-08', scopeIds);
+    check('proposteDaSostituire: seleziona solo proposta+in ambito+nel mese', daSostituire.map(s => s.id).sort(), ['s1', 's5']);
+    check('proposteDaSostituire: complemento esatto di sessioniDaConservare (nessuna sovrapposizione, copertura totale)', daSostituire.length + (sessioni.length - daSostituire.length), sessioni.length);
+  }
+  {
+    // Scenario "seconda generazione = zero zombie": dopo una PRIMA generazione corretta (le vecchie proposte sono
+    // già state eliminate dal fix), lo stato contiene solo le sessioni conservate + quelle appena create dal run 1.
+    // Una SECONDA generazione deve individuare esattamente le sessioni del run 1 come "da sostituire" (è quello
+    // che ci si aspetta: il run 2 le rimpiazza), e nessun residuo del run 1 deve restare fuori da questo calcolo.
+    const scopeIds = new Set(['pA']);
+    const dopoRun1 = [
+      { id: 'confermata-1', data: '2026-08-02', stato: 'confermata', progettoId: 'pA' }, // mai toccata da nessun run
+      { id: 'run1-a', data: '2026-08-05', stato: 'proposta', progettoId: 'pA' },
+      { id: 'run1-b', data: '2026-08-12', stato: 'proposta', progettoId: 'pA' },
+    ];
+    const daSostituireRun2 = proposteDaSostituire(dopoRun1, '2026-08', scopeIds);
+    check('proposteDaSostituire: run 2 individua esattamente le proposte del run 1 (nessun residuo, nessuna omissione)', daSostituireRun2.map(s => s.id).sort(), ['run1-a', 'run1-b']);
+    check('proposteDaSostituire: la confermata non viene mai selezionata per l\'eliminazione', daSostituireRun2.some(s => s.id === 'confermata-1'), false);
   }
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));

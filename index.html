@@ -392,7 +392,7 @@ L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
       <div class="field"><label>Mese</label><input type="month" id="gen-month"></div>
       <div class="field"><label>Ambito</label><select id="gen-scope"><option value="all">Tutti i progetti attivi</option><option value="single">Singolo progetto</option><option value="byname">Per nome progetto</option></select></div>
     </div>
-    <div class="field hidden" id="gen-proj-wrap"><label>Progetto</label><select id="gen-proj-sel"></select></div>
+    <div class="grid2 hidden" id="gen-proj-wrap" style="max-width:500px"><div class="field"><label>Utente</label><select id="gen-utente-sel"><option value="">— Tutti —</option></select></div><div class="field"><label>Progetto</label><select id="gen-proj-sel"></select></div></div>
     <div class="field hidden" id="gen-proj-name-wrap"><label>Nome progetto (o parte di esso)</label><input type="text" id="gen-proj-name" placeholder="Es: Feuerstein, BrainRx…"></div>
     <div class="toolbar" style="margin-top:12px">
       <button class="btn primary" id="btn-gen">🗓 Genera con algoritmo</button>
@@ -1267,8 +1267,17 @@ function openGenReport(report,filtroUtenteId){
 // Salva automaticamente il report della generazione appena conclusa sulla lista SharePoint Gestionale_Report
 // (S3, Ciclo E). Se la lista non è ancora stata creata (state.listIds.report assente), non fa nulla: la
 // generazione stessa non deve mai fallire per una funzione di persistenza opzionale/accessoria.
+// FIX 2 (Ciclo E.1): prima di arrendersi, ritenta la risoluzione delle liste — la lista può essere stata creata
+// su SharePoint dopo il caricamento della pagina (Simone la crea, ma non ricarica subito il gestionale).
 async function persistReport(report){
-  if(!state.listIds.report||!report)return;
+  if(!report)return;
+  if(!state.listIds.report&&state.siteId){
+    await tryResolveLists(state.siteId);
+    // Risolta solo ora (in questa stessa sessione): recupera lo storico già presente sulla lista, altrimenti
+    // "Report precedenti" mostrerebbe solo la generazione di adesso finché non si ricarica la pagina.
+    if(state.listIds.report){try{state.data.report=await loadListRecords('report');}catch(e){console.warn('Caricamento report (dopo risoluzione tardiva) saltato:',e);}}
+  }
+  if(!state.listIds.report)return; // ancora assente dopo il ritentativo: salta, l'avviso lo mostra già renderReportStorico()
   const rec={id:uid(),generatoIl:new Date().toISOString(),mese:report.mese,metodo:report.metodo,esito:report.utenti.length?'con carenze':'completo',report};
   try{await saveRecord('report',rec);}catch(e){console.warn('Salvataggio report saltato:',e);}
   renderReportStorico();
@@ -1679,11 +1688,25 @@ async function saveDisponibilita(){
 /* ============================================================
    Generatore automatico calendario
    ============================================================ */
+// FIX 3 (Ciclo E.1, richiesta UX di Simone): con Ambito "Singolo progetto", cascata utente->progetto (stesso
+// pattern S2 di Sessioni/Calendario) invece della sola tendina progetti — con molti progetti diventa più facile
+// trovare quello giusto passando prima per l'utente. #gen-proj-sel mantiene lo stesso id/significato di sempre
+// (i tre punti che leggono $('#gen-proj-sel').value per l'ambito "single" non necessitano di alcuna modifica).
 function refreshGenSel(){
   const sel=$('#gen-proj-sel');if(!sel)return;
-  const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo')
+  const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo');
+  const selUt=$('#gen-utente-sel');
+  if(selUt){
+    const utIds=new Set(att.map(p=>p.utenteId));
+    const uts=sortN(state.data.utenti.filter(u=>utIds.has(u.id)));
+    const utPrec=selUt.value;
+    selUt.innerHTML='<option value="">— Tutti —</option>'+uts.map(u=>'<option value="'+u.id+'">'+esc(fullNameCN(u))+'</option>').join('');
+    if(uts.some(u=>u.id===utPrec))selUt.value=utPrec; // mantiene la selezione se ancora valida
+  }
+  const utSel=selUt?selUt.value:'';
+  const attFiltrati=(utSel?att.filter(p=>p.utenteId===utSel):att)
     .sort((a,b)=>((utById(a.utenteId)?.cognome||'')+(utById(a.utenteId)?.nome||'')).localeCompare((utById(b.utenteId)?.cognome||'')+(utById(b.utenteId)?.nome||''),'it'));
-  sel.innerHTML=att.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullNameCN(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
+  sel.innerHTML=attFiltrati.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullNameCN(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
   renderReportStorico();
 }
 function sdComp(sede,sedi){if(sede==='Online')return(sedi||[]).includes('Online');if(sede==='Cesate+Online'||sede==='Cesate+Domicilio')return true;return(sedi||[]).includes(sede);}
@@ -1702,6 +1725,13 @@ function determinaAmbito(spid,nameFilter){
 // Confermate, eseguite, assenze ingiustificate, annullate e le proposte fuori ambito restano sempre intoccabili.
 function sessioniDaConservare(ms,scopeIds){
   return state.data.sessioni.filter(s=>!(s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)));
+}
+// Complemento ESATTO di sessioniDaConservare (stessa condizione, non negata): le "proposta" del mese in ambito che
+// questo run sta per sostituire — vanno eliminate da SharePoint prima di salvare le nuove (FIX 1, Ciclo E.1), o
+// restano record orfani che ricompaiono come duplicati al prossimo caricamento. Presa come parametro esplicito
+// (non lette da state.data.sessioni) per restare testabile in isolamento in check-sintassi.js.
+function proposteDaSostituire(sessioni,ms,scopeIds){
+  return sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId));
 }
 // Giorno di inizio della "settimana" di generazione (finestre di 7 giorni dal 1° del mese: 1-7,8-14,15-21,...),
 // lo stesso schema usato da riepiloghi/Passata 1/Passata 3 e da riepilogoSettimanaleDaSessioni — NON settimane ISO lun-dom.
@@ -2181,6 +2211,17 @@ async function generateMonth(ms,spid,nameFilter){
 
   // PASSATA 2 (ri-valutata dopo gli eventuali spostamenti della Passata 3): decide onlineDaCasa e l'aula per ogni sessione Online
   risolviOnlineDaCasa(ms,newS,keep,anom);
+  // FIX 1 (Ciclo E.1, BUG GRAVE): le vecchie "proposta" in ambito vanno eliminate da SharePoint PRIMA di salvare le
+  // nuove — sostituire solo state.data.sessioni in memoria le lasciava come record orfani, che ricomparivano come
+  // sessioni duplicate al ricaricamento della pagina (probabile residuo dell'era localStorage, quando "sostituire"
+  // un elenco significava solo riassegnare la variabile in memoria — vedi CONTESTO.md, Registro delle decisioni).
+  // Se un'eliminazione fallisce, la generazione si interrompe qui: non salva le nuove, per non creare proprio i
+  // duplicati che questo fix esiste per evitare.
+  const daEliminare=proposteDaSostituire(state.data.sessioni,ms,scopeIds);
+  for(const s of daEliminare){
+    try{await deleteRecord('sessioni',s);}
+    catch(e){throw new Error('Impossibile eliminare una proposta esistente del '+fmtDate(s.data)+' — generazione interrotta per evitare sessioni duplicate. Riprova. ('+e.message+')');}
+  }
   // Mantieni solo le sessioni da conservare; le nuove vengono aggiunte una per una da saveRecord solo se il salvataggio su SharePoint riesce
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
@@ -2326,6 +2367,13 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
   }
   // PASSATA 2: per ogni operatore/giornata, in ordine cronologico su TUTTE le sue sessioni (anche fuori ambito), decide onlineDaCasa e l'aula eventuale
   risolviOnlineDaCasa(ms,newS,keep,anom);
+  // FIX 1 (Ciclo E.1): stesso fix del percorso algoritmico — elimina da SharePoint le vecchie "proposta" in ambito
+  // prima di salvare le nuove, altrimenti restano orfane e ricompaiono come duplicati al ricaricamento.
+  const daEliminare=proposteDaSostituire(state.data.sessioni,ms,scopeIds);
+  for(const s of daEliminare){
+    try{await deleteRecord('sessioni',s);}
+    catch(e){throw new Error('Impossibile eliminare una proposta esistente del '+fmtDate(s.data)+' — generazione interrotta per evitare sessioni duplicate. Riprova. ('+e.message+')');}
+  }
   state.data.sessioni=keep;
   for(const sess of newS)await saveRecord('sessioni',sess);
   // Nessuna Passata 3 nel percorso IA: qui il piazzamento è deciso dal modello, non da una ricerca deterministica su cui intervenire con scambi.
@@ -2586,6 +2634,7 @@ $('#pr-new').addEventListener('click',()=>openProgettoModal());
 $('#avail-save').addEventListener('click',saveDisponibilita);
 $('#avail-add-exc').addEventListener('click',()=>{if(!state.availDraft)return;state.availDraft.eccezioni.push({data:todayISO(),tipo:'assente',da:'',a:'',note:''});renderAvailExceptions();});
 $('#gen-scope').addEventListener('change',e=>{const v=e.target.value;$('#gen-proj-wrap').classList.toggle('hidden',v!=='single');$('#gen-proj-name-wrap').classList.toggle('hidden',v!=='byname');if(v==='single')refreshGenSel();});
+$('#gen-utente-sel').addEventListener('change',refreshGenSel);
 
 
 /* ============================================================
@@ -2696,7 +2745,7 @@ $('#btn-clear-gen').addEventListener('click',async()=>{
   const scope=$('#gen-scope').value;const spid=scope==='single'?$('#gen-proj-sel').value:null;const projNameFilter=scope==='byname'?$('#gen-proj-name').value.trim().toLowerCase():null;
   const{scopeIds}=determinaAmbito(spid,projNameFilter);
   if(!confirm('Eliminare tutte le proposte in ambito di '+ms+'? Le sessioni confermate, eseguite, le assenze ingiustificate e le proposte fuori ambito non verranno toccate.'))return;
-  const toRemove=state.data.sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId));
+  const toRemove=proposteDaSostituire(state.data.sessioni,ms,scopeIds); // stessa condizione di generateMonth/generateMonthAI (Ciclo E.1, FIX 1), riusata invece di duplicata
   for(const s of toRemove)await deleteRecord('sessioni',s);
   toast(toRemove.length+' proposte eliminate.');
 });
