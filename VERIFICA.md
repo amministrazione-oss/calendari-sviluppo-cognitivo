@@ -1713,3 +1713,86 @@ Aggiunta `proposteDaSostituire` alle funzioni estratte. 4 nuovi casi (69→73 to
 
 ## Limiti di questa verifica
 `check-sintassi.js` verifica la logica di selezione (`proposteDaSostituire`) con casi concreti, incluso lo scenario a due generazioni richiesto — un livello di garanzia comportamentale genuino sulla funzione pura. Non è stato invece possibile eseguire dal vivo l'intera `generateMonth`/`generateMonthAI` con vere chiamate `deleteRecord`/`saveRecord` verso Microsoft Graph (richiede login M365 su un sito SharePoint reale, non disponibile in questo ambiente): gli scenari "genera→ricarica→rigenera" e "fallimento a metà" sopra sono stati tracciati a mano riga per riga sul codice reale con valori concreti, non osservati in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente come priorità del prossimo collaudo, essendo la correzione di un bug che produceva dati duplicati reali.
+
+---
+
+# Verifica — Ciclo E.2: diagnosi "report non persistiti" (caso prioritario segnalato da Simone dal vivo)
+
+Data: 2026-07-20. Richiesta esplicita: diagnosticare l'intero percorso end-to-end e riferire i risultati **prima** di correggere in autonomia.
+
+## Diagnosi punto per punto (come richiesto dal prompt)
+
+**a) `persistReport` costruisce il record e chiama `saveRecord('report',rec)`: il record arriva davvero a una scrittura Graph? L'errore è silenziato da un catch?**
+
+**Sì, il catch nasconde davvero un possibile errore reale.** Letto `gfetch` (la funzione HTTP di base usata da ogni chiamata Graph): su risposta non-OK lancia `throw new Error('Graph '+res.status+': '+(body?.error?.message||res.statusText))` — un errore con un messaggio diagnostico reale (codice di stato + messaggio di Graph). Questo errore risale attraverso `saveRecord` (che non lo intercetta) fino a `persistReport`, dove **prima di questo ciclo** veniva intercettato con `try{await saveRecord('report',rec);}catch(e){console.warn('Salvataggio report saltato:',e);}` — **solo `console.warn`, mai mostrato a schermo**. Simone non apre mai la console del browser: se ogni tentativo di salvataggio fallisse silenziosamente da settimane, il sintomo osservato ("il report compare subito ma sparisce dopo il ricaricamento") sarebbe **esattamente** quello segnalato, senza alcun indizio visibile della causa reale. Lo stesso identico schema (catch con solo `console.warn`) esisteva anche nel caricamento in `loadAll()` e nel ritentativo tardivo in `persistReport` (Ciclo E.1) — tre punti, non uno solo, dove un errore reale sarebbe stato invisibile.
+
+**b) `saveRecord` tratta `'report'` come array o come oggetto singolo?**
+
+Prima di questo ciclo: `const arr=state.data[key];const isArray=Array.isArray(arr);` — la decisione dipendeva da **cosa si trova in quel momento** in `state.data.report`, non da un elenco esplicito di cosa quella lista *sia*. Verificato che, nel flusso normale, `state.data.report` è sempre inizializzato come array da `loadAll()` (riga per riga: il ramo che gestisce `report` imposta sempre `state.data.report=await loadListRecords(...)` — che restituisce sempre un array — oppure `state.data.report=[]`, mai lasciato `undefined`) **prima** di qualunque chiamata a `saveRecord('report',...)` nel ciclo di vita normale dell'app. Quindi **questo difetto da solo non spiega il sintomo esatto segnalato da Simone** (il caso "già esistente su SharePoint al login" esclude il ramo di ritentativo tardivo dove la popolazione potrebbe essere più fragile) — ma resta comunque un difetto strutturale reale, esattamente come descritto nella richiesta ("non deve dipendere da come/quando la lista è stata creata"): corretto comunque, come richiesto esplicitamente, indipendentemente dall'esito della diagnosi.
+
+**c) Al caricamento, `'report'` viene letta con `loadListRecords` come le altre liste-array, o gestita come record singolo?**
+
+Come le altre liste-array — stesso trattamento di `operatori`/`utenti`/`progetti`/`sessioni` in `loadAll()`, corretto. **Ma soffre dello stesso problema di (a)**: se `loadListRecords('report')` lancia un'eccezione (es. perché la colonna attesa non esiste con quel nome — vedi punto d), il catch di `loadAll()` la logga solo con `console.warn` e imposta `state.data.report=[]` — **indistinguibile, a schermo, da "nessuna generazione ancora fatta"**. Questo è un secondo possibile punto di fallimento silenzioso, completamente indipendente da (a): anche se il salvataggio fosse riuscito perfettamente, un fallimento del *caricamento* produrrebbe lo stesso identico sintomo (storico apparentemente vuoto dopo il ricaricamento).
+
+**d) La colonna su SharePoint è "Data" (maiuscola) come si aspetta `saveRecord`?**
+
+**Non verificabile da questo ambiente** (nessun accesso al tenant SharePoint reale di Simone). Combinando (a)+(c)+la dimensione tipica di un report rispetto a una sessione/progetto, la mia ipotesi principale è che **la colonna "Data" della nuova lista sia di tipo "Una sola riga di testo"** (limite tipico ~255 caratteri in SharePoint) invece di "Più righe di testo" come le altre sei liste: un report include `utenti`/`progetti`/`settimane` annidati, `mosseRiparazione`, `suggerimenti*`, `metriche` — un JSON facilmente molto più grande di 255 caratteri, che Graph rifiuterebbe con un errore 400 alla scrittura (spiegherebbe (a)) mentre la lettura (c) potrebbe comunque non fallire (il campo esisterebbe, solo troncato o mai valorizzato con successo). Ipotesi alternativa, meno probabile ma plausibile: il **nome interno** della colonna non corrisponde esattamente a `Data` — capita in SharePoint se una colonna viene rinominata dopo la creazione (il nome interno resta quello scelto alla creazione, anche se il nome visualizzato cambia), nel qual caso sia la scrittura (POST con `fields:{Data:...}`) sia la lettura (`$select=Title,Data`) fallirebbero con un errore di campo non riconosciuto. **Non è possibile distinguere con certezza le due ipotesi senza vedere il messaggio d'errore reale di Graph — che prima di questo ciclo era invisibile.**
+
+## Correzione applicata (diagnosi + correzione di fondo)
+
+Invece di scegliere alla cieca una delle due ipotesi in (d) e "correggerla" (rischiando di non risolvere nulla se sbagliata — Registro delle decisioni, voce 50), ho reso l'errore reale visibile: al prossimo tentativo, il messaggio esatto di Graph confermerà quale delle due ipotesi (o un'altra ancora) è quella giusta, permettendo una correzione mirata.
+
+- **`state.reportErrore`** (nuovo campo di stato): valorizzato con `e.message` ogni volta che il caricamento (`loadAll`, sia al login sia nel ritentativo tardivo di `persistReport`) o il salvataggio (`persistReport`) di `'report'` falliscono; azzerato a `null` a ogni successo.
+- **`renderReportStorico()`** ora distingue esplicitamente tre stati, prima confusi in due: (1) lista non risolta → invito a crearla (invariato); (2) lista risolta ma `state.reportErrore` valorizzato → **nuovo** banner di avviso col messaggio esatto di Graph e le due ipotesi principali elencate come suggerimento diagnostico; (3) nessun errore, storico vuoto → messaggio "Nessun report salvato finora" (invariato, ma ora genuinamente corretto: prima veniva mostrato anche nel caso (2), un'affermazione falsa quando in realtà il caricamento/salvataggio falliva silenziosamente).
+- **Correzione di fondo (b/c)**: nuova costante esplicita `LISTE_RECORD_SINGOLO=['chiusure','impostazioni']` e funzione `isRecordSingolo(key)`; `saveRecord()` ora decide array-vs-record-singolo da questo elenco fisso, non da `Array.isArray(state.data[key])` a runtime. Aggiunta anche un'inizializzazione difensiva (`if(!isRecordSingolo(key)&&!Array.isArray(state.data[key]))state.data[key]=[];`): se una lista-array non fosse ancora inizializzata al momento del salvataggio, viene creata come array invece di cadere silenziosamente nel ramo "record singolo".
+
+| Punto della diagnosi | Esito |
+|---|---|
+| a) Catch che nasconde un errore reale | ✅ Confermato — 3 punti (persistReport save, persistReport retry-load, loadAll load), tutti corretti per renderlo visibile |
+| b) Array-vs-oggetto per `report` | ⚠️ Non spiega da solo il sintomo esatto nel flusso normale, ma difetto strutturale reale — corretto come richiesto |
+| c) Caricamento `report` come le altre liste-array | ✅ Confermato corretto, ma soggetto allo stesso problema di (a) — corretto |
+| d) Colonna "Data" su SharePoint | ⚠️ Non verificabile da qui — due ipotesi documentate, il prossimo tentativo rivelerà quale |
+| Correzione di fondo (array-vs-oggetto da elenco esplicito) | ✅ Fatto (`isRecordSingolo`/`LISTE_RECORD_SINGOLO`) |
+| Errore reale visibile invece di solo `console.warn` | ✅ Fatto (`state.reportErrore`, banner in "Report precedenti") |
+
+### Scenario tracciato a mano: il prossimo tentativo dopo questo fix
+
+Simone genera un calendario. `persistReport(res.report)` chiama `saveRecord('report',rec)`. **Ipotesi A (colonna a riga singola)**: Graph rifiuta la POST con un 400, es. `Error("Graph 400: ...")`; il catch imposta `state.reportErrore="Graph 400: ..."`; `renderReportStorico()` mostra il banner con quel messaggio esatto e le due ipotesi. Simone (o chi legge lo schermo con lui) può ora leggere il messaggio e confermarlo/riportarlo. **Ipotesi B (colonna letta correttamente, tutto ok)**: `saveRecord` completa senza eccezioni, `state.reportErrore=null`, il record compare nella tabella "Report precedenti" **anche dopo un ricaricamento della pagina** (perché `loadAll()` lo ritrova via `loadListRecords('report')` al prossimo login) — il bug sarebbe quindi risolto, e lo si vedrebbe subito dal comportamento, non solo dall'assenza di errori.
+
+## Estensione di `check-sintassi.js`
+
+Aggiunta `isRecordSingolo` (e la costante `LISTE_RECORD_SINGOLO`) alle funzioni/costanti estratte. 8 nuovi casi (73→81 totali): le due liste a record singolo (`chiusure`, `impostazioni` → `true`), le cinque liste-array esistenti (`report`, `sessioni`, `operatori`, `utenti`, `progetti` → `false`) e una chiave sconosciuta/futura (→ `false` per default, mai "record singolo per errore").
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js`**: 3 blocchi `<script>` OK; 81 test funzionali (73 preesistenti + 8 nuovi) — **tutti passano**.
+2. **Passata 2 — diagnosi punto per punto del prompt** (a-d): vedi sezione dedicata sopra, con citazione diretta del codice (`gfetch`, `saveRecord`, `loadAll`, `persistReport`) per ciascun punto.
+3. **Passata 3 — scenario tracciato a mano: i due esiti possibili del prossimo tentativo** (ipotesi A confermata vs. bug già risolto): vedi sopra.
+4. **Passata 4 — verifica che `renderReportStorico()` non confonda più i tre stati**: riletta la funzione riga per riga — l'ordine dei tre `if` (lista non risolta → errore presente → storico vuoto) garantisce che ciascuno stato produca un messaggio distinto e mai lo stato sbagliato (es. un errore non può più essere scambiato per "storico vuoto", perché il controllo su `state.reportErrore` precede quello sulla lunghezza dell'elenco).
+5. **Passata 5 — nessuna regressione sui percorsi già corretti nei cicli E/E.1**: verificato che `proposteDaSostituire`, la cascata utente→progetto (Sessioni/Calendario/Genera) e il resto della logica di generazione non siano stati toccati da questo ciclo — solo `saveRecord`, `loadAll` (ramo report) e `persistReport`/`renderReportStorico`; i 73 test preesistenti restano invariati e passano.
+6. **Passata 6 — verifica che la correzione di fondo non alteri il comportamento per le liste esistenti**: per `chiusure`/`impostazioni`, `isRecordSingolo(key)` restituisce `true` esattamente come prima restituiva `Array.isArray(state.data[key])===false` (dato che quelle due chiavi in `state.data` sono sempre oggetti, mai array, in ogni punto del codice che le popola — verificato leggendo `loadAll()` e `renderChiusure`/`initImpostazioni`); per tutte le altre chiavi, `isRecordSingolo(key)` restituisce sempre `false`, coerente col comportamento preesistente nel flusso normale (dove quelle liste erano già sempre array). Nessuna differenza di comportamento osservabile per i casi già funzionanti, solo per i casi limite (lista non ancora inizializzata) che prima non erano garantiti.
+7. **Passata 7 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (Architecture punto 3 aggiornato con `isRecordSingolo`/`LISTE_RECORD_SINGOLO`; S3 aggiornata con la diagnosi e le due correzioni), `CONTESTO.md` (Cronologia voce 33, Registro delle decisioni voci 50-52) e questo file descrivono la stessa diagnosi e le stesse correzioni con gli stessi nomi di funzione; nessuna incongruenza trovata.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (diagnosi end-to-end su 4 punti espliciti, correzione di fondo con specifica tecnica, "riferisci prima di correggere in autonomia") conteneva già tutto il necessario; la diagnosi stessa è stata riportata per intero nella risposta di chat, non solo qui.
+
+*Domande poste a Simone e risposte ricevute:* nessuna — impossibile porre domande di conferma sulla configurazione reale della lista SharePoint dati i limiti di questo ambiente; la richiesta di verifica è stata girata a Simone tramite il messaggio d'errore ora visibile in "Report precedenti", non tramite una domanda diretta in chat.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 50-52 (errore reale reso visibile invece di indovinare la causa esatta; distinzione esplicita fra "storico vuoto" e "caricamento/salvataggio fallito"; elenco esplicito e fisso per array-vs-record-singolo).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| a | `saveRecord` scrive davvero su Graph? Il catch nasconde un errore? | ✅ Diagnosticato | Confermato: catch con solo `console.warn`, in 3 punti — ora tutti visibili |
+| b | Array o oggetto singolo per `report`? | ✅ Diagnosticato | Non spiega da solo il sintomo nel flusso normale, ma corretto comunque come richiesto |
+| c | Caricamento come le altre liste-array o come record singolo? | ✅ Diagnosticato | Corretto come le altre, ma stesso problema di (a) — ora corretto |
+| d | Colonna "Data" su SharePoint conforme? | ⚠️ Non verificabile da qui | Due ipotesi documentate, errore reale ora visibile per confermarle |
+| Correzione di fondo | Array-vs-oggetto da elenco esplicito, non da come/quando creata | ✅ Fatto | `isRecordSingolo`/`LISTE_RECORD_SINGOLO`, con inizializzazione difensiva |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: il punto (d) resta esplicitamente non risolvibile da questo ambiente — richiede che Simone rigeneri un calendario e legga il messaggio che ora comparirà in "Report precedenti" (se l'errore persiste), oppure verifichi la persistenza corretta (se il fix era sufficiente). **Prossimo passo raccomandato**: dopo il deploy, generare un calendario di prova e controllare "Report precedenti" — se compare un banner d'errore, il messaggio esatto (e le colonne del tipo giusto da verificare su SharePoint) risolveranno definitivamente la diagnosi; se il report compare e sopravvive a un ricaricamento, il problema era esattamente uno dei punti corretti qui.
+
+## Limiti di questa verifica
+Questo ciclo è principalmente diagnostico: non è stato possibile eseguire dal vivo alcuna chiamata reale a Microsoft Graph verso il tenant di Simone (nessun accesso in questo ambiente), quindi il punto (d) — la causa ultima del fallimento — resta un'ipotesi, non un fatto accertato. `check-sintassi.js` verifica solo la nuova funzione pura `isRecordSingolo` con casi concreti. Tutto il resto (il comportamento di `saveRecord`/`loadAll`/`persistReport`/`renderReportStorico` di fronte a un vero errore Graph) è stato tracciato a mano leggendo il codice reale riga per riga, non osservato in esecuzione. Si raccomanda esplicitamente che Simone riporti il messaggio esatto che comparirà nel banner d'errore (se compare) per una diagnosi definitiva.

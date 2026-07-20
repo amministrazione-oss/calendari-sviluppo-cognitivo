@@ -611,7 +611,8 @@ const state = {
   cal:{year:0,month:0,filterOp:'',filterSede:'',filterUtente:'',filterProgetto:''},
   availDraft:null, bootstrap:false, lastGenReport:null,
   selSessioni:new Set(), // selezione multipla in Sessioni (S1, Ciclo D) — solo UI, mai persistita
-  sessFiltroUtentePreset:null // scorciatoia Calendario->Sessioni (S2, Ciclo E): utenteId da precompilare al prossimo renderSessioni()
+  sessFiltroUtentePreset:null, // scorciatoia Calendario->Sessioni (S2, Ciclo E): utenteId da precompilare al prossimo renderSessioni()
+  reportErrore:null // ultimo errore reale di caricamento/salvataggio dei report, se presente (Ciclo E.2, diagnosi report non persistiti) — distinto da "storico vuoto"
 };
 
 /* ---------- Utility ---------- */
@@ -822,8 +823,11 @@ async function loadListRecords(key){
 async function loadAll(){const keys=['operatori','utenti','progetti','sessioni','chiusure','impostazioni'];const results=await Promise.all(keys.map(loadListRecords));keys.forEach((k,i)=>{if(k==='chiusure'){const cr=results[i];state.data.chiusure=(cr&&cr[0]&&cr[0].chiusure)||[];}else if(k==='impostazioni'){const im=results[i];state.data.impostazioni=normalizeImpostazioni((im&&im[0])?im[0]:null);}else{state.data[k]=results[i];}});
   // Lista opzionale Gestionale_Report (S3, Ciclo E): se non ancora creata su SharePoint (state.listIds.report
   // assente), lo storico dei report resta semplicemente vuoto/non disponibile — non blocca il resto dell'app.
-  if(state.listIds.report){try{state.data.report=await loadListRecords('report');}catch(e){console.warn('Caricamento report skipped:',e);state.data.report=[];}}
-  else state.data.report=[];
+  // Se la lista ESISTE ma il caricamento fallisce per un altro motivo (Ciclo E.2, diagnosi report non persistiti),
+  // l'errore va in state.reportErrore: "Report precedenti" deve poterlo distinguere da uno storico vuoto,
+  // altrimenti un fallimento silenzioso appare identico a "nessuna generazione ancora fatta".
+  if(state.listIds.report){try{state.data.report=await loadListRecords('report');state.reportErrore=null;}catch(e){console.warn('Caricamento report skipped:',e);state.data.report=[];state.reportErrore=e.message;}}
+  else{state.data.report=[];state.reportErrore=null;}
   // Migration: split nome->nome+cognome for old records
   try{
   let migrated=false;
@@ -878,11 +882,23 @@ async function loadAll(){const keys=['operatori','utenti','progetti','sessioni',
     if(daMigrareEsito.length){for(const s of daMigrareEsito)await saveRecord('sessioni',s);console.log('Migration: campo esito legacy consolidato in stato ('+daMigrareEsito.length+' record)');}
   }catch(e){console.warn('Migration esito sessione skipped:',e);}
 }
+// Le uniche due liste che in state.data rappresentano un unico record-oggetto (non un elenco): tutte le altre
+// (operatori, utenti, progetti, sessioni, report, ed eventuali future) sono sempre array. Elenco esplicito e fisso
+// (Ciclo E.2, correzione di fondo): prima la distinzione dipendeva da Array.isArray(state.data[key]) a runtime,
+// cioè da come/quando quella lista era stata popolata — non da cosa la lista fosse per natura. Usata da saveRecord.
+const LISTE_RECORD_SINGOLO=['chiusure','impostazioni'];
+function isRecordSingolo(key){return LISTE_RECORD_SINGOLO.includes(key);}
 async function saveRecord(key,record){
   const listId=state.listIds[key];const{_spId,...payload}=record;const fields={Title:payload.id,Data:JSON.stringify(payload)};
   // Alcune "liste" (impostazioni, chiusure) non sono array di entità in state.data[key] ma un unico record-oggetto:
   // in quel caso non c'è un array su cui fare findIndex/push, si sostituisce direttamente state.data[key].
-  const arr=state.data[key];const isArray=Array.isArray(arr);
+  // Ciclo E.2 (correzione di fondo): la distinzione NON dipende più da Array.isArray(state.data[key]) a runtime
+  // (dipendeva da come/quando quella chiave era stata popolata — fragile, indipendente dalla natura della lista),
+  // ma da isRecordSingolo(key), un elenco esplicito e fisso (LISTE_RECORD_SINGOLO). Difensivo: se una lista che
+  // dovrebbe essere un array non lo è ancora (es. non ancora inizializzata), la si inizializza qui invece di
+  // fallire silenziosamente trattandola come record singolo.
+  if(!isRecordSingolo(key)&&!Array.isArray(state.data[key]))state.data[key]=[];
+  const arr=state.data[key];const isArray=!isRecordSingolo(key);
   if(_spId){
     await gfetch('/sites/'+state.siteId+'/lists/'+listId+'/items/'+_spId+'/fields',{method:'PATCH',body:JSON.stringify(fields)});
     const updated={...payload,_spId};
@@ -1275,16 +1291,20 @@ async function persistReport(report){
     await tryResolveLists(state.siteId);
     // Risolta solo ora (in questa stessa sessione): recupera lo storico già presente sulla lista, altrimenti
     // "Report precedenti" mostrerebbe solo la generazione di adesso finché non si ricarica la pagina.
-    if(state.listIds.report){try{state.data.report=await loadListRecords('report');}catch(e){console.warn('Caricamento report (dopo risoluzione tardiva) saltato:',e);}}
+    if(state.listIds.report){try{state.data.report=await loadListRecords('report');state.reportErrore=null;}catch(e){console.warn('Caricamento report (dopo risoluzione tardiva) saltato:',e);state.reportErrore=e.message;}}
   }
   if(!state.listIds.report)return; // ancora assente dopo il ritentativo: salta, l'avviso lo mostra già renderReportStorico()
   const rec={id:uid(),generatoIl:new Date().toISOString(),mese:report.mese,metodo:report.metodo,esito:report.utenti.length?'con carenze':'completo',report};
-  try{await saveRecord('report',rec);}catch(e){console.warn('Salvataggio report saltato:',e);}
+  // Ciclo E.2: l'errore non va più solo in console (invisibile a Simone) — state.reportErrore lo rende visibile
+  // in "Report precedenti" (renderReportStorico), distinto dal caso "storico vuoto" (non si sa se sia vuoto o
+  // se il caricamento/salvataggio sia semplicemente fallito: due situazioni diverse, mai confuse in un solo messaggio).
+  try{await saveRecord('report',rec);state.reportErrore=null;}catch(e){console.warn('Salvataggio report saltato:',e);state.reportErrore=e.message;}
   renderReportStorico();
 }
 function renderReportStorico(){
   const box=$('#gen-report-storico');if(!box)return;
   if(!state.listIds.report){box.innerHTML='<p class="help">Lista SharePoint "Gestionale_Report" non ancora creata: chiedi a un amministratore di crearla (stesso schema delle altre liste — colonne <code>Title</code> e <code>Data</code>) per attivare lo storico dei report. Le generazioni funzionano comunque normalmente nel frattempo.</p>';return;}
+  if(state.reportErrore){box.innerHTML='<div class="banner warn">Impossibile caricare o salvare lo storico dei report: <strong>'+esc(state.reportErrore)+'</strong>. Segnala questo messaggio esatto per la diagnosi. Causa probabile: la colonna "Data" della lista <code>Gestionale_Report</code> su SharePoint non è di tipo "Più righe di testo" (i report sono JSON molto più grandi di una sessione/progetto e superano il limite di "Una sola riga di testo"), oppure il nome interno della colonna non corrisponde a "Data" (capita se rinominata dopo la creazione).</div>';return;}
   const list=(state.data.report||[]).slice().sort((a,b)=>(b.generatoIl||'').localeCompare(a.generatoIl||''));
   if(!list.length){box.innerHTML='<p class="help">Nessun report salvato finora. Ogni generazione (algoritmo o IA) salva qui automaticamente il proprio report.</p>';return;}
   box.innerHTML='<table class="list"><thead><tr><th>Generato il</th><th>Mese</th><th>Metodo</th><th>Esito</th><th></th></tr></thead><tbody>'+list.map(r=>{

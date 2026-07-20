@@ -76,8 +76,8 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire'];
-const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo'];
+const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS', 'LISTE_RECORD_SINGOLO'];
 
 function buildSandbox(html) {
   const src = [
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -260,6 +260,16 @@ function runTest(sandbox) {
     check('proposteDaSostituire: run 2 individua esattamente le proposte del run 1 (nessun residuo, nessuna omissione)', daSostituireRun2.map(s => s.id).sort(), ['run1-a', 'run1-b']);
     check('proposteDaSostituire: la confermata non viene mai selezionata per l\'eliminazione', daSostituireRun2.some(s => s.id === 'confermata-1'), false);
   }
+
+  // isRecordSingolo — Ciclo E.2 (correzione di fondo: array-vs-oggetto da elenco esplicito, non da Array.isArray a runtime)
+  check('isRecordSingolo: chiusure -> record singolo', isRecordSingolo('chiusure'), true);
+  check('isRecordSingolo: impostazioni -> record singolo', isRecordSingolo('impostazioni'), true);
+  check('isRecordSingolo: report -> array (non dipende da come/quando è stata popolata)', isRecordSingolo('report'), false);
+  check('isRecordSingolo: sessioni -> array', isRecordSingolo('sessioni'), false);
+  check('isRecordSingolo: operatori -> array', isRecordSingolo('operatori'), false);
+  check('isRecordSingolo: utenti -> array', isRecordSingolo('utenti'), false);
+  check('isRecordSingolo: progetti -> array', isRecordSingolo('progetti'), false);
+  check('isRecordSingolo: chiave sconosciuta -> array per default (mai record singolo "per errore")', isRecordSingolo('lista_futura_qualunque'), false);
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));
   return fails === 0;
