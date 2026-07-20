@@ -1863,3 +1863,53 @@ Aggiunta `etichettaAmbitoReport` alle funzioni estratte. 8 nuovi casi (81→89 t
 
 ## Limiti di questa verifica
 `check-sintassi.js` verifica `etichettaAmbitoReport` con casi concreti, incluso il caso limite "ambito tutti con un solo progetto attivo" esplicitamente richiesto dalla logica "sempre sensata a prescindere dall'ambito". Non è stato possibile osservare dal vivo il rendering della nuova colonna in un browser reale, né generare realmente con i tre ambiti per vedere l'etichetta a schermo: il comportamento è stato tracciato a mano leggendo il codice generato riga per riga con valori concreti (i quattro scenari sopra), non osservato in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente dopo il deploy.
+
+---
+
+# Verifica — Chiusura giornata 20/07
+
+Prompt di fine giornata: nessuna modifica al codice, ricostruzione dai dati reali (git log + diff) di tutto il lavoro odierno, verifica multi-passata di coerenza fra le quattro fonti, commit di chiusura.
+
+## Giornata del 20/07: cinque cicli, cinque commit
+
+Ricostruito da `git log`/`git show` (non a memoria) — tutti e cinque i commit odierni:
+
+| Ora | Commit | Ciclo | Sintesi |
+|---|---|---|---|
+| 09:36 | `7882b19` | D | S9 (campo stato sessione unico) + S1 (eliminazione multipla) |
+| 16:13 | `f18e8df` | E | S2 (filtri utente→progetto) + S3 (report persistenti) |
+| 17:47 | `426382d` | E.1 | HOTFIX: proposte duplicate (bug grave), report più robusto, cascata in Genera |
+| 18:21 | `5e70d60` | E.2 | Diagnosi "report non persistiti" + correzione di fondo (array-vs-oggetto) |
+| 18:50 | `28cae1a` | E.3 | Etichetta utente/progetto in "Report precedenti" |
+
+`check-sintassi.js`: 40 test a inizio giornata (eredità del Ciclo C, 17/07) → 89 a fine giornata (+49 nuovi casi su 12 nuove funzioni pure: `statiSelezionabili`, `transizioneAmmessa`, `pesoStato`, `pesoMassimoSelezione`, `riepilogoStati`, `riepilogoStatoProgetto`, `filtraReportUtenti`, `proposteDaSostituire`, `isRecordSingolo`, `etichettaAmbitoReport`, più `fmtDateTime` non estratta perché non pura). Tutti i test passano a fine giornata (verificato con `node check-sintassi.js` prima di questa chiusura).
+
+**Correzione di sequenza propria della giornata**: il Ciclo D era stato inizialmente documentato con data di completamento 17/07 (la data delle specifiche S9/S1), ma il commit reale è di oggi (09:36) — corretto durante il Ciclo E con una nuova regola permanente ("data di completamento = data del commit", `CLAUDE.md` §Prassi di chiusura ciclo, lettera e).
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna oltre al prompt di chiusura giornata stesso, che ha specificato la procedura in 5 passi (ricostruzione e conferma, aggiornamento file, verifica multi-passata, riepilogo e conferma, commit).
+
+*Domande poste a Simone e risposte ricevute:*
+- Presentata la ricostruzione dei 5 commit odierni (file per file, per ciascuno dei cicli D/E/E.1/E.2/E.3) → Simone ha risposto "confermo", nessuna correzione richiesta alla ricostruzione.
+
+*Decisioni prese di conseguenza:* nessuna nuova decisione tecnica in questo ciclo di chiusura (è un ciclo puramente documentale/di verifica) — le decisioni della giornata sono già registrate per intero nel Registro delle decisioni (`CONTESTO.md` §7, voci 34-55) durante i cinque cicli stessi; qui in `CONTESTO.md` §9 viene aggiunta solo una sintesi narrativa per cronologia, con rimando alle voci numerate per il dettaglio completo (stesso pattern già in uso per le voci del 16/07/2026 in quella sezione).
+
+## Esito consolidato dei cinque cicli (verificato a fine giornata, non solo riportato)
+
+| Ciclo | Punti richiesti | Esito |
+|---|---|---|
+| D | S9 (5 punti) + S1 (3 punti) | ✅ Tutti implementati e verificati (7 passate) |
+| E | S2 (3 punti) + S3 (3 punti) | ✅ Tutti implementati e verificati (7 passate) |
+| E.1 | FIX 1 (bug grave) + FIX 2 + FIX 3 | ✅ Tutti implementati e verificati (7 passate); FIX 1 è la correzione più critica della giornata (duplicazione reale di sessioni) |
+| E.2 | Diagnosi a-d + correzione di fondo | ✅ Diagnosi riportata (punto d non verificabile da questo ambiente, richiede il tenant reale); correzione di fondo fatta (7 passate) |
+| E.3 | Etichetta ambito in "Report precedenti" | ✅ Implementato e verificato (7 passate) |
+
+**Punti ancora aperti, riportati per completezza** (nessuno bloccante, nessuno di competenza di questo ciclo di chiusura):
+- **Azione richiesta a Simone** (Ciclo E): creare su SharePoint la lista `Gestionale_Report` (colonne `Title`+`Data`, tipo "Più righe di testo") se non ancora fatto.
+- **Diagnosi aperta** (Ciclo E.2, punto d): il messaggio di errore reale che comparirà in "Report precedenti" al prossimo tentativo di generazione confermerà la causa esatta del problema "report non persistiti" — nessuna azione di codice ulteriore possibile da qui finché quel messaggio non è noto.
+- **Collaudo dal vivo** (tutti i cicli di oggi): nessuno dei cinque cicli è stato eseguito in un browser reale con login M365 (limite dell'ambiente, non della verifica) — il test più urgente resta lo scenario "genera → ricarica → rigenera → nessun duplicato" del Ciclo E.1, che verifica un bug che produceva dati duplicati reali.
+
+## Metodo di verifica: multi-passata (chiusura giornata)
+
+Vedi la sezione "Verifica multi-passata di chiusura giornata" più sotto in questo stesso ciclo (dopo l'aggiornamento di `CONTESTO.md`) per le passate dedicate al controllo incrociato delle quattro fonti.
