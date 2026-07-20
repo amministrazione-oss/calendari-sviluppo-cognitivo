@@ -1502,3 +1502,112 @@ Aggiunte alle liste di estrazione le 5 nuove funzioni pure: `statiSelezionabili`
 
 ## Limiti di questa verifica
 `check-sintassi.js` verifica sintassi reale e le 5 nuove funzioni pure con casi concreti — un livello di garanzia comportamentale genuino sulla logica di permesso, non simulato. Non è stato invece possibile osservare dal vivo il rendering condizionale di `openSessionDetail`/`renderSessioni` (markup, classi CSS, comparsa/scomparsa dei controlli) in un browser reale: il comportamento è stato tracciato a mano leggendo il codice generato riga per riga con valori concreti (vedi i due scenari sopra), non osservato in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente subito dopo il deploy, con particolare attenzione al caso "Operatore su una propria sessione confermata" (l'unico in cui l'Operatore ottiene un controllo di stato editabile).
+
+---
+
+# Verifica — Ciclo E: S2 (filtri utente→progetto) + S3 (report persistenti)
+
+Data: 2026-07-20.
+
+## ⚠️ Azione richiesta a Simone prima che lo storico dei report sia utilizzabile
+
+Questo ciclo introduce, per la prima volta da quando il gestionale è in produzione (13/07), una lista SharePoint che **non esiste ancora**: `Gestionale_Report`. È stata deliberatamente registrata come **opzionale** (vedi sezione S3 sotto e Registro delle decisioni, voce 40): la sua assenza **non blocca l'app** né la generazione dei calendari, che funzionano esattamente come prima. Finché la lista non viene creata, la sola conseguenza è che la sezione "📚 Report precedenti" (pagina Genera) mostra un avviso invece dello storico. **Per attivarla**: creare su SharePoint una lista `Gestionale_Report` con due colonne, `Title` (testo) e `Data` (testo multiriga) — stesso schema esatto delle altre sei liste già esistenti (`Gestionale_Operatori`, ecc.). Nessuna azione è invece necessaria per il resto del ciclo (S2): funziona con i dati già presenti.
+
+## S2 — Filtri utente→progetto
+
+**Cosa è stato fatto**:
+- **Filtro a cascata** (`sess-f-utente`/`sess-f-progetto` in "Sessioni", `cal-f-utente`/`cal-f-progetto` nel "Calendario", solo Admin — coerente con gli altri filtri di queste due viste, già Admin-only): selezionato un utente, la tendina progetti si ricostruisce con **solo** i progetti di quell'utente (`state.data.progetti.filter(p=>p.utenteId===utenteId)`); il cambio di utente azzera sempre la selezione progetto (mai un progetto di un altro utente rimasto selezionato per errore). La selezione progetto **persiste** invece tra i re-render non causati da un cambio utente (es. dopo un'azione di massa in Sessioni), perché il valore corrente viene letto e ripristinato dopo la ricostruzione delle opzioni, se ancora valido per l'utente corrente.
+- **Riepilogo condiviso** (`renderRiepilogoUtente(wrapId,bodyId,utenteId,mostraScorciatoia)`, un'unica funzione invocata sia da `renderSessioni()` sia da `renderCalendar()` — per non duplicare la stessa logica in due punti che potrebbero disallinearsi, vedi Registro delle decisioni voce 41): quando un utente è selezionato, mostra per ciascun suo progetto le sessioni per stato (`riepilogoStatoProgetto`, nuova funzione pura — a differenza di `riepilogoStati` già esistente dal Ciclo D, elenca **tutti** gli stati anche a zero, più leggibile in un riepilogo tabellare) e il monte ore h:mm erogato/residuo (riusa `oreErog`/`fmtHM` esistenti, nessuna nuova logica di calcolo).
+- **Scorciatoia dal Ciclo D agganciata qui** (S1 punto 8, rimasta annotata come rimandata fino a oggi): nel pannello di riepilogo del **Calendario** (non in quello di Sessioni, che non ne ha bisogno essendo già la destinazione), un pulsante "🗂 Gestisci sessioni di questo utente" chiama `vaiASessioniPerUtente(utenteId)`, che imposta `state.sessFiltroUtentePreset` e passa alla tab Sessioni; al render successivo di `renderSessioni()`, il preset viene letto, applicato a `sess-f-utente` e consumato (azzerato) una sola volta.
+- **Scelta consapevole**: gli utenti proposti in questi due filtri **non** sono limitati agli "attivi" (a differenza, per esempio, del dropdown utente nella modale sessione) — si tratta di consultare sessioni già esistenti, non di assegnare nuovo lavoro; un utente disattivato può avere ancora sessioni storiche da rivedere (Registro delle decisioni, voce 45).
+
+| Parte | Stato |
+|---|---|
+| Cascata utente→progetto in Sessioni | ✅ Fatto |
+| Cascata utente→progetto in Calendario | ✅ Fatto |
+| Riepilogo per progetto: sessioni per stato + monte ore h:mm erogato/residuo | ✅ Fatto (`renderRiepilogoUtente`, condivisa) |
+| Scorciatoia Calendario→Sessioni (rimandata dal Ciclo D) | ✅ Fatto (`vaiASessioniPerUtente`) |
+
+### Scenario tracciato a mano: cascata con utente multi-progetto (in Sessioni)
+
+Utente "Rossi Anna" con 2 progetti, "BrainRx" e "Feuerstein". Admin seleziona Rossi Anna in `sess-f-utente`: il listener azzera subito `sess-f-progetto` e richiama `renderSessioni()`. Dentro la funzione: `progettiUt` = [BrainRx, Feuerstein]; `fPr.innerHTML` ricostruito con queste 2 opzioni + "Tutti i progetti"; `progPrec` (letto prima della ricostruzione) era `''` → resta su "Tutti i progetti". Il riepilogo mostra 2 card. La lista sessioni è filtrata per `utenteId` ma non ancora per progetto. Admin seleziona poi "BrainRx" in `sess-f-progetto`: il listener (semplice, nessun azzeramento) richiama `renderSessioni()`; questa volta `progPrec=fPr.value` letto **prima** della ricostruzione vale già "BrainRx" (il browser ha già applicato la selezione dell'utente prima che scattasse l'evento `change`); dopo la ricostruzione (stesse 2 opzioni, utente non cambiato), `progettiUt.some(p=>p.id===progPrec)` è vero → `fPr.value` viene ripristinato a "BrainRx". La lista si filtra ora anche per quel progetto. Se successivamente Admin spunta una checkbox di selezione multipla (S1), che richiama di nuovo `renderSessioni()`, "BrainRx" resta selezionato (stesso meccanismo di conferma) — la cascata non si "dimentica" della scelta a ogni render.
+
+**Cambio utente con progetto già selezionato**: da questo stato (Rossi Anna + BrainRx), Admin cambia utente a "Bianchi Mario". Il listener imposta `fPr.value=''` **prima** di richiamare `renderSessioni()`; dentro la funzione `progPrec` vale quindi già `''`, i nuovi `progettiUt` sono quelli di Bianchi Mario, e nessun progetto di Rossi Anna resta selezionato per errore.
+
+### Scenario tracciato a mano: scorciatoia dal Calendario
+
+Admin nel Calendario seleziona "Rossi Anna" in `cal-f-utente`. `renderCalFilters()` (chiamata da `renderCalendar()` prima del riepilogo) aggiorna `state.cal.filterUtente`; subito dopo `renderRiepilogoUtente('cal-riepilogo-utente',...,state.cal.filterUtente,true)` mostra il pannello con il pulsante e il riepilogo dei 2 progetti di Rossi Anna. Click sul pulsante → `vaiASessioniPerUtente('u1')` → `state.sessFiltroUtentePreset='u1'` e `showTab('sessioni')`. In `showTab`, la sezione Sessioni diventa visibile e `renderSessioni()` viene eseguita: le opzioni di `sess-f-utente` vengono costruite per prime (se non già presenti, `dataset.ready`), **poi** viene letto e applicato il preset (`fUt.value='u1'`, preset azzerato) — l'ordine garantisce che l'opzione esista già quando si tenta di selezionarla, anche alla primissima apertura della tab Sessioni in questa sessione utente. Risultato: Admin si ritrova in Sessioni con "Rossi Anna" già filtrata, esattamente come richiesto.
+
+### Correzione di un difetto trovato durante la stesura (non nella lettera della richiesta)
+
+Durante la scrittura di `renderRiepilogoUtente`, il pulsante "🗂 Gestisci sessioni di questo utente" veniva cercato con un selettore globale (`$('#riep-vai-sessioni')`, che interroga tutto il documento) invece che scoperto solo dentro il contenitore appena scritto. Poiché Sessioni e Calendario condividono la stessa funzione ma solo il Calendario genera quel pulsante, un render di Sessioni (senza pulsante proprio) avrebbe comunque trovato — e agganciato un altro `addEventListener` a — il pulsante (nascosto, non cliccabile in quel momento) rimasto nella sezione Calendario da un render precedente, accumulando ascoltatori ridondanti sullo stesso nodo a ogni render di Sessioni. Effetto pratico nullo (il nodo è irraggiungibile mentre nascosto, e viene comunque sostituito interamente al prossimo render del Calendario, portando via con sé tutti gli ascoltatori accumulati) ma comunque un difetto di correttezza. Corretto usando `body.querySelector(...)`, scoperto al contenitore effettivamente appena scritto da quella chiamata.
+
+---
+
+## S3 — Report di generazione persistenti
+
+**Cosa è stato fatto**:
+- **Nuova lista SharePoint `Gestionale_Report`** aggiunta a `CFG.lists` (stesso schema Title+Data delle altre sei). **Decisione architetturale** (Registro delle decisioni, voce 40): registrata anche in una nuova costante `CFG.listeOpzionali=['report']`, e `tryResolveLists()` modificata per non far fallire la risoluzione se una lista lì elencata non viene trovata (prima, la mancanza di **una sola** lista qualsiasi bloccava l'intera app per **tutti** gli utenti, "Liste SharePoint non trovate"). Questa è la prima lista introdotta dopo la messa in produzione iniziale (13/07): senza questa modifica, il solo deploy di questo ciclo avrebbe reso il gestionale interamente inutilizzabile per chiunque finché Simone non avesse creato la lista su SharePoint — un rischio giudicato non accettabile per una funzionalità accessoria (lo storico dei report), quindi evitato.
+- **Salvataggio automatico** (`persistReport(report)`, chiamata — senza `await` — subito dopo ogni generazione, sia algoritmo sia IA): costruisce un record `{id, generatoIl (ISO datetime), mese, metodo, esito, report}` dove `report` è l'intero oggetto già prodotto da `costruisciReportGenerazione` (usato identico da entrambi i percorsi di generazione, quindi stessa struttura garantita), e lo salva con `saveRecord('report',rec)`. Se `state.listIds.report` non è definito (lista non ancora creata) la funzione non fa nulla, silenziosamente. Se il salvataggio fallisce per un altro motivo (rete, permessi), l'errore è intercettato e solo loggato (`console.warn`) — **la generazione non viene mai segnalata come fallita per una causa che riguarda solo la persistenza opzionale dello storico** (Registro delle decisioni, voce 44).
+- **UI — "📚 Report precedenti"** (decisione UI di Simone del 17/07, chiusa in questo ciclo — Registro delle decisioni, voce aggiornata 17): nuova sezione nella pagina "Genera" (`renderReportStorico()`, chiamata da `refreshGenSel()` ogni volta che si apre quella tab), tabella con Generato il/Mese/Metodo/Esito e un pulsante "Apri" per riga, ordinata per data decrescente. "Apri" richiama `openGenReport(rec.report)` — la **stessa** funzione già usata per il report appena prodotto da una generazione: nessuna vista duplicata da mantenere.
+- **Vista filtrabile per utente** (richiesta esplicita, punto 5): `openGenReport(report,filtroUtenteId)` ora accetta un secondo parametro opzionale; se `report.utenti.length>0` mostra un select "Filtra per utente" che, al cambio, richiude e riapre il modale con il nuovo filtro (`openModal()` chiude sempre l'eventuale modale precedente prima di aprirne uno nuovo — nessuna gestione speciale necessaria). Il filtro (`filtraReportUtenti`, nuova funzione pura) si applica **solo** alla sezione utenti/progetti: le sezioni spostamenti/suggerimenti/metriche restano relative all'intero mese, non essendo strutturate per utente nel report attuale — ristrutturarle sarebbe la revisione di contenuto esplicitamente dichiarata fuori ambito (punto 6, Registro delle decisioni voce 43).
+- **Fuori ambito, come richiesto esplicitamente** (punto 6): nessuna modifica al contenuto/aspetto grafico del report stesso, oltre al select di filtro aggiunto in testa.
+
+| Parte | Stato |
+|---|---|
+| Lista `Gestionale_Report` (schema Title+Data) | ✅ Fatto — codice pronto, lista da creare su SharePoint (vedi avviso in apertura) |
+| Salvataggio automatico a ogni generazione (algoritmo e IA) | ✅ Fatto (`persistReport`) |
+| Record con data/ora, mese, esito, dettaglio completo (utenti/progetti, anomalie, avvisiFrequenza) | ✅ Fatto — nessuna informazione del report originale persa |
+| UI: sezione "Report precedenti" in Genera | ✅ Fatto (`renderReportStorico`) |
+| Apertura di un report salvato nella stessa vista del report "fresco" | ✅ Fatto — nessuna vista duplicata |
+| Vista filtrabile per utente | ✅ Fatto (`filtraReportUtenti`), limitata alla sezione utenti/progetti (scelta esplicita, vedi sopra) |
+| Nessuna revisione grafica/contenutistica del report | ✅ Rispettato, come richiesto |
+| Assenza della lista non blocca l'app | ✅ Fatto (`CFG.listeOpzionali`) |
+
+### Scenario tracciato a mano: salvataggio e riapertura di un report
+
+Admin genera con l'algoritmo per "2026-08" con una carenza per l'utente "Rossi Anna" (`u1`). `res.report={mese:'2026-08',metodo:'algoritmo',utenti:[{utenteId:'u1',nome:'Rossi Anna',progetti:[...]}], mosseRiparazione:[...],...}`. `persistReport(res.report)` viene invocata (non attesa dal chiamante): costruisce `rec` con un nuovo `id`, `generatoIl` all'istante corrente, ed `esito='con carenze'` (perché `utenti.length===1>0`); `saveRecord('report',rec)` la scrive su SharePoint e la aggiunge a `state.data.report` (lo stesso array, mutato per riferimento — meccanismo già esistente di `saveRecord`, non modificato); infine `renderReportStorico()` aggiorna la tabella (anche se l'Admin in quel momento non è più sulla tab Genera, la scrittura nel DOM avviene comunque, pronta al prossimo `showTab('genera')`). Più avanti (anche in una sessione di login successiva, dopo che `loadAll()` ha ripopolato `state.data.report` da SharePoint), Admin apre "Genera": la riga compare con "Generato il" formattato (`fmtDateTime`), "Agosto 2026", "Algoritmo", tag arancione "con carenze". Click "Apri" → `openGenReport(rec.report)` mostra un contenuto **identico bit-per-bit** a quello mostrato subito dopo la generazione originale (stesso oggetto, salvato tale e quale). Selezionando "Rossi Anna" nel filtro utente del modale, la vista si richiude e riapre mostrando solo la sua card.
+
+## Correzione di una discrepanza pre-esistente trovata in `CLAUDE.md` (non introdotta da questo ciclo)
+
+Durante l'estensione della lista di liste (`CFG.lists`), ho riletto la sezione Architecture di `CLAUDE.md` (punto 3, data layer) per aggiornare il conteggio delle liste da sei a sette: descriveva ancora **solo le prime due** delle **cinque** migrazioni one-time oggi presenti in `loadAll()` (nome→nome+cognome, sede composita — mancavano monte ore h:mm/S6, tempo Busto sdoppiato/S8, ed esito legacy/S9, introdotte nei cicli B e D senza mai aggiornare questo punto). Corretta l'elencazione completa. Segnalata come da prassi (trovata durante un'altra modifica, non lasciata in silenzio) invece di limitarmi ad aggiungere la sola nuova voce.
+
+## Estensione di `check-sintassi.js`
+
+Aggiunte alle liste di estrazione due nuove funzioni pure (`riepilogoStatoProgetto`, `filtraReportUtenti`) e la costante `STATI_SESS` (necessaria a `riepilogoStatoProgetto`, che ora la referenzia). 6 nuovi casi di test (63→69 totali): 3 su `riepilogoStatoProgetto` (tutti gli stati presenti anche a zero, lista vuota, record senza `stato`), 3 su `filtraReportUtenti` (senza filtro, con filtro su match esistente, con filtro su utente assente → array vuoto).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js`**: 3 blocchi `<script>` OK; 69 test funzionali (63 preesistenti + 6 nuovi) — **tutti passano**.
+2. **Passata 2 — verifica punto per punto del prompt** (S2 punti 1-3, S3 punti 4-6): vedi tabelle sopra.
+3. **Passata 3 — scenario tracciato a mano: cascata con utente multi-progetto**, incluso il cambio di utente con progetto già selezionato (vedi sopra); trovato e corretto durante questa passata il difetto di scoping del selettore `$('#riep-vai-sessioni')` descritto sopra.
+4. **Passata 4 — scenario tracciato a mano: salvataggio e riapertura di un report**, incluso il filtro per utente (vedi sopra).
+5. **Passata 5 — scenario tracciato a mano: scorciatoia dal Calendario a Sessioni**, con verifica esplicita dell'ordine "popola opzioni → applica preset" anche alla primissima apertura della tab (vedi sopra).
+6. **Passata 6 — verifica che la lista opzionale non comprometta il comportamento esistente**: riletto `tryResolveLists()` riga per riga — per le sei liste già richieste, il comportamento (fallimento se una manca) è identico a prima; solo la lista elencata in `CFG.listeOpzionali` ha il nuovo ramo. Riletto `loadAll()`: il caricamento di `report` è condizionato su `state.listIds.report`, con fallback a `[]` sia se la lista non è risolta sia se il caricamento fallisce per un altro motivo — nessun percorso porta a un'eccezione non gestita che blocchi il resto di `loadAll()`.
+7. **Passata 7 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (S2/S3 marcate ✅ Implementato con il dettaglio tecnico, Architecture punto 3 corretto), `CONTESTO.md` (Cronologia voce 31, Backlog voce 21/Ciclo E, Registro delle decisioni voci 40-45 nuove + voce 17 chiusa) e questo file descrivono la stessa implementazione con gli stessi nomi di funzione; nessuna incongruenza trovata oltre a quella già segnalata e corretta sopra.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* la nota correttiva preliminare sulla data di completamento del Ciclo D (17/07→20/07, con nuova regola permanente "data di completamento = data del commit") — applicata prima di iniziare S2/S3, vedi Registro delle decisioni voce 39 in `CONTESTO.md` e nuova regola (e) in `CLAUDE.md`, sezione "Prassi di chiusura ciclo".
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 40-45 (lista `Gestionale_Report` opzionale/non bloccante; riepilogo condiviso fra Sessioni e Calendario; scorciatoia agganciata al pannello di riepilogo del Calendario; filtro per utente limitato alla sola sezione utenti/progetti del report; `persistReport` senza `await`; filtri utente non limitati agli "attivi").
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| Nota corr. | Data di completamento Ciclo D = commit (20/07), non definizione specifica (17/07) | ✅ Fatto | Corretta Cronologia/Backlog/Registro decisioni; nuova regola permanente in `CLAUDE.md` |
+| S2.1 | Filtro a cascata utente→progetto in Sessioni e Calendario | ✅ Fatto | `sess-f-utente`/`sess-f-progetto`, `cal-f-utente`/`cal-f-progetto` |
+| S2.2 | Riepilogo per progetto: sessioni per stato, monte ore h:mm erogato/residuo | ✅ Fatto | `renderRiepilogoUtente`, condivisa fra le due viste |
+| S2.3 | Scorciatoia dal Ciclo D agganciata al Calendario | ✅ Fatto | `vaiASessioniPerUtente`, dal pannello di riepilogo |
+| S3.4 | Lista `Gestionale_Report`, un record per generazione con dettaglio completo | ✅ Fatto | Lista da creare su SharePoint (vedi avviso), codice pronto e non bloccante nel frattempo |
+| S3.5 | UI in Genera, "Report precedenti", apribili, filtrabili per utente | ✅ Fatto | Decisione UI del 17/07 chiusa; stessa vista `openGenReport` riusata |
+| S3.6 | Salvataggio automatico; revisione contenuto report fuori ambito | ✅ Fatto | `persistReport` automatico; nessuna modifica al contenuto oltre al filtro |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`, cascata multi-progetto, salvataggio/riapertura report, scorciatoia dal Calendario) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. **Azione da completare fuori da questo file**: creazione della lista SharePoint `Gestionale_Report` (vedi avviso in apertura) — finché non esiste, S3 resta con lo storico non attivo ma senza alcun impatto sul resto dell'app. Non eseguibile in questo ambiente (nessun login M365/browser reale): il test dal vivo dei tre scenari tracciati a mano sopra (cascata, salvataggio/riapertura report, scorciatoia) — raccomandato a Simone come primo collaudo dopo il deploy, insieme alla creazione della lista `Gestionale_Report` per poter verificare anche il salvataggio reale.
+
+## Limiti di questa verifica
+`check-sintassi.js` verifica sintassi reale e le 2 nuove funzioni pure con casi concreti. Il resto della logica di questo ciclo (cascata di filtri, riepilogo, persistenza su SharePoint, risoluzione lista opzionale) è profondamente legato a `state`/DOM/Graph e non è extraibile in una sandbox Node: tutti gli scenari sopra sono stati tracciati a mano leggendo il codice reale riga per riga con valori concreti, non osservati in esecuzione. In particolare, il comportamento di `tryResolveLists()` con la lista `Gestionale_Report` realmente assente su SharePoint non è stato osservato dal vivo (richiederebbe un ambiente con login M365 su un sito SharePoint reale, non disponibile qui) — raccomandato come primo test dopo il deploy, prima ancora di creare la lista, per confermare che l'app si comporti normalmente anche senza.

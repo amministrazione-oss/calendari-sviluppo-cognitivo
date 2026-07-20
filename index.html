@@ -294,6 +294,7 @@ L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
     <div class="grow"></div>
     <div class="toolbar" id="cal-filters"></div>
   </div>
+  <div class="card hidden" id="cal-riepilogo-utente" style="margin-bottom:12px"><div class="card-pad" id="cal-riepilogo-utente-body"></div></div>
   <div class="cal-head">
     <button class="btn ghost small" id="cal-prev">‹</button>
     <div class="month-label" id="cal-month-label"></div>
@@ -318,12 +319,15 @@ L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
 <section id="view-sessioni" class="hidden">
   <div class="view-title"><h2>Sessioni</h2><div class="grow"></div>
     <div class="toolbar">
+      <select id="sess-f-utente" class="hidden"></select>
+      <select id="sess-f-progetto" class="hidden"></select>
       <select id="sess-f-operatore"></select>
       <select id="sess-f-stato"><option value="">Tutti gli stati</option><option value="proposta">Proposta</option><option value="confermata">Confermata</option><option value="eseguita">Eseguita</option><option value="assenza ingiustificata">Assenza ingiust.</option><option value="annullata">Annullata</option></select>
       <input type="month" id="sess-f-mese">
       <button class="btn primary small" id="sess-new">+ Nuova sessione</button>
     </div>
   </div>
+  <div class="card hidden" id="sess-riepilogo-utente" style="margin-bottom:12px"><div class="card-pad" id="sess-riepilogo-utente-body"></div></div>
   <div class="card"><div id="sess-table"></div></div>
 </section>
 
@@ -398,6 +402,10 @@ L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
     <p style="font-size:12px;color:var(--ink-soft);margin-top:8px"><strong>Algoritmo</strong>: istantaneo, deterministico. <strong>IA (Claude)</strong>: ragiona sui casi complessi, tiene conto delle tue indicazioni, impiega qualche secondo.</p>
     <div class="field" id="gen-ai-notes-wrap" style="margin-top:12px;display:none"><label>Istruzioni aggiuntive per l'IA (opzionale)</label><textarea id="gen-ai-notes" placeholder="Es: &quot;Elisa preferisce lavorare di pomeriggio&quot;, &quot;Non mettere sessioni il venerdì per Marco&quot;, ecc." style="min-height:60px"></textarea></div>
     <div id="gen-results" style="margin-top:16px"></div>
+  </div></div>
+  <div class="card" style="margin-top:16px"><div class="card-pad">
+    <h3 style="font-size:15px;margin-bottom:8px">📚 Report precedenti</h3>
+    <div id="gen-report-storico"></div>
   </div></div>
 </section>
 
@@ -485,7 +493,10 @@ const CFG = {
   tenantId: 'da2cae71-8782-45b6-b259-47e7cb68f1b5',
   tenant: 'centrosviluppocognitivo',
   spHost:   'centrosviluppocognitivo.sharepoint.com',
-  lists: { operatori:'Gestionale_Operatori', utenti:'Gestionale_Utenti', progetti:'Gestionale_Progetti', sessioni:'Gestionale_Sessioni', chiusure:'Gestionale_Chiusure', impostazioni:'Gestionale_Impostazioni' },
+  lists: { operatori:'Gestionale_Operatori', utenti:'Gestionale_Utenti', progetti:'Gestionale_Progetti', sessioni:'Gestionale_Sessioni', chiusure:'Gestionale_Chiusure', impostazioni:'Gestionale_Impostazioni', report:'Gestionale_Report' },
+  // 'report' (S3, Ciclo E) è opzionale: se la lista non esiste ancora su SharePoint, tryResolveLists() non fa
+  // fallire l'intera app per questo — lo storico dei report resta solo non disponibile finché non viene creata.
+  listeOpzionali: ['report'],
   adminEmails: ['amministratore@centrosviluppocognitivo.onmicrosoft.com'],
   claudeProxy: 'https://csc-claude-proxy.azurewebsites.net/api/claude-proxy'
 };
@@ -597,9 +608,10 @@ const OP_COLORS = ['#3b7dd8','#2E7D4F','#8A4A7D','#B65E2E','#14655F','#A4692B','
 const state = {
   account:null, role:null, me:null, siteId:null, listIds:{},
   data:{operatori:[],utenti:[],progetti:[],sessioni:[]},
-  cal:{year:0,month:0,filterOp:'',filterSede:''},
+  cal:{year:0,month:0,filterOp:'',filterSede:'',filterUtente:'',filterProgetto:''},
   availDraft:null, bootstrap:false, lastGenReport:null,
-  selSessioni:new Set() // selezione multipla in Sessioni (S1, Ciclo D) — solo UI, mai persistita
+  selSessioni:new Set(), // selezione multipla in Sessioni (S1, Ciclo D) — solo UI, mai persistita
+  sessFiltroUtentePreset:null // scorciatoia Calendario->Sessioni (S2, Ciclo E): utenteId da precompilare al prossimo renderSessioni()
 };
 
 /* ---------- Utility ---------- */
@@ -611,6 +623,8 @@ const pad2=n=>String(n).padStart(2,'0');
 function todayISO(){const d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
 function fmtDate(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');return parseInt(d)+'/'+parseInt(m)+'/'+y;}
 function monthLabel(y,m){return MESI[m]+' '+y;}
+// Data+ora locale leggibile per lo storico dei report (S3, Ciclo E) — a partire da un ISO datetime UTC.
+function fmtDateTime(iso){if(!iso)return'—';const d=new Date(iso);if(isNaN(d.getTime()))return'—';return fmtDate(d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()))+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());}
 function tmin(t){const[h,m]=(t||'00:00').split(':').map(Number);return h*60+m;}
 function mtime(m){return pad2(Math.floor(m/60))+':'+pad2(m%60);}
 function dname(d){return GIORNI[(d.getDay()+6)%7];}
@@ -655,6 +669,16 @@ function pesoStato(stato){
 function pesoMassimoSelezione(list){return list.length?Math.max(...list.map(s=>pesoStato(s.stato||'proposta'))):0;}
 // Conteggio delle sessioni per stato in una selezione (usato per riepilogare l'avviso di eliminazione multipla).
 function riepilogoStati(list){const r={};list.forEach(s=>{const st=s.stato||'proposta';r[st]=(r[st]||0)+1;});return r;}
+// Conteggio per stato di TUTTI gli stati (a differenza di riepilogoStati sopra, che elenca solo quelli presenti):
+// usata per il riepilogo per progetto di un utente selezionato (S2, Ciclo E), dove serve mostrare anche gli "0".
+function riepilogoStatoProgetto(sessioniProgetto){
+  const r={};STATI_SESS.forEach(st=>r[st]=0);
+  sessioniProgetto.forEach(s=>{const st=s.stato||'proposta';r[st]=(r[st]||0)+1;});
+  return r;
+}
+// Filtra l'elenco "utenti" di un report di generazione per un singolo utenteId (S3, vista filtrabile per utente);
+// senza filtro (utenteId falsy) restituisce l'elenco intero, invariato.
+function filtraReportUtenti(utenti,utenteId){return utenteId?utenti.filter(u=>u.utenteId===utenteId):utenti;}
 // Minuti erogati (eseguita+assenza ingiustificata) sul monte ore progetto — restituisce MINUTI, non più ore decimali (S6, 17/07)
 function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00')),0);}
 // Sottrae la fascia [da,a] da un elenco di fasce {from,to,...}, spezzando le fasce che la contengono
@@ -786,7 +810,8 @@ async function tryResolveLists(siteId){
   for(const[key,listName]of Object.entries(CFG.lists)){const ew=key.charAt(0).toUpperCase()+key.slice(1);
     const m=all.find(l=>{const dn=(l.displayName||'').toLowerCase(),nm=(l.name||'').toLowerCase(),tgt=listName.toLowerCase();
     if(dn===tgt||nm===tgt)return true;return(dn.includes('gestionale')&&dn.includes(ew.toLowerCase()))||(nm.includes('gestionale')&&nm.includes(ew.toLowerCase()));});
-    if(!m)return false;found[key]=m.id;}
+    if(!m){if((CFG.listeOpzionali||[]).includes(key))continue;return false;} // lista opzionale mancante (S3): non blocca la risoluzione
+    found[key]=m.id;}
   state.listIds=found;return true;}catch{return false;}
 }
 async function loadListRecords(key){
@@ -795,6 +820,10 @@ async function loadListRecords(key){
   return records;
 }
 async function loadAll(){const keys=['operatori','utenti','progetti','sessioni','chiusure','impostazioni'];const results=await Promise.all(keys.map(loadListRecords));keys.forEach((k,i)=>{if(k==='chiusure'){const cr=results[i];state.data.chiusure=(cr&&cr[0]&&cr[0].chiusure)||[];}else if(k==='impostazioni'){const im=results[i];state.data.impostazioni=normalizeImpostazioni((im&&im[0])?im[0]:null);}else{state.data[k]=results[i];}});
+  // Lista opzionale Gestionale_Report (S3, Ciclo E): se non ancora creata su SharePoint (state.listIds.report
+  // assente), lo storico dei report resta semplicemente vuoto/non disponibile — non blocca il resto dell'app.
+  if(state.listIds.report){try{state.data.report=await loadListRecords('report');}catch(e){console.warn('Caricamento report skipped:',e);state.data.report=[];}}
+  else state.data.report=[];
   // Migration: split nome->nome+cognome for old records
   try{
   let migrated=false;
@@ -907,21 +936,57 @@ function showTab(id){
 function sessioniVisibili(){
   let list=state.data.sessioni;
   if(state.role==='Operatore'){const myId=state.me?state.me.id:'__none__';list=list.filter(s=>s.operatoreId===myId);}
-  else{if(state.cal.filterOp)list=list.filter(s=>s.operatoreId===state.cal.filterOp);if(state.cal.filterSede)list=list.filter(s=>(s.sede||'').includes(state.cal.filterSede));}
+  else{
+    if(state.cal.filterOp)list=list.filter(s=>s.operatoreId===state.cal.filterOp);
+    if(state.cal.filterSede)list=list.filter(s=>(s.sede||'').includes(state.cal.filterSede));
+    if(state.cal.filterUtente)list=list.filter(s=>s.utenteId===state.cal.filterUtente); // S2 (Ciclo E): filtro a cascata utente->progetto
+    if(state.cal.filterProgetto)list=list.filter(s=>s.progettoId===state.cal.filterProgetto);
+  }
   return list;
 }
 function renderCalFilters(){
   const box=$('#cal-filters');if(state.role!=='Admin'){box.innerHTML='';return;}
   const ops=state.data.operatori.filter(o=>o.attivo!==false);
-  box.innerHTML='<select id="cal-f-op"><option value="">Tutti gli operatori</option>'+ops.map(o=>'<option value="'+o.id+'" '+(state.cal.filterOp===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select><select id="cal-f-sede"><option value="">Tutte le sedi</option>'+SEDI.map(s=>'<option '+(state.cal.filterSede===s?'selected':'')+'>'+s+'</option>').join('')+'</select>';
+  const uts=sortN(state.data.utenti);
+  // S2 (Ciclo E): filtro a cascata utente->progetto — la tendina progetti si limita ai progetti dell'utente scelto.
+  if(state.cal.filterUtente&&!state.data.progetti.some(p=>p.id===state.cal.filterProgetto&&p.utenteId===state.cal.filterUtente))state.cal.filterProgetto='';
+  const progettiUt=state.cal.filterUtente?state.data.progetti.filter(p=>p.utenteId===state.cal.filterUtente):[];
+  box.innerHTML=
+    '<select id="cal-f-utente"><option value="">Tutti gli utenti</option>'+uts.map(u=>'<option value="'+u.id+'" '+(state.cal.filterUtente===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select>'+
+    '<select id="cal-f-progetto" '+(state.cal.filterUtente?'':'disabled')+'><option value="">Tutti i progetti</option>'+progettiUt.map(p=>'<option value="'+p.id+'" '+(state.cal.filterProgetto===p.id?'selected':'')+'>'+esc(p.nome)+'</option>').join('')+'</select>'+
+    '<select id="cal-f-op"><option value="">Tutti gli operatori</option>'+ops.map(o=>'<option value="'+o.id+'" '+(state.cal.filterOp===o.id?'selected':'')+'>'+esc(fullName(o))+'</option>').join('')+'</select>'+
+    '<select id="cal-f-sede"><option value="">Tutte le sedi</option>'+SEDI.map(s=>'<option '+(state.cal.filterSede===s?'selected':'')+'>'+s+'</option>').join('')+'</select>';
+  $('#cal-f-utente').addEventListener('change',e=>{state.cal.filterUtente=e.target.value;state.cal.filterProgetto='';renderCalendar();});
+  $('#cal-f-progetto').addEventListener('change',e=>{state.cal.filterProgetto=e.target.value;renderCalendar();});
   $('#cal-f-op').addEventListener('change',e=>{state.cal.filterOp=e.target.value;renderCalendar();});
   $('#cal-f-sede').addEventListener('change',e=>{state.cal.filterSede=e.target.value;renderCalendar();});
 }
+// Riepilogo per progetto di un utente selezionato (S2, Ciclo E): sessioni per stato + monte ore h:mm erogato/residuo.
+// mostraScorciatoia (Calendario, non Sessioni): aggiunge il pulsante "gestisci sessioni di questo utente" che
+// porta a Sessioni con il filtro utente già impostato (scorciatoia rimandata dal Ciclo D, S1 punto 8).
+function renderRiepilogoUtente(wrapId,bodyId,utenteId,mostraScorciatoia){
+  const wrap=$('#'+wrapId),body=$('#'+bodyId);if(!wrap||!body)return;
+  if(!utenteId){wrap.classList.add('hidden');body.innerHTML='';return;}
+  wrap.classList.remove('hidden');
+  const progetti=state.data.progetti.filter(p=>p.utenteId===utenteId);
+  const scorciatoia=mostraScorciatoia?'<div style="margin-bottom:10px"><button class="btn ghost small" id="riep-vai-sessioni">🗂 Gestisci sessioni di questo utente</button></div>':'';
+  if(!progetti.length){body.innerHTML=scorciatoia+'<p class="help">Questo utente non ha progetti.</p>';}
+  else body.innerHTML=scorciatoia+progetti.map(p=>{
+    const conteggi=riepilogoStatoProgetto(state.data.sessioni.filter(s=>s.progettoId===p.id));
+    const badge=STATI_SESS.filter(st=>conteggi[st]>0).map(st=>'<span class="tag '+statoTag(st)+'" style="margin-right:4px">'+esc(st)+': '+conteggi[st]+'</span>').join('')||'<span class="help">nessuna sessione</span>';
+    const erogato=oreErog(p.id);
+    const monteOreTxt=p.monteOre?fmtHM(erogato)+' erogate / '+fmtHM(Math.max(0,p.monteOre-erogato))+' residue (su '+fmtHM(p.monteOre)+')':fmtHM(erogato)+' erogate (nessun monte ore impostato)';
+    return'<div style="margin-bottom:8px"><strong>'+esc(p.nome)+'</strong><div style="margin:4px 0">'+badge+'</div><span style="font-size:12.5px;color:var(--ink-soft)">Monte ore: '+monteOreTxt+'</span></div>';
+  }).join('');
+  const btn=body.querySelector('#riep-vai-sessioni');if(btn)btn.addEventListener('click',()=>vaiASessioniPerUtente(utenteId)); // scoped al body appena scritto, mai al nodo omonimo (nascosto) dell'altra vista
+}
+function vaiASessioniPerUtente(utenteId){state.sessFiltroUtentePreset=utenteId;showTab('sessioni');}
 function renderCalendar(){
   $('#cal-title').textContent=state.role==='Admin'?'Calendario del centro':'Il mio calendario';
   const isAdmin=state.role==='Admin';
   $('#cal-new').classList.toggle('hidden',!isAdmin);$('#cal-send-month').classList.toggle('hidden',!isAdmin);$('#cal-send-panel').classList.toggle('hidden',!isAdmin);
   renderCalFilters();
+  renderRiepilogoUtente('cal-riepilogo-utente','cal-riepilogo-utente-body',isAdmin?state.cal.filterUtente:'',true);
   const{year,month}=state.cal;$('#cal-month-label').textContent=monthLabel(year,month);
   const sessions=sessioniVisibili();const byDay={};
   for(const s of sessions){if(!s.data)continue;(byDay[s.data]=byDay[s.data]||[]).push(s);}
@@ -977,7 +1042,24 @@ function renderSessioni(){
   const isAdmin=state.role==='Admin';$('#sess-new').classList.toggle('hidden',!isAdmin);
   const fOp=$('#sess-f-operatore');
   if(isAdmin){fOp.classList.remove('hidden');if(!fOp.dataset.ready){fOp.innerHTML='<option value="">Tutti gli operatori</option>'+state.data.operatori.map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('');fOp.dataset.ready='1';}}else fOp.classList.add('hidden');
+  // S2 (Ciclo E): filtro a cascata utente->progetto, solo Admin. La scorciatoia dal Calendario (vaiASessioniPerUtente)
+  // precompila sess-f-utente prima di questo render tramite state.sessFiltroUtentePreset.
+  const fUt=$('#sess-f-utente'),fPr=$('#sess-f-progetto');
+  if(isAdmin){
+    fUt.classList.remove('hidden');fPr.classList.remove('hidden');
+    if(!fUt.dataset.ready){fUt.innerHTML='<option value="">Tutti gli utenti</option>'+sortN(state.data.utenti).map(u=>'<option value="'+u.id+'">'+esc(fullNameCN(u))+'</option>').join('');fUt.dataset.ready='1';}
+    if(state.sessFiltroUtentePreset){fUt.value=state.sessFiltroUtentePreset;state.sessFiltroUtentePreset=null;}
+    const utSel=fUt.value;
+    const progettiUt=utSel?state.data.progetti.filter(p=>p.utenteId===utSel):[];
+    const progPrec=fPr.value;
+    fPr.innerHTML='<option value="">Tutti i progetti</option>'+progettiUt.map(p=>'<option value="'+p.id+'">'+esc(p.nome)+'</option>').join('');
+    fPr.disabled=!utSel;
+    if(progettiUt.some(p=>p.id===progPrec))fPr.value=progPrec; // mantiene la selezione se ancora valida per l'utente corrente
+  }else{fUt.classList.add('hidden');fPr.classList.add('hidden');}
+  renderRiepilogoUtente('sess-riepilogo-utente','sess-riepilogo-utente-body',isAdmin?fUt.value:'',false);
   let list=sessioniVisibili().slice();if(isAdmin&&fOp.value)list=list.filter(s=>s.operatoreId===fOp.value);
+  if(isAdmin&&fUt.value)list=list.filter(s=>s.utenteId===fUt.value);
+  if(isAdmin&&fPr.value)list=list.filter(s=>s.progettoId===fPr.value);
   const st=$('#sess-f-stato').value;if(st)list=list.filter(s=>(s.stato||'proposta')===st);
   const mese=$('#sess-f-mese').value;if(mese)list=list.filter(s=>(s.data||'').startsWith(mese));
   list.sort((a,b)=>(b.data+(b.oraInizio||b.ora_inizio||'')).localeCompare(a.data+(a.oraInizio||a.ora_inizio||'')));
@@ -1148,12 +1230,17 @@ function openUtenteReadonly(u){
 }
 
 /* Report unico di generazione — consultabile dopo "Genera con algoritmo"/"Genera con IA", non solo un toast */
-function openGenReport(report){
+// Vista filtrabile per utente (S3, Ciclo E): filtroUtenteId opzionale, applicato SOLO alla sezione utenti/progetti
+// (le sezioni spostamenti/suggerimenti/metriche restano un riepilogo del mese intero — non sono strutturate per
+// utente nel report attuale, e ristrutturarle è la revisione di contenuto esplicitamente fuori ambito in questo ciclo).
+function openGenReport(report,filtroUtenteId){
   if(!report){toast('Nessun report disponibile.',true);return;}
   const[repY,repM]=report.mese.split('-').map(Number);
-  let h='<h3>📄 Report di generazione — '+esc(monthLabel(repY,repM-1))+' ('+(report.metodo==='algoritmo'?'algoritmo':'IA')+')</h3>';
-  if(!report.utenti.length)h+='<p class="help">Nessuna carenza da segnalare: tutte le frequenze richieste risultano soddisfatte.</p>';
-  else report.utenti.forEach(u=>{
+  const utentiFiltrati=filtraReportUtenti(report.utenti,filtroUtenteId);
+  const filtroSel=report.utenti.length?('<div class="field" style="max-width:320px"><label>Filtra per utente</label><select id="rep-filtro-utente"><option value="">Tutti ('+report.utenti.length+')</option>'+report.utenti.map(u=>'<option value="'+esc(u.utenteId)+'" '+(filtroUtenteId===u.utenteId?'selected':'')+'>'+esc(u.nome)+'</option>').join('')+'</select></div>'):'';
+  let h='<h3>📄 Report di generazione — '+esc(monthLabel(repY,repM-1))+' ('+(report.metodo==='algoritmo'?'algoritmo':'IA')+')</h3>'+filtroSel;
+  if(!utentiFiltrati.length)h+='<p class="help">'+(filtroUtenteId?'Nessuna carenza per questo utente.':'Nessuna carenza da segnalare: tutte le frequenze richieste risultano soddisfatte.')+'</p>';
+  else utentiFiltrati.forEach(u=>{
     h+='<div class="card" style="margin:10px 0"><div class="card-pad"><strong>'+esc(u.nome)+'</strong>';
     u.progetti.forEach(p=>{
       h+='<div style="margin-top:8px"><em>'+esc(p.nome)+'</em><table class="list" style="margin-top:4px;font-size:13px"><thead><tr><th>Sett.</th><th>Richieste</th><th>Piazzate</th><th>Causa</th></tr></thead><tbody>'+
@@ -1175,6 +1262,27 @@ function openGenReport(report){
     '</dl><p class="help">Buchi operatore: minuti di vuoto tra sessioni in presenza nella stessa giornata. Saturazione aule: % di occupazione media delle aule usate quel giorno.</p>'+
     '<div class="modal-actions"><button class="btn ghost" data-close>Chiudi</button></div>';
   openModal(h);
+  const selFiltro=$('#rep-filtro-utente');if(selFiltro)selFiltro.addEventListener('change',()=>openGenReport(report,selFiltro.value||null));
+}
+// Salva automaticamente il report della generazione appena conclusa sulla lista SharePoint Gestionale_Report
+// (S3, Ciclo E). Se la lista non è ancora stata creata (state.listIds.report assente), non fa nulla: la
+// generazione stessa non deve mai fallire per una funzione di persistenza opzionale/accessoria.
+async function persistReport(report){
+  if(!state.listIds.report||!report)return;
+  const rec={id:uid(),generatoIl:new Date().toISOString(),mese:report.mese,metodo:report.metodo,esito:report.utenti.length?'con carenze':'completo',report};
+  try{await saveRecord('report',rec);}catch(e){console.warn('Salvataggio report saltato:',e);}
+  renderReportStorico();
+}
+function renderReportStorico(){
+  const box=$('#gen-report-storico');if(!box)return;
+  if(!state.listIds.report){box.innerHTML='<p class="help">Lista SharePoint "Gestionale_Report" non ancora creata: chiedi a un amministratore di crearla (stesso schema delle altre liste — colonne <code>Title</code> e <code>Data</code>) per attivare lo storico dei report. Le generazioni funzionano comunque normalmente nel frattempo.</p>';return;}
+  const list=(state.data.report||[]).slice().sort((a,b)=>(b.generatoIl||'').localeCompare(a.generatoIl||''));
+  if(!list.length){box.innerHTML='<p class="help">Nessun report salvato finora. Ogni generazione (algoritmo o IA) salva qui automaticamente il proprio report.</p>';return;}
+  box.innerHTML='<table class="list"><thead><tr><th>Generato il</th><th>Mese</th><th>Metodo</th><th>Esito</th><th></th></tr></thead><tbody>'+list.map(r=>{
+    const[ry,rm]=(r.mese||'').split('-').map(Number);
+    return'<tr><td>'+fmtDateTime(r.generatoIl)+'</td><td>'+esc(ry&&rm?monthLabel(ry,rm-1):r.mese||'—')+'</td><td>'+(r.metodo==='algoritmo'?'Algoritmo':'IA')+'</td><td><span class="tag '+(r.esito==='completo'?'ok':'warn')+'">'+esc(r.esito||'—')+'</span></td><td><button class="btn ghost small" data-rep-id="'+r.id+'">Apri</button></td></tr>';
+  }).join('')+'</tbody></table>';
+  $$('#gen-report-storico [data-rep-id]').forEach(b=>b.addEventListener('click',()=>{const rec=list.find(r=>r.id===b.dataset.repId);if(rec)openGenReport(rec.report);}));
 }
 
 /* ============================================================
@@ -1576,6 +1684,7 @@ function refreshGenSel(){
   const att=state.data.progetti.filter(p=>!p.noMonteOre&&(p.stato||'attivo')==='attivo')
     .sort((a,b)=>((utById(a.utenteId)?.cognome||'')+(utById(a.utenteId)?.nome||'')).localeCompare((utById(b.utenteId)?.cognome||'')+(utById(b.utenteId)?.nome||''),'it'));
   sel.innerHTML=att.map(p=>{const u=utById(p.utenteId);return'<option value="'+p.id+'">'+esc(u?fullNameCN(u):'?')+' — '+esc(p.nome)+'</option>';}).join('')||'<option value="">Nessun progetto attivo</option>';
+  renderReportStorico();
 }
 function sdComp(sede,sedi){if(sede==='Online')return(sedi||[]).includes('Online');if(sede==='Cesate+Online'||sede==='Cesate+Domicilio')return true;return(sedi||[]).includes(sede);}
 
@@ -2457,6 +2566,8 @@ $('#cal-today').addEventListener('click',()=>{const now=new Date();state.cal.yea
 $('#cal-new').addEventListener('click',()=>openSessionModal());
 $('#sess-new').addEventListener('click',()=>openSessionModal());
 $('#sess-f-operatore').addEventListener('change',renderSessioni);
+$('#sess-f-utente').addEventListener('change',()=>{$('#sess-f-progetto').value='';renderSessioni();});
+$('#sess-f-progetto').addEventListener('change',renderSessioni);
 $('#sess-f-stato').addEventListener('change',renderSessioni);
 $('#sess-f-mese').addEventListener('change',renderSessioni);
 $('#op-new').addEventListener('click',()=>openOperatoreModal());
@@ -2553,6 +2664,7 @@ $('#btn-gen').addEventListener('click',async()=>{
   $('#gen-results').innerHTML='<div class="banner info">Generazione in corso…</div>';
   try{const res=await generateMonth(ms,spid,projNameFilter);
   state.lastGenReport=res.report;
+  persistReport(res.report); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
   let html='<div class="card"><div class="card-pad"><h3>'+res.count+' sessioni create</h3>';
   if(res.anom.length)html+='<div style="margin-top:8px">'+res.anom.map(a=>'<p><strong>'+esc(a.lbl)+'</strong>: '+esc(a.msg)+'</p>').join('')+'</div>';
   else html+='<span class="tag ok">✓ Tutte le frequenze soddisfatte</span>';
@@ -2570,6 +2682,7 @@ $('#btn-gen-ai').addEventListener('click',async()=>{
   $('#gen-results').innerHTML='<div class="banner info">🤖 L\'IA sta analizzando operatori, progetti, disponibilità e vincoli… Questo può richiedere 10–30 secondi.</div>';
   try{const res=await generateMonthAI(ms,spid,notes,projNameFilter);
   state.lastGenReport=res.report;
+  persistReport(res.report); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
   let h='<div class="card"><div class="card-pad"><h3>🤖 '+res.count+' sessioni create con IA</h3>';
   if(res.anom.length)h+='<div style="margin-top:8px"><strong>Note:</strong>'+res.anom.map(a=>'<p>'+esc(a.lbl)+': '+esc(a.msg)+'</p>').join('')+'</div>';
   else h+='<span class="tag ok">✓ Generazione completata senza anomalie</span>';

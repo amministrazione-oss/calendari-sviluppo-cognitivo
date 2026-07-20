@@ -76,8 +76,8 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati'];
-const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti'];
+const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS'];
 
 function buildSandbox(html) {
   const src = [
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -219,6 +219,17 @@ function runTest(sandbox) {
   check('pesoMassimoSelezione: include eseguita -> 2 (il piu pesante vince)', pesoMassimoSelezione([{ stato: 'confermata' }, { stato: 'eseguita' }]), 2);
   check('pesoMassimoSelezione: selezione vuota -> 0', pesoMassimoSelezione([]), 0);
   check('riepilogoStati: conteggio per stato, manca stato -> proposta implicito', riepilogoStati([{ stato: 'proposta' }, {}, { stato: 'eseguita' }, { stato: 'eseguita' }]), { proposta: 2, eseguita: 2 });
+
+  // riepilogoStatoProgetto / filtraReportUtenti — Ciclo E (S2 riepilogo per progetto, S3 vista filtrabile per utente)
+  check('riepilogoStatoProgetto: tutti gli stati presenti anche a 0', riepilogoStatoProgetto([{ stato: 'eseguita' }, { stato: 'eseguita' }]), { proposta: 0, confermata: 0, eseguita: 2, 'assenza ingiustificata': 0, annullata: 0 });
+  check('riepilogoStatoProgetto: nessuna sessione -> tutti 0', riepilogoStatoProgetto([]), { proposta: 0, confermata: 0, eseguita: 0, 'assenza ingiustificata': 0, annullata: 0 });
+  check('riepilogoStatoProgetto: manca stato -> proposta implicito', riepilogoStatoProgetto([{}]), { proposta: 1, confermata: 0, eseguita: 0, 'assenza ingiustificata': 0, annullata: 0 });
+  {
+    const utenti = [{ utenteId: 'u1', nome: 'Rossi Anna' }, { utenteId: 'u2', nome: 'Bianchi Mario' }];
+    check('filtraReportUtenti: senza filtro restituisce tutti', filtraReportUtenti(utenti, null), utenti);
+    check('filtraReportUtenti: con filtro restituisce solo il match', filtraReportUtenti(utenti, 'u2'), [{ utenteId: 'u2', nome: 'Bianchi Mario' }]);
+    check('filtraReportUtenti: utente non presente -> array vuoto', filtraReportUtenti(utenti, 'u9'), []);
+  }
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));
   return fails === 0;
