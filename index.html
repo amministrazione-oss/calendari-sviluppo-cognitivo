@@ -106,6 +106,8 @@ table.list tr.rowlink{cursor:pointer} table.list tr.rowlink:hover{background:var
 .ev{border:none;text-align:left;border-radius:7px;padding:3px 6px;font-size:11px;font-weight:600;color:#fff;line-height:1.3;width:100%;overflow:hidden;cursor:pointer;margin-bottom:1px}
 .ev.cesate{background:#2B5BA0} .ev.busto{background:#2E7D4F} .ev.online{background:#8A4A7D} .ev.domicilio{background:#B65E2E}
 .ev.cancelled{opacity:.4;text-decoration:line-through}
+.ev.proposta{opacity:.55}
+tr.rowlink.stato-proposta{opacity:.7}
 .ev .ep{display:block;font-size:10px;font-weight:400;opacity:.85}
 .ev .en{display:block;font-size:10px;font-weight:400;opacity:.75}
 .cal-more{font-size:11px;color:var(--primary);background:none;border:none;font-weight:700;text-align:left;padding:0 4px}
@@ -596,7 +598,8 @@ const state = {
   account:null, role:null, me:null, siteId:null, listIds:{},
   data:{operatori:[],utenti:[],progetti:[],sessioni:[]},
   cal:{year:0,month:0,filterOp:'',filterSede:''},
-  availDraft:null, bootstrap:false, lastGenReport:null
+  availDraft:null, bootstrap:false, lastGenReport:null,
+  selSessioni:new Set() // selezione multipla in Sessioni (S1, Ciclo D) — solo UI, mai persistita
 };
 
 /* ---------- Utility ---------- */
@@ -625,6 +628,33 @@ function prById(id){return state.data.progetti.find(p=>p.id===id)||null;}
 function opColor(op){return(op&&op.colore)||'#5C6C6A';}
 function sedeClass(s){if(!s)return'online';const l=s.toLowerCase();if(l.includes('cesate'))return'cesate';if(l.includes('busto'))return'busto';if(l.includes('domicilio'))return'domicilio';return'online';}
 function statoTag(st){const m={'proposta':'info','confermata':'warn','eseguita':'ok','assenza ingiustificata':'danger','annullata':'off'};return m[st]||'off';}
+// Campo stato unico (S9, Ciclo D, 17/07): un Admin può impostare qualsiasi stato (tutte le transizioni,
+// proposta<->confermata comprese); un Operatore può cambiare stato SOLO su una sessione propria già "confermata",
+// e solo verso uno dei tre esiti — mai su "proposta", mai indietro verso "proposta"/"confermata".
+// Restituisce l'elenco di stati selezionabili nell'interfaccia, oppure null se nessuna modifica di stato è ammessa
+// (usata sia per decidere le opzioni mostrate sia, tramite transizioneAmmessa, per validare al salvataggio).
+function statiSelezionabili(role,statoAttuale){
+  if(role==='Admin')return['proposta','confermata','eseguita','assenza ingiustificata','annullata'];
+  if(role==='Operatore'&&statoAttuale==='confermata')return['confermata','eseguita','assenza ingiustificata','annullata'];
+  return null;
+}
+// Vero se la transizione statoAttuale->statoNuovo è ammessa per il ruolo indicato. Non fidarsi della sola UI
+// (le opzioni mostrate già la rispettano): questa funzione va richiamata anche nel gestore di salvataggio.
+function transizioneAmmessa(role,statoAttuale,statoNuovo){
+  if(statoNuovo===statoAttuale)return true;
+  const opz=statiSelezionabili(role,statoAttuale);
+  return!!opz&&opz.includes(statoNuovo);
+}
+// Peso dello stato ai fini dell'avviso graduato di eliminazione multipla (S1): 0 = proposta/annullata (avviso semplice),
+// 1 = confermata (avviso rafforzato), 2 = eseguita/assenza ingiustificata (contano nel monte ore, doppia conferma).
+function pesoStato(stato){
+  if(stato==='eseguita'||stato==='assenza ingiustificata')return 2;
+  if(stato==='confermata')return 1;
+  return 0;
+}
+function pesoMassimoSelezione(list){return list.length?Math.max(...list.map(s=>pesoStato(s.stato||'proposta'))):0;}
+// Conteggio delle sessioni per stato in una selezione (usato per riepilogare l'avviso di eliminazione multipla).
+function riepilogoStati(list){const r={};list.forEach(s=>{const st=s.stato||'proposta';r[st]=(r[st]||0)+1;});return r;}
 // Minuti erogati (eseguita+assenza ingiustificata) sul monte ore progetto — restituisce MINUTI, non più ore decimali (S6, 17/07)
 function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00')),0);}
 // Sottrae la fascia [da,a] da un elenco di fasce {from,to,...}, spezzando le fasce che la contengono
@@ -807,6 +837,17 @@ async function loadAll(){const keys=['operatori','utenti','progetti','sessioni',
   }
   if(migratedBusto){for(const o of state.data.operatori)await saveRecord('operatori',o);console.log('Migration: tempo Busto Arsizio sdoppiato in tempoBustoCesate/tempoBustoCasa (da casa = valore precedente, da Cesate vuoto)');}
   }catch(e){console.warn('Migration tempo Busto skipped:',e);}
+  // Migration: consolidamento campo stato sessione (S9, Ciclo D, 17/07). Rete di sicurezza per eventuali record
+  // legacy con un campo "esito" separato scritto fuori da questa app (Graph/SharePoint diretto): il valore diventa
+  // lo stato, il campo esito viene rimosso. Nessun marcatore anti-doppia-applicazione necessario: la condizione
+  // stessa (presenza del campo "esito") sparisce dopo la prima esecuzione, quindi è già idempotente. Si salvano
+  // solo i record effettivamente toccati (non l'intera lista sessioni, che a differenza di operatori/progetti può
+  // essere numerosa).
+  try{
+    const daMigrareEsito=state.data.sessioni.filter(s=>s.hasOwnProperty('esito')&&s.esito);
+    for(const s of daMigrareEsito){s.stato=s.esito;delete s.esito;}
+    if(daMigrareEsito.length){for(const s of daMigrareEsito)await saveRecord('sessioni',s);console.log('Migration: campo esito legacy consolidato in stato ('+daMigrareEsito.length+' record)');}
+  }catch(e){console.warn('Migration esito sessione skipped:',e);}
 }
 async function saveRecord(key,record){
   const listId=state.listIds[key];const{_spId,...payload}=record;const fields={Title:payload.id,Data:JSON.stringify(payload)};
@@ -907,7 +948,7 @@ function renderCalendar(){
 function evChip(s){
   const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);
   const b=document.createElement('div');
-  b.className='ev '+sedeClass(s.sede)+(s.stato==='annullata'?' cancelled':'');
+  b.className='ev '+sedeClass(s.sede)+(s.stato==='annullata'?' cancelled':'')+((s.stato||'proposta')==='proposta'?' proposta':'');
   const ora=s.oraInizio||s.ora_inizio||'';
   const onlineTag=s.sede==='Online'&&s.onlineDaCasa!=null?(s.onlineDaCasa?' 🏠':' 🏢'):'';
   b.innerHTML='<strong>'+esc(ora)+' '+esc(ut?fullNameCN(ut):'?')+'</strong><span class="ep">'+esc(pr?pr.nome:'')+'</span><span class="en">'+esc(op?fullName(op):'?')+(s.aula?' · '+esc(s.aula):'')+onlineTag+(s.stato==='eseguita'?' ✓':s.stato==='annullata'?' ✕':s.stato==='assenza ingiustificata'?' ⚠':'')+'</span>';
@@ -919,6 +960,19 @@ function openDayModal(iso,sessions){openModal('<h3>Sessioni del '+fmtDate(iso)+'
 /* ============================================================
    Sessioni — dettaglio e editor
    ============================================================ */
+// Avviso graduato per l'eliminazione multipla (S1): due conferme esplicite se la selezione include
+// eseguita/assenza ingiustificata (contano nel monte ore), una rafforzata se include confermata, una semplice
+// altrimenti (proposta/annullata). Riepiloga sempre quante sessioni per stato si stanno eliminando.
+function confermaEliminazioneMultipla(list){
+  const rip=riepilogoStati(list),dettaglio=Object.keys(rip).map(k=>rip[k]+' '+k).join(', ');
+  const peso=pesoMassimoSelezione(list);
+  if(peso>=2){
+    if(!confirm('ATTENZIONE: la selezione include sessioni ESEGUITE o con ASSENZA INGIUSTIFICATA, che contano nel monte ore del progetto.\nStai per eliminare '+list.length+' sessioni ('+dettaglio+').\nContinuare?'))return false;
+    return confirm('Confermi DEFINITIVAMENTE l\'eliminazione di '+list.length+' sessioni ('+dettaglio+'), incluse quelle già consuntivate nel monte ore?');
+  }
+  if(peso===1)return confirm('ATTENZIONE: la selezione include sessioni CONFERMATE.\nStai per eliminare '+list.length+' sessioni ('+dettaglio+').\nConfermi?');
+  return confirm('Eliminare '+list.length+' sessioni ('+dettaglio+')?');
+}
 function renderSessioni(){
   const isAdmin=state.role==='Admin';$('#sess-new').classList.toggle('hidden',!isAdmin);
   const fOp=$('#sess-f-operatore');
@@ -927,25 +981,62 @@ function renderSessioni(){
   const st=$('#sess-f-stato').value;if(st)list=list.filter(s=>(s.stato||'proposta')===st);
   const mese=$('#sess-f-mese').value;if(mese)list=list.filter(s=>(s.data||'').startsWith(mese));
   list.sort((a,b)=>(b.data+(b.oraInizio||b.ora_inizio||'')).localeCompare(a.data+(a.oraInizio||a.ora_inizio||'')));
+  // Selezione multipla (S1, solo Admin): scarta dalla selezione le sessioni non più visibili con i filtri correnti.
+  if(isAdmin){const visIds=new Set(list.map(s=>s.id));for(const id of Array.from(state.selSessioni))if(!visIds.has(id))state.selSessioni.delete(id);}
   const box=$('#sess-table');
   if(!list.length){box.innerHTML='<div class="empty">Nessuna sessione trovata.</div>';return;}
-  box.innerHTML='<table class="list"><thead><tr><th>Data</th><th>Orario</th><th>Utente</th><th>Progetto</th><th>Operatore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(s=>{
+  const selCount=isAdmin?state.selSessioni.size:0;
+  const bulkBar=(isAdmin&&selCount>0)?('<div class="banner info" id="sess-bulk-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><strong>'+selCount+' selezionate</strong><select id="sess-bulk-stato">'+STATI_SESS.map(x=>'<option value="'+x+'">'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('')+'</select><button class="btn ghost small" id="sess-bulk-cambia-stato">Cambia stato</button><button class="btn danger-o small" id="sess-bulk-elimina">🗑 Elimina selezionate</button><div style="flex:1"></div><button class="btn ghost small" id="sess-bulk-deseleziona">Deseleziona tutte</button></div>'):'';
+  const selAllChecked=isAdmin&&list.every(s=>state.selSessioni.has(s.id));
+  box.innerHTML=bulkBar+'<table class="list"><thead><tr>'+(isAdmin?'<th><input type="checkbox" id="sess-selall" '+(selAllChecked?'checked':'')+'></th>':'')+'<th>Data</th><th>Orario</th><th>Utente</th><th>Progetto</th><th>Operatore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(s=>{
     const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const stato=s.stato||'proposta';
-    return'<tr class="rowlink" data-id="'+s.id+'"><td>'+fmtDate(s.data)+'</td><td>'+esc(s.oraInizio||s.ora_inizio||'')+(s.oraFine||s.ora_fine?'–'+esc(s.oraFine||s.ora_fine):'')+'</td><td>'+esc(ut?fullNameCN(ut):'—')+'</td><td>'+esc(pr?pr.nome:'—')+'</td><td>'+esc(op?fullName(op):'—')+'</td><td>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</td><td><span class="tag '+statoTag(stato)+'">'+esc(stato)+'</span></td></tr>';
+    const chk=isAdmin?'<td><input type="checkbox" class="sess-chk" data-id="'+s.id+'" '+(state.selSessioni.has(s.id)?'checked':'')+'></td>':'';
+    return'<tr class="rowlink'+(stato==='proposta'?' stato-proposta':'')+'" data-id="'+s.id+'">'+chk+'<td>'+fmtDate(s.data)+'</td><td>'+esc(s.oraInizio||s.ora_inizio||'')+(s.oraFine||s.ora_fine?'–'+esc(s.oraFine||s.ora_fine):'')+'</td><td>'+esc(ut?fullNameCN(ut):'—')+'</td><td>'+esc(pr?pr.nome:'—')+'</td><td>'+esc(op?fullName(op):'—')+'</td><td>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</td><td><span class="tag '+statoTag(stato)+'">'+esc(stato)+'</span></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#sess-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const s=state.data.sessioni.find(x=>x.id===tr.dataset.id);if(s)openSessionDetail(s);}));
+  if(!isAdmin)return;
+  $$('#sess-table .sess-chk').forEach(cb=>cb.addEventListener('click',e=>{e.stopPropagation();if(cb.checked)state.selSessioni.add(cb.dataset.id);else state.selSessioni.delete(cb.dataset.id);renderSessioni();}));
+  const selAll=$('#sess-selall');if(selAll)selAll.addEventListener('click',e=>{e.stopPropagation();if(selAll.checked)list.forEach(s=>state.selSessioni.add(s.id));else list.forEach(s=>state.selSessioni.delete(s.id));renderSessioni();});
+  const bDes=$('#sess-bulk-deseleziona');if(bDes)bDes.addEventListener('click',()=>{state.selSessioni.clear();renderSessioni();});
+  const bStato=$('#sess-bulk-cambia-stato');if(bStato)bStato.addEventListener('click',async()=>{
+    const nuovoStato=$('#sess-bulk-stato').value;
+    const selezionate=state.data.sessioni.filter(s=>state.selSessioni.has(s.id));
+    if(!selezionate.length)return;
+    if(!confirm('Impostare lo stato "'+nuovoStato+'" per '+selezionate.length+' sessioni selezionate?'))return;
+    await withBusy(async()=>{for(const s of selezionate){if(transizioneAmmessa('Admin',s.stato||'proposta',nuovoStato)&&s.stato!==nuovoStato){s.stato=nuovoStato;await saveRecord('sessioni',s);}}},'Stato aggiornato');
+    state.selSessioni.clear();refreshCurrent();
+  });
+  const bDel=$('#sess-bulk-elimina');if(bDel)bDel.addEventListener('click',async()=>{
+    const selezionate=state.data.sessioni.filter(s=>state.selSessioni.has(s.id));
+    if(!selezionate.length)return;
+    if(!confermaEliminazioneMultipla(selezionate))return;
+    await withBusy(async()=>{for(const s of selezionate)await deleteRecord('sessioni',s);},'Eliminate');
+    state.selSessioni.clear();refreshCurrent();
+  });
 }
 function openSessionDetail(s){
   const op=opById(s.operatoreId),ut=utById(s.utenteId),pr=prById(s.progettoId);const isAdmin=state.role==='Admin';
   const canEdit=isAdmin||(state.role==='Operatore'&&state.me&&s.operatoreId===state.me.id);
   const utTitle=ut?'<a href="#" id="sd-open-utente" style="color:inherit;text-decoration:underline" title="Vedi anagrafica cliente (sola lettura)">'+esc(fullNameCN(ut))+'</a>':'?';
-  const esitoOpts=['eseguita','annullata','assenza ingiustificata'];
-  const esitoField=canEdit?('<div class="field"><label>Esito sessione</label><select id="sd-stato-op"><option value="">'+esc('— non specificato —')+'</option>'+esitoOpts.map(x=>'<option value="'+x+'" '+(s.stato===x?'selected':'')+'>'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('')+'</select><p class="help">Eseguita e Assenza ingiustificata contano nel monte ore del progetto; Annullata no (la sessione resta recuperabile in futuro).</p></div>'):'';
-  openModal('<h3>'+utTitle+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd>'+(s.sede==='Online'&&s.onlineDaCasa!=null?('<dt>Modalità online</dt><dd>'+(s.onlineDaCasa?'🏠 Da casa':'🏢 In sede')+'</dd>'):'')+'<dt>Stato</dt><dd><span class="tag '+statoTag(s.stato||'proposta')+'">'+esc(s.stato||'proposta')+'</span></dd>'+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl>'+esitoField+'<div class="field"><label>Note operatore</label><textarea id="sd-note-op" '+(canEdit?'':'readonly')+'>'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button>'+(canEdit?'<button class="btn primary" id="sd-save-note">💾 Salva</button>':'')+'</div>');
+  const statoAttuale=s.stato||'proposta';
+  // Campo stato unico (S9): un solo controllo "Stato", non più uno "Stato" di sola lettura + un'"Esito sessione"
+  // separata che scriveva sullo stesso campo. Se il ruolo/stato corrente non ammette modifiche, resta solo il tag
+  // di sola lettura già presente nella <dl> sopra; altrimenti compare QUI il select con le sole opzioni ammesse
+  // (mai un elenco più ampio "corretto poi al salvataggio").
+  const opzStato=canEdit?statiSelezionabili(state.role,statoAttuale):null;
+  const statoRO=opzStato?'':'<dt>Stato</dt><dd><span class="tag '+statoTag(statoAttuale)+'">'+esc(statoAttuale)+'</span></dd>';
+  const statoField=opzStato?('<div class="field"><label>Stato</label><select id="sd-stato-op">'+opzStato.map(x=>'<option value="'+x+'" '+(statoAttuale===x?'selected':'')+'>'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('')+'</select><p class="help">Eseguita e Assenza ingiustificata contano nel monte ore del progetto; Annullata no (la sessione resta recuperabile in futuro).</p></div>'):'';
+  openModal('<h3>'+utTitle+' — '+fmtDate(s.data)+'</h3><dl class="kv"><dt>Orario</dt><dd>'+esc(s.oraInizio||s.ora_inizio||'—')+(s.oraFine||s.ora_fine?' – '+esc(s.oraFine||s.ora_fine):'')+'</dd><dt>Progetto</dt><dd>'+esc(pr?pr.nome:'—')+'</dd><dt>Operatore</dt><dd>'+esc(op?fullName(op):'—')+'</dd><dt>Sede</dt><dd>'+esc(s.sede||'—')+(s.aula?' · '+esc(s.aula):'')+'</dd>'+(s.sede==='Online'&&s.onlineDaCasa!=null?('<dt>Modalità online</dt><dd>'+(s.onlineDaCasa?'🏠 Da casa':'🏢 In sede')+'</dd>'):'')+statoRO+(s.note?'<dt>Note admin</dt><dd>'+esc(s.note)+'</dd>':'')+'</dl>'+statoField+'<div class="field"><label>Note operatore</label><textarea id="sd-note-op" '+(canEdit?'':'readonly')+'>'+esc(s.noteOperatore||'')+'</textarea></div><div class="modal-actions">'+(isAdmin?'<button class="btn danger-o left" id="sd-delete">Elimina</button><button class="btn ghost" id="sd-edit">Modifica</button>':'')+'<button class="btn ghost" data-close>Chiudi</button>'+(canEdit?'<button class="btn primary" id="sd-save-note">💾 Salva</button>':'')+'</div>');
   if(ut)$('#sd-open-utente').addEventListener('click',e=>{e.preventDefault();openUtenteReadonly(ut);});
   if(canEdit)$('#sd-save-note').addEventListener('click',async()=>{
     s.noteOperatore=$('#sd-note-op').value.trim();
-    const nuovoStato=$('#sd-stato-op').value;if(nuovoStato)s.stato=nuovoStato;
+    const selStato=$('#sd-stato-op');
+    if(selStato){
+      const nuovoStato=selStato.value;
+      // Non fidarsi della sola UI (le opzioni mostrate sono già filtrate): rivalidare qui la transizione prima
+      // di scrivere, così un tentativo di forzare un valore fuori dalle opzioni (es. da console) viene ignorato.
+      if(nuovoStato!==statoAttuale){if(transizioneAmmessa(state.role,statoAttuale,nuovoStato))s.stato=nuovoStato;else console.warn('Transizione di stato non consentita, ignorata:',statoAttuale,'->',nuovoStato);}
+    }
     await withBusy(()=>saveRecord('sessioni',s),'Salvato');closeModal();refreshCurrent();
   });
   if(isAdmin){$('#sd-edit').addEventListener('click',()=>{closeModal();openSessionModal(s);});

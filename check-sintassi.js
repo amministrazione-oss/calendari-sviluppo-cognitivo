@@ -76,7 +76,7 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati'];
 const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO'];
 
 function buildSandbox(html) {
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -192,6 +192,33 @@ function runTest(sandbox) {
     check('fallback: tempoBustoCesate mancante -> usa tempoBustoCasa(25), margine 9<25 -> in sede', r.daCasa, false);
     check('fallback segnalato', r.bustoFallback, true);
   }
+
+  // statiSelezionabili / transizioneAmmessa — Ciclo D (S9, campo stato unico)
+  check('statiSelezionabili Admin: tutte le 5', statiSelezionabili('Admin', 'proposta'), ['proposta', 'confermata', 'eseguita', 'assenza ingiustificata', 'annullata']);
+  check('statiSelezionabili Admin da confermata: tutte le 5 comunque', statiSelezionabili('Admin', 'confermata'), ['proposta', 'confermata', 'eseguita', 'assenza ingiustificata', 'annullata']);
+  check('statiSelezionabili Operatore da confermata: solo confermata+3 esiti', statiSelezionabili('Operatore', 'confermata'), ['confermata', 'eseguita', 'assenza ingiustificata', 'annullata']);
+  check('statiSelezionabili Operatore da proposta: nessuna modifica ammessa', statiSelezionabili('Operatore', 'proposta'), null);
+  check('statiSelezionabili Operatore da eseguita: nessuna modifica ammessa', statiSelezionabili('Operatore', 'eseguita'), null);
+  check('statiSelezionabili Operatore da annullata: nessuna modifica ammessa', statiSelezionabili('Operatore', 'annullata'), null);
+  check('transizioneAmmessa: nessun cambiamento sempre ammesso (anche Operatore da proposta)', transizioneAmmessa('Operatore', 'proposta', 'proposta'), true);
+  check('transizioneAmmessa Admin: proposta->confermata', transizioneAmmessa('Admin', 'proposta', 'confermata'), true);
+  check('transizioneAmmessa Admin: confermata->proposta (indietro, ammesso solo per Admin)', transizioneAmmessa('Admin', 'confermata', 'proposta'), true);
+  check('transizioneAmmessa Operatore: confermata->eseguita', transizioneAmmessa('Operatore', 'confermata', 'eseguita'), true);
+  check('transizioneAmmessa Operatore: proposta->confermata NEGATO (non puo toccare proposta)', transizioneAmmessa('Operatore', 'proposta', 'confermata'), false);
+  check('transizioneAmmessa Operatore: confermata->proposta NEGATO (mai indietro)', transizioneAmmessa('Operatore', 'confermata', 'proposta'), false);
+  check('transizioneAmmessa Operatore: eseguita->annullata NEGATO (esito gia definito, non riapribile da Operatore)', transizioneAmmessa('Operatore', 'eseguita', 'annullata'), false);
+
+  // pesoStato / pesoMassimoSelezione / riepilogoStati — Ciclo D (S1, avviso graduato eliminazione multipla)
+  check('pesoStato proposta -> 0', pesoStato('proposta'), 0);
+  check('pesoStato annullata -> 0', pesoStato('annullata'), 0);
+  check('pesoStato confermata -> 1', pesoStato('confermata'), 1);
+  check('pesoStato eseguita -> 2', pesoStato('eseguita'), 2);
+  check('pesoStato assenza ingiustificata -> 2', pesoStato('assenza ingiustificata'), 2);
+  check('pesoMassimoSelezione: solo proposta/annullata -> 0', pesoMassimoSelezione([{ stato: 'proposta' }, { stato: 'annullata' }]), 0);
+  check('pesoMassimoSelezione: include confermata -> 1', pesoMassimoSelezione([{ stato: 'proposta' }, { stato: 'confermata' }]), 1);
+  check('pesoMassimoSelezione: include eseguita -> 2 (il piu pesante vince)', pesoMassimoSelezione([{ stato: 'confermata' }, { stato: 'eseguita' }]), 2);
+  check('pesoMassimoSelezione: selezione vuota -> 0', pesoMassimoSelezione([]), 0);
+  check('riepilogoStati: conteggio per stato, manca stato -> proposta implicito', riepilogoStati([{ stato: 'proposta' }, {}, { stato: 'eseguita' }, { stato: 'eseguita' }]), { proposta: 2, eseguita: 2 });
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));
   return fails === 0;

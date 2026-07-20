@@ -1395,3 +1395,110 @@ Progetto **"BrainRx, cliente Bianchi"**, frequenza 3/settimana, durata 60 min. N
 
 ## Limiti di questa verifica
 `check-sintassi.js` verifica sintassi reale e comportamento delle funzioni pure estratte dal file reale — un livello di garanzia comportamentale genuino, non simulato. Non è stato invece possibile eseguire l'intera `generateMonth`/`generateMonthAI` (funzioni profondamente legate a `state`, MSAL, SharePoint) in questo ambiente: lo scenario S7 e quello S5 sopra sono stati tracciati a mano riga per riga sul codice reale con valori concreti, non osservati da un'esecuzione dal vivo. Si raccomanda il test manuale descritto nella sezione precedente subito dopo il deploy.
+
+---
+
+# Verifica — Ciclo D: S9 (campo stato unico) + S1 (eliminazione multipla)
+
+Data: 2026-07-17.
+
+## Nota di fedeltà preliminare: il "doppio campo Stato/Esito" non è mai esistito come campo dati
+
+Prima di implementare la migrazione richiesta dal punto 2 di S9, ho verificato se un campo `esito` separato fosse mai stato scritto dal codice, in qualunque versione precedente: `git log --all -p -- index.html | grep -n "\.esito\|esito:"` non restituisce **alcun** risultato, e nessuna occorrenza di `.esito` (accesso a proprietà) esiste nel file attuale. Quello che il prompt/CLAUDE.md descrivevano come "doppio campo" era in realtà una **doppia interfaccia sullo stesso dato**: `openSessionDetail` mostrava da tempo un tag "Stato" di sola lettura (nella `<dl>`) **e**, separatamente, un controllo "Esito sessione" (`sd-stato-op`, opzioni fisse `eseguita`/`annullata`/`assenza ingiustificata`) che scriveva — da sempre — sullo stesso identico campo `s.stato`, mai su un campo `esito` a parte. Segnalo questa discrepanza come da prassi (non corretta in silenzio); ho comunque implementato la migrazione richiesta al punto 2 come rete di sicurezza difensiva, per l'ipotesi (non verificabile con certezza assoluta dal solo codice applicativo) che qualche record nella lista SharePoint `Gestionale_Sessioni` porti un campo `esito` letterale scritto da uno strumento esterno a questa app (es. una chiamata Graph/SharePoint diretta durante un test).
+
+## S9 — Campo stato sessione unico
+
+**Cosa è stato fatto**:
+- **Unificazione dell'interfaccia** (`openSessionDetail`): rimossa la coppia "Stato" (tag di sola lettura, sempre mostrato) + "Esito sessione" (select separata, sempre mostrata se `canEdit`). Ora un'unica variabile `opzStato=canEdit?statiSelezionabili(state.role,statoAttuale):null` decide la presentazione: se `opzStato` è `null`, resta **solo** il tag di sola lettura nella `<dl>`; se è valorizzato, il tag di sola lettura **sparisce** e al suo posto compare un unico campo "Stato" editabile con **solo** le opzioni ammesse (mai un elenco più ampio "filtrato solo al salvataggio"). Non esistono più due rappresentazioni contemporanee dello stesso dato nella stessa schermata.
+- **Due nuove funzioni pure condivise** (`statiSelezionabili(role,statoAttuale)`, `transizioneAmmessa(role,statoAttuale,statoNuovo)`):
+  - Admin: `statiSelezionabili` restituisce sempre tutti e 5 gli stati (`STATI_SESS`), da qualunque stato di partenza — copre esplicitamente `proposta`↔`confermata` in entrambe le direzioni, richiesto dal punto 3.
+  - Operatore: `null` (nessuna modifica ammessa) da qualunque stato **tranne** `confermata`; da `confermata` restituisce `['confermata','eseguita','assenza ingiustificata','annullata']` (la propria stessa voce + i tre esiti, mai `proposta`).
+  - `transizioneAmmessa` è la stessa logica riusata come guardia: `statoNuovo===statoAttuale` è sempre ammesso (nessun cambiamento); altrimenti verifica che `statoNuovo` sia tra le opzioni di `statiSelezionabili` per quel ruolo/stato di partenza.
+- **Validazione anche al salvataggio, non solo nelle opzioni mostrate** (richiesto esplicitamente dal punto 3, "mai fidarsi della sola UI"): il gestore di `#sd-save-note` rilegge `nuovoStato` dal select e, se diverso dallo stato catturato all'apertura della scheda, richiama `transizioneAmmessa(state.role,statoAttuale,nuovoStato)` prima di scrivere su `s.stato` — se la transizione non è ammessa la scrittura viene **ignorata** (con un `console.warn`), non silenziosamente accettata. Questo neutralizza anche il caso limite di un elemento `<select>` iniettato via console con un valore fuori dalle opzioni previste (vedi scenario tracciato sotto).
+- **Migrazione** in `loadAll()`: `state.data.sessioni.filter(s=>s.hasOwnProperty('esito')&&s.esito)` individua eventuali record legacy, sposta il valore su `stato` e rimuove `esito`; si salvano **solo** i record effettivamente toccati (non l'intera lista sessioni, a differenza delle migrazioni precedenti su operatori/progetti che sono liste tipicamente piccole — le sessioni possono essere molte). **Nessun marcatore anti-doppia-applicazione**: a differenza della migrazione h:mm (che richiede `oreInMinuti` perché un valore già in minuti è indistinguibile da uno in ore senza un marcatore), qui la condizione stessa (presenza del campo `esito`) sparisce non appena la migrazione gira una volta — è già idempotente per costruzione.
+- **Semi-trasparenza `proposta`**: nuova classe CSS `.ev.proposta{opacity:.55}` applicata in `evChip()` (Calendario) e `tr.rowlink.stato-proposta{opacity:.7}` applicata alla riga in `renderSessioni()` (lista Sessioni) — quest'ultima in aggiunta al tag colorato già esistente (`statoTag`), non in sostituzione.
+- **Regole di monte ore e protezione dalla rigenerazione (punto 5), dimostrazione che restano intatte**: nessuna di queste letture è stata toccata da questo ciclo — `oreErog(pid)` (riga 659) filtra ancora `s.stato==='eseguita'||s.stato==='assenza ingiustificata'`; `sessioniDaConservare(ms,scopeIds)` (riga 1594) filtra ancora `!(s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId))` — cioè conserva tutto tranne le `proposta` in ambito, `confermata`/`eseguita`/`assenza ingiustificata` restano sempre vincoli attivi indipendentemente da chi/come le ha portate a quello stato. Poiché S9 non introduce nuovi valori di stato né un campo diverso da `s.stato` (la migrazione converge sempre sullo stesso campo), queste due funzioni non necessitavano di alcuna modifica — verificato leggendole riga per riga, non solo per assunzione.
+
+| Parte | Stato |
+|---|---|
+| Unico campo "Stato" (select o tag, mai entrambi) | ✅ Fatto |
+| Permessi Admin: tutte le transizioni incl. proposta↔confermata | ✅ Fatto (`statiSelezionabili`) |
+| Permessi Operatore: solo confermata→esiti, mai su proposta/esiti già definiti | ✅ Fatto |
+| Validazione anche al salvataggio (non solo opzioni mostrate) | ✅ Fatto (`transizioneAmmessa` nel gestore salvataggio) |
+| Migrazione one-time campo esito legacy → stato | ✅ Fatto (rete di sicurezza; campo mai trovato scritto dal codice, vedi nota di fedeltà) |
+| Proposta semi-trasparente nel Calendario | ✅ Fatto (`.ev.proposta`) |
+| Proposta distinguibile nella lista Sessioni | ✅ Fatto (tag colorato preesistente + nuova classe di riga `.stato-proposta`) |
+| Monte ore (`oreErog`) invariato | ✅ Verificato, nessuna modifica necessaria |
+| Protezione da rigenerazione (`sessioniDaConservare`) invariata | ✅ Verificato, nessuna modifica necessaria |
+
+### Scenario tracciato a mano: permessi in UI e al salvataggio
+
+**Caso 1 — Operatore, sessione propria `confermata`**: apre il dettaglio, `canEdit=true` (proprietario), `statoAttuale='confermata'`, `statiSelezionabili('Operatore','confermata')=['confermata','eseguita','assenza ingiustificata','annullata']` → select con 4 opzioni, `confermata` preselezionata. Sceglie `eseguita` e salva: `nuovoStato='eseguita'≠statoAttuale` → `transizioneAmmessa('Operatore','confermata','eseguita')` → `true` → `s.stato='eseguita'` scritto.
+
+**Caso 2 — Operatore, sessione propria `proposta`, tentativo di forzatura da console**: apre il dettaglio, `statiSelezionabili('Operatore','proposta')=null` → nessun select creato (solo il tag di sola lettura). Ipotesi: un utente tecnicamente capace inietta da devtools un `<select id="sd-stato-op">` con valore `confermata` e preme "Salva". Il gestore rilegge comunque `$('#sd-stato-op')` (trova l'elemento iniettato), `nuovoStato='confermata'≠statoAttuale='proposta'` → `transizioneAmmessa('Operatore','proposta','confermata')` → `statiSelezionabili('Operatore','proposta')` è `null` → `false` → la scrittura viene **ignorata**, `s.stato` resta `proposta`. Dimostra che il controllo al salvataggio non dipende dal fatto che il select "regolare" non fosse mai stato creato.
+
+**Limite non risolvibile da questo file** (stesso già documentato per `openUtenteReadonly` in un ciclo precedente): un utente che chiami direttamente `saveRecord('sessioni',{...s,stato:'confermata'})` da console, bypassando interamente `openSessionDetail`, aggirerebbe comunque `transizioneAmmessa` — la vera garanzia richiederebbe permessi a livello di lista SharePoint (`Gestionale_Sessioni`), non ottenibile da `index.html`. La rivalidazione al salvataggio implementata qui alza la soglia oltre la sola interfaccia visibile (soddisfa la richiesta esplicita "mai fidarsi della sola UI"), ma non è un confine di sicurezza assoluto.
+
+---
+
+## S1 — Eliminazione multipla (solo Admin)
+
+**Cosa è stato fatto**:
+- **Selezione multipla** in "Sessioni", visibile **solo per Admin** (colonna checkbox e barra azioni assenti per l'Operatore, che non vede mai i controlli di massa): checkbox per riga (`class="sess-chk"`) più un "seleziona tutte" nell'intestazione (`#sess-selall`, riflette se **tutte** le righe attualmente visibili — cioè dopo i filtri correnti — sono selezionate). Il click sulla checkbox ferma la propagazione (`e.stopPropagation()`) per non aprire anche il dettaglio della riga. La selezione è tenuta in `state.selSessioni` (un `Set`, mai persistito) e viene ripulita dagli id non più visibili quando cambia un filtro, così una sessione filtrata via non resta "selezionata alla cieca".
+- **Barra azioni di massa** (compare solo quando `state.selSessioni.size>0`): conteggio selezionati, select con i 5 `STATI_SESS` + pulsante "Cambia stato", pulsante "🗑 Elimina selezionate", pulsante "Deseleziona tutte".
+- **Cambio stato di massa**: applica `transizioneAmmessa('Admin',...)` per ciascuna sessione selezionata (sempre vero per Admin da/verso qualunque stato, ma il controllo resta per coerenza col punto S9 e per non dipendere da un'assunzione impliciita se in futuro i permessi Admin dovessero mai restringersi) — con una conferma semplice prima di procedere (non richiesta esplicitamente per il cambio stato, solo per l'eliminazione, ma aggiunta per prevenire un click accidentale su una barra che appare solo con selezione attiva).
+- **Eliminazione di massa con avviso graduato** (`confermaEliminazioneMultipla`, richiama le funzioni pure `pesoMassimoSelezione`/`riepilogoStati`): calcola il peso più alto nella selezione (`pesoStato`: 0 per `proposta`/`annullata`, 1 per `confermata`, 2 per `eseguita`/`assenza ingiustificata`) e mostra, in tutti e tre i casi, il riepilogo per stato (`riepilogoStati`, es. "2 proposta, 1 confermata, 3 eseguita"): peso 0 → un solo `confirm()`; peso 1 → un `confirm()` con testo esplicito "ATTENZIONE... CONFERMATE"; peso 2 → **due** `confirm()` in sequenza (il primo annullabile interrompe subito l'intera operazione), il secondo esplicitamente "DEFINITIVAMENTE", entrambi ricordano che quelle sessioni contano nel monte ore.
+- **Non implementato in questo ciclo, come da istruzione esplicita**: la scorciatoia dal Calendario "gestisci sessioni di questo utente" (punto 8) — annotata come rimandata al Ciclo E in `CLAUDE.md`/`CONTESTO.md` (si aggancia al filtro utente→progetto di S2), nessuna versione provvisoria costruita nel frattempo.
+
+| Parte | Stato |
+|---|---|
+| Selezione multipla (solo Admin) | ✅ Fatto (`state.selSessioni`, checkbox + seleziona tutte) |
+| Cambio stato di massa (stessi permessi S9) | ✅ Fatto (`transizioneAmmessa`) |
+| Eliminazione di massa con avviso graduato a 3 livelli | ✅ Fatto (`pesoMassimoSelezione`) |
+| Riepilogo per stato nell'avviso | ✅ Fatto (`riepilogoStati`) |
+| Scorciatoia dal Calendario | ⚠️ Rimandata al Ciclo E, come da istruzione esplicita del prompt |
+
+### Scenario tracciato a mano: avviso graduato
+
+Selezione di 4 sessioni: 2 `proposta`, 1 `confermata`, 1 `eseguita`. `riepilogoStati` → `{proposta:2, confermata:1, eseguita:1}` → dettaglio "2 proposta, 1 confermata, 1 eseguita". `pesoMassimoSelezione` → `Math.max(pesoStato('proposta')=0, pesoStato('proposta')=0, pesoStato('confermata')=1, pesoStato('eseguita')=2) = 2` → ramo "doppia conferma esplicita", con il riepilogo completo (non solo "1 eseguita") mostrato in **entrambi** i dialoghi. Se l'utente annulla il primo `confirm`, la funzione ritorna `false` immediatamente: il secondo dialogo non compare e nessuna sessione viene eliminata.
+
+## Estensione di `check-sintassi.js`
+
+Aggiunte alle liste di estrazione le 5 nuove funzioni pure: `statiSelezionabili`, `transizioneAmmessa`, `pesoStato`, `pesoMassimoSelezione`, `riepilogoStati`. 23 nuovi casi di test (40→63 totali): 6 su `statiSelezionabili` (Admin da qualunque stato, Operatore da `confermata`/`proposta`/`eseguita`/`annullata`), 7 su `transizioneAmmessa` (nessun cambiamento sempre ammesso, Admin avanti e indietro, Operatore consentito da confermata, Operatore negato su proposta e all'indietro e da un esito già definito), 5 su `pesoStato`, 4 su `pesoMassimoSelezione` (incluso array vuoto), 1 su `riepilogoStati` (incluso un record senza `stato`, che deve contare come `proposta`).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js`**: 3 blocchi `<script>` OK; 63 test funzionali (40 preesistenti + 23 nuovi) — **tutti passano**.
+2. **Passata 2 — verifica punto per punto del prompt** (S9 punti 1-5, S1 punti 6-8): vedi tabelle sopra, incrociate con il codice reale (numeri di riga citati per `oreErog`/`sessioniDaConservare`).
+3. **Passata 3 — scenario tracciato a mano sui permessi** (S9): vedi "Scenario tracciato a mano: permessi in UI e al salvataggio" sopra, inclusa la simulazione di un tentativo di forzatura da console.
+4. **Passata 4 — scenario tracciato a mano sull'avviso graduato** (S1): vedi sopra, con verifica esplicita che un annullamento sul primo dialogo del livello "doppia conferma" interrompe subito l'intera operazione.
+5. **Passata 5 — cronologia git per la nota di fedeltà**: `git log --all -p -- index.html | grep esito:` e ricerca di `.esito` nel file attuale, entrambi senza risultati — base della segnalazione in apertura.
+6. **Passata 6 — nessuna regressione sui cicli precedenti**: i 40 test già esistenti (Cicli B/B.1/C) restano invariati e passano; verificato che `openSessionModal` (Admin, "Modifica") e il suo select `se-stato` con tutti i `STATI_SESS` non sono stati toccati; verificato che `sessioniVisibili()` (Operatore vede solo le proprie sessioni, in ogni stato) non è stato toccato.
+7. **Passata 7 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (S9/S1 marcate ✅ Implementato con il dettaglio tecnico, scorciatoia Calendario esplicitamente rimandata), `CONTESTO.md` (Cronologia voce 30, Backlog voce 21/Ciclo D, Registro delle decisioni voci 34-38) e questo file descrivono la stessa implementazione con gli stessi nomi di funzione; nessuna incongruenza trovata.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (S9 punti 1-5, S1 punti 6-8, estensione `check-sintassi.js`, verifica multi-passata) conteneva già le specifiche tecniche complete.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 34-38 (nota di fedeltà sul campo esito mai esistito nei dati; unico controllo "Stato" invece di tag+select; validazione anche al salvataggio; due conferme sequenziali invece di una sola rafforzata; scorciatoia Calendario rimandata senza versione provvisoria).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| S9.1 | Eliminare il doppio campo, un solo `stato` per l'intera catena | ✅ Fatto | Il dato era già unico; unificata anche l'interfaccia (un solo controllo, non due) |
+| S9.2 | Migrazione one-time con marcatore anti-doppia-applicazione | ✅ Fatto (rete di sicurezza) | Nessun campo `esito` mai trovato nei dati storici (nota di fedeltà); nessun marcatore necessario, condizione auto-eliminante |
+| S9.3 | Permessi Admin/Operatore, applicati in UI e al salvataggio | ✅ Fatto | `statiSelezionabili` (UI) + `transizioneAmmessa` (salvataggio), scenario di forzatura tracciato |
+| S9.4 | Proposta semi-trasparente nel Calendario, distinguibile in Sessioni | ✅ Fatto | `.ev.proposta` + `.stato-proposta`, in aggiunta al tag colorato preesistente |
+| S9.5 | Monte ore/rigenerazione invariati, dimostrarlo | ✅ Verificato | `oreErog`/`sessioniDaConservare` non toccate, lette riga per riga |
+| S1.6 | Selezione multipla, cambio stato ed eliminazione di massa | ✅ Fatto | Checkbox + barra azioni, solo Admin |
+| S1.7 | Avviso graduato con riepilogo per stato | ✅ Fatto | 3 livelli, doppia conferma per eseguita/assenza ingiustificata |
+| S1.8 | Scorciatoia Calendario rimandata al Ciclo E, annotata | ✅ Fatto | Annotata in `CLAUDE.md`/`CONTESTO.md`, non implementata |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`, migrazione idempotente, permessi in UI e al salvataggio per entrambi i ruoli, regole monte ore invariate) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti (S1.8 è un rimando esplicitamente richiesto, non una lacuna). Non eseguibile in questo ambiente (nessun login M365/browser reale): il test dal vivo dell'intero flusso — aprire una sessione `confermata` come Operatore di test e verificare che il select mostri solo i 4 stati attesi; selezionare sessioni miste in "Sessioni" come Admin e verificare i tre livelli di avviso; verificare visivamente la semi-trasparenza delle `proposta` nel Calendario — raccomandato a Simone come primo collaudo dopo il deploy.
+
+## Limiti di questa verifica
+`check-sintassi.js` verifica sintassi reale e le 5 nuove funzioni pure con casi concreti — un livello di garanzia comportamentale genuino sulla logica di permesso, non simulato. Non è stato invece possibile osservare dal vivo il rendering condizionale di `openSessionDetail`/`renderSessioni` (markup, classi CSS, comparsa/scomparsa dei controlli) in un browser reale: il comportamento è stato tracciato a mano leggendo il codice generato riga per riga con valori concreti (vedi i due scenari sopra), non osservato in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente subito dopo il deploy, con particolare attenzione al caso "Operatore su una propria sessione confermata" (l'unico in cui l'Operatore ottiene un controllo di stato editabile).
