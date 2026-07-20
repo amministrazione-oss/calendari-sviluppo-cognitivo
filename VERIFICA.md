@@ -1796,3 +1796,70 @@ Aggiunta `isRecordSingolo` (e la costante `LISTE_RECORD_SINGOLO`) alle funzioni/
 
 ## Limiti di questa verifica
 Questo ciclo è principalmente diagnostico: non è stato possibile eseguire dal vivo alcuna chiamata reale a Microsoft Graph verso il tenant di Simone (nessun accesso in questo ambiente), quindi il punto (d) — la causa ultima del fallimento — resta un'ipotesi, non un fatto accertato. `check-sintassi.js` verifica solo la nuova funzione pura `isRecordSingolo` con casi concreti. Tutto il resto (il comportamento di `saveRecord`/`loadAll`/`persistReport`/`renderReportStorico` di fronte a un vero errore Graph) è stato tracciato a mano leggendo il codice reale riga per riga, non osservato in esecuzione. Si raccomanda esplicitamente che Simone riporti il messaggio esatto che comparirà nel banner d'errore (se compare) per una diagnosi definitiva.
+
+---
+
+# Verifica — Ciclo E.3: etichetta utente/progetto in "Report precedenti"
+
+Data: 2026-07-20. Novità di sola UI (nessun tocco all'algoritmo di generazione né migrazioni), richiesta esplicita.
+
+## Cosa è stato fatto
+
+- **Nuova colonna "Utente/Progetto"** nella tabella "Report precedenti" (`renderReportStorico`), fra "Mese" e "Metodo".
+- **Nuova funzione pura `etichettaAmbitoReport(scope,scopeProjects,utenti)`**: se `scopeProjects.length===1` (indipendentemente da quale Ambito fosse selezionato — "Singolo progetto", ma anche "Tutti i progetti attivi" se per caso ne esiste uno solo, o un filtro per nome risolto a un solo risultato) restituisce `"Cognome Nome — NomeProgetto"`; altrimenti, se `scope==='all'`, `"Tutti i progetti"`; altrimenti (filtro per nome con più — o zero — risultati) `"N utenti"` (utenti **distinti**, non progetti — Registro delle decisioni voce 54) o, per zero risultati, `"Nessun progetto in ambito"`. Il conteggio a 1 progetto vince sempre sulla scelta di ambito (Registro delle decisioni, voce 53): descrive cosa è successo davvero in quella generazione, non quale opzione era selezionata nel menu.
+- **Calcolo al momento del salvataggio, non propagato dai generatori**: `generateMonth`/`generateMonthAI` calcolano già `scopeProjects` internamente ma non lo restituiscono; invece di cambiare la loro firma di ritorno (avrebbe accoppiato la UI dei report al valore di ritorno dei generatori), i due gestori dei pulsanti "Genera" richiamano una seconda volta `determinaAmbito(spid,projNameFilter)` — con gli **stessi identici argomenti** già usati per la chiamata di generazione appena conclusa, e `state.data.progetti` invariato nel frattempo (nessun `await` fra le due chiamate che potrebbe permettere una modifica) — garantendo lo stesso identico `scopeProjects` che la generazione ha effettivamente usato (Registro delle decisioni, voce 55).
+- **`persistReport(report,ambitoLabel)`**: nuovo secondo parametro opzionale; il record salvato include ora `ambitoLabel` (o `null` se non fornito). **Nessuna migrazione dei report già salvati** (come richiesto esplicitamente): quei record non hanno il campo, `renderReportStorico()` mostra `'—'` per loro (`r.ambitoLabel||'—'`).
+- **Nessuna modifica al contenuto del report aperto** (`openGenReport`): la colonna nuova vive solo nella tabella riassuntiva di "Report precedenti", non nella vista di dettaglio di un singolo report — coerente con "nessun tocco al contenuto interno, è la revisione già rimandata".
+
+| Parte | Stato |
+|---|---|
+| Colonna "Utente/Progetto" in "Report precedenti" | ✅ Fatto |
+| Etichetta diretta per esattamente 1 progetto, a prescindere dall'ambito scelto | ✅ Fatto (`etichettaAmbitoReport`) |
+| Riepilogo sintetico ("Tutti i progetti" / "N utenti") per più progetti, mai un elenco completo | ✅ Fatto |
+| Nessuna migrazione dei report esistenti; riepilogo generico (`—`) per quelli | ✅ Fatto |
+| Nessun tocco al contenuto interno del report aperto | ✅ Verificato — `openGenReport` invariato |
+
+### Scenario tracciato a mano: i quattro casi di ambito
+
+1. **Ambito "Singolo progetto"**, `spid='pA'` (progetto "BrainRx" di Rossi Anna, `utenteId:'u1'`): `determinaAmbito('pA',null).scopeProjects` → `[pA]` (un solo elemento, per costruzione di `determinaAmbito` quando `spid` è valorizzato). `etichettaAmbitoReport('single',[pA],utenti)` → length===1 → `"Rossi Anna — BrainRx"`.
+2. **Ambito "Tutti i progetti attivi"**, 5 progetti attivi di 4 utenti diversi: `scopeProjects.length===5` → non 1 → `scope==='all'` → `"Tutti i progetti"` (non "4 utenti": l'ambito "tutti" ha sempre questa etichetta, indipendentemente da quanti progetti/utenti coinvolge davvero — coerente con la richiesta "riepilogo sintetico tipo... 'Tutti i progetti'" per questo caso specifico).
+3. **Ambito "Per nome progetto"**, filtro `"feuerstein"` che risolve a 2 progetti di 2 utenti diversi: `scopeProjects.length===2`, `scope==='byname'` (non `'all'`) → conta utenti distinti: `2` → `"2 utenti"`.
+4. **Ambito "Per nome progetto"**, filtro che risolve a 2 progetti **dello stesso utente** (es. "Feuerstein BS1" e "Feuerstein BS2" di Bianchi Mario): `scopeProjects.length===2` → non 1 → `scope!=='all'` → utenti distinti: `new Set(['u2','u2']).size===1` → `"1 utente"` (singolare corretto, non "1 utenti").
+5. **Caso limite**: ambito "Tutti i progetti attivi" ma con un solo progetto attivo in quel momento (es. centro appena avviato, un solo cliente): `scopeProjects.length===1` → **vince il ramo "un solo progetto"**, non `scope==='all'` → mostra comunque `"Cognome Nome — NomeProgetto"`, non "Tutti i progetti" (Registro delle decisioni, voce 53 — verificato che l'ordine dei controlli in `etichettaAmbitoReport` metta il check di lunghezza PRIMA del check su `scope`, garantendo questa precedenza).
+
+## Estensione di `check-sintassi.js`
+
+Aggiunta `etichettaAmbitoReport` alle funzioni estratte. 8 nuovi casi (81→89 totali): ambito "single" con un progetto, ambito "byname" risolto a un solo progetto (stessa etichetta diretta, non "1 utente" — verifica esplicita che il tipo di ambito non influenzi questo caso), ambito "all" con più progetti, ambito "all" con un solo progetto attivo (verifica esplicita del caso limite 5 sopra), "byname" con più utenti distinti, "byname" con più progetti dello stesso utente (singolare "1 utente"), "byname" senza risultati, e un progetto con `utenteId` non risolvibile (fallback `"?"`, mai un'eccezione).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — `node check-sintassi.js`**: 3 blocchi `<script>` OK; 89 test funzionali (81 preesistenti + 8 nuovi) — **tutti passano**.
+2. **Passata 2 — verifica punto per punto del prompt**: vedi tabella sopra.
+3. **Passata 3 — scenario tracciato a mano sui quattro casi di ambito + il caso limite "tutti con un solo progetto"**: vedi sopra, incluso il caso limite esplicitamente menzionato nella richiesta implicita di "sempre sensata a prescindere dall'ambito".
+4. **Passata 4 — verifica che il ricalcolo di `determinaAmbito()` nel gestore del click sia coerente con quello usato dalla generazione**: riletti `generateMonth`/`generateMonthAI` — entrambi chiamano `determinaAmbito(spid,nameFilter)` con gli stessi parametri all'inizio della funzione; il gestore del click li richiama con gli stessi `spid`/`projNameFilter` subito dopo che `await generateMonth(...)`/`await generateMonthAI(...)` si sono risolti, senza alcun `await` intermedio che possa aver modificato `state.data.progetti` — garantendo lo stesso risultato.
+5. **Passata 5 — nessuna regressione sui cicli E/E.1/E.2**: verificato che `openGenReport`, `costruisciReportGenerazione`, `proposteDaSostituire`, `isRecordSingolo`, `state.reportErrore` non siano stati toccati da questo ciclo — solo `persistReport` (nuovo parametro opzionale, retrocompatibile: chiamarla senza secondo argomento produce `ambitoLabel:null`, comportamento innocuo), `renderReportStorico` (nuova colonna) e i due gestori dei pulsanti "Genera" (una riga aggiuntiva ciascuno); gli 81 test preesistenti restano invariati e passano.
+6. **Passata 6 — verifica retrocompatibilità con i report già salvati (nessuna migrazione)**: un record persistito prima di questo ciclo non ha la proprietà `ambitoLabel` — `r.ambitoLabel||'—'` in `renderReportStorico` gestisce correttamente sia `undefined` sia `null` (entrambi falsy in JavaScript), mostrando `'—'` senza errori né necessità di normalizzare i dati esistenti.
+7. **Passata 7 — coerenza incrociata fra le quattro fonti**: `CLAUDE.md` (S3 estesa con la nuova colonna e la funzione), `CONTESTO.md` (Cronologia voce 34, Registro delle decisioni voci 53-55) e questo file descrivono la stessa implementazione con gli stessi nomi di funzione; nessuna incongruenza trovata.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna — il prompt (regola di etichettatura con i due casi espliciti, indicazione di determinare il caso dai dati esistenti o aggiungere un campo di comodo in `persistReport`, nessuna migrazione) conteneva già tutto il necessario.
+
+*Domande poste a Simone e risposte ricevute:* nessuna.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 53-55 (il conteggio vince sempre sull'ambito scelto; "N utenti" conta utenti distinti non progetti; ambito ricalcolato con `determinaAmbito()` invece di propagato dai generatori).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Un solo progetto → "Cognome Nome — NomeProgetto" | ✅ Fatto | Vince sempre sul tipo di ambito scelto |
+| 2 | Più progetti → riepilogo sintetico ("N utenti" / "Tutti i progetti"), mai un elenco completo | ✅ Fatto | `scope==='all'` → "Tutti i progetti"; altrimenti "N utenti" (distinti) |
+| 3 | Determinare il caso dai dati esistenti; se serve un campo di comodo, aggiungerlo in `persistReport`, nessuna migrazione | ✅ Fatto | `ambitoLabel` opzionale, calcolato al momento e passato a `persistReport` |
+| 4 | Nessuna modifica al contenuto interno del report aperto | ✅ Verificato | `openGenReport` invariato |
+| Verifica | Multi-passata (min. 4, incl. `node check-sintassi.js`) | ✅ Fatto | 7 passate |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Non eseguibile in questo ambiente (nessun login M365/browser reale): il test dal vivo — generare con i tre ambiti diversi (singolo progetto, tutti, per nome con più risultati) e verificare a schermo l'etichetta corretta in "Report precedenti" — raccomandato a Simone come collaudo dopo il deploy, insieme alla verifica visiva che un report salvato prima di questo ciclo mostri "—" senza errori.
+
+## Limiti di questa verifica
+`check-sintassi.js` verifica `etichettaAmbitoReport` con casi concreti, incluso il caso limite "ambito tutti con un solo progetto attivo" esplicitamente richiesto dalla logica "sempre sensata a prescindere dall'ambito". Non è stato possibile osservare dal vivo il rendering della nuova colonna in un browser reale, né generare realmente con i tre ambiti per vedere l'etichetta a schermo: il comportamento è stato tracciato a mano leggendo il codice generato riga per riga con valori concreti (i quattro scenari sopra), non osservato in esecuzione. Si raccomanda il test manuale descritto nella sezione precedente dopo il deploy.

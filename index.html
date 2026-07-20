@@ -680,6 +680,23 @@ function riepilogoStatoProgetto(sessioniProgetto){
 // Filtra l'elenco "utenti" di un report di generazione per un singolo utenteId (S3, vista filtrabile per utente);
 // senza filtro (utenteId falsy) restituisce l'elenco intero, invariato.
 function filtraReportUtenti(utenti,utenteId){return utenteId?utenti.filter(u=>u.utenteId===utenteId):utenti;}
+// Etichetta ambito per "Report precedenti" (Ciclo E.3): sempre sensata a prescindere dall'ambito scelto in
+// generazione. Se il run ha riguardato esattamente un progetto (indipendentemente dal fatto che l'ambito fosse
+// "Singolo progetto" o un filtro per nome risolto a un solo risultato), un riferimento diretto "Cognome Nome —
+// NomeProgetto"; altrimenti un riepilogo sintetico ("Tutti i progetti" per l'ambito "tutti", "N utenti" per un
+// filtro per nome con più risultati) — MAI un elenco completo, che diventerebbe illeggibile con molti progetti.
+function etichettaAmbitoReport(scope,scopeProjects,utenti){
+  if(scopeProjects.length===1){
+    const p=scopeProjects[0];
+    const u=utenti.find(x=>x.id===p.utenteId);
+    const nomeUtente=u?((u.cognome||'')+(u.nome?' '+u.nome:'')).trim():'?';
+    return nomeUtente+' — '+p.nome;
+  }
+  if(scope==='all')return'Tutti i progetti';
+  if(!scopeProjects.length)return'Nessun progetto in ambito';
+  const nUtenti=new Set(scopeProjects.map(p=>p.utenteId)).size;
+  return nUtenti+(nUtenti===1?' utente':' utenti');
+}
 // Minuti erogati (eseguita+assenza ingiustificata) sul monte ore progetto — restituisce MINUTI, non più ore decimali (S6, 17/07)
 function oreErog(pid){return state.data.sessioni.filter(s=>s.progettoId===pid&&(s.stato==='eseguita'||s.stato==='assenza ingiustificata')).reduce((sum,x)=>sum+(tmin(x.oraFine||x.ora_fine||'0:00')-tmin(x.oraInizio||x.ora_inizio||'0:00')),0);}
 // Sottrae la fascia [da,a] da un elenco di fasce {from,to,...}, spezzando le fasce che la contengono
@@ -1285,7 +1302,11 @@ function openGenReport(report,filtroUtenteId){
 // generazione stessa non deve mai fallire per una funzione di persistenza opzionale/accessoria.
 // FIX 2 (Ciclo E.1): prima di arrendersi, ritenta la risoluzione delle liste — la lista può essere stata creata
 // su SharePoint dopo il caricamento della pagina (Simone la crea, ma non ricarica subito il gestionale).
-async function persistReport(report){
+// ambitoLabel (opzionale, Ciclo E.3): etichetta pre-calcolata (etichettaAmbitoReport) da mostrare in "Report
+// precedenti" senza dover ricostruire l'ambito della generazione a posteriori. I report salvati prima di questo
+// ciclo non ce l'hanno (nessuna migrazione retroattiva, come da richiesta): renderReportStorico ricade su un
+// riepilogo generico per quelli.
+async function persistReport(report,ambitoLabel){
   if(!report)return;
   if(!state.listIds.report&&state.siteId){
     await tryResolveLists(state.siteId);
@@ -1294,7 +1315,7 @@ async function persistReport(report){
     if(state.listIds.report){try{state.data.report=await loadListRecords('report');state.reportErrore=null;}catch(e){console.warn('Caricamento report (dopo risoluzione tardiva) saltato:',e);state.reportErrore=e.message;}}
   }
   if(!state.listIds.report)return; // ancora assente dopo il ritentativo: salta, l'avviso lo mostra già renderReportStorico()
-  const rec={id:uid(),generatoIl:new Date().toISOString(),mese:report.mese,metodo:report.metodo,esito:report.utenti.length?'con carenze':'completo',report};
+  const rec={id:uid(),generatoIl:new Date().toISOString(),mese:report.mese,metodo:report.metodo,esito:report.utenti.length?'con carenze':'completo',ambitoLabel:ambitoLabel||null,report};
   // Ciclo E.2: l'errore non va più solo in console (invisibile a Simone) — state.reportErrore lo rende visibile
   // in "Report precedenti" (renderReportStorico), distinto dal caso "storico vuoto" (non si sa se sia vuoto o
   // se il caricamento/salvataggio sia semplicemente fallito: due situazioni diverse, mai confuse in un solo messaggio).
@@ -1307,9 +1328,9 @@ function renderReportStorico(){
   if(state.reportErrore){box.innerHTML='<div class="banner warn">Impossibile caricare o salvare lo storico dei report: <strong>'+esc(state.reportErrore)+'</strong>. Segnala questo messaggio esatto per la diagnosi. Causa probabile: la colonna "Data" della lista <code>Gestionale_Report</code> su SharePoint non è di tipo "Più righe di testo" (i report sono JSON molto più grandi di una sessione/progetto e superano il limite di "Una sola riga di testo"), oppure il nome interno della colonna non corrisponde a "Data" (capita se rinominata dopo la creazione).</div>';return;}
   const list=(state.data.report||[]).slice().sort((a,b)=>(b.generatoIl||'').localeCompare(a.generatoIl||''));
   if(!list.length){box.innerHTML='<p class="help">Nessun report salvato finora. Ogni generazione (algoritmo o IA) salva qui automaticamente il proprio report.</p>';return;}
-  box.innerHTML='<table class="list"><thead><tr><th>Generato il</th><th>Mese</th><th>Metodo</th><th>Esito</th><th></th></tr></thead><tbody>'+list.map(r=>{
+  box.innerHTML='<table class="list"><thead><tr><th>Generato il</th><th>Mese</th><th>Utente/Progetto</th><th>Metodo</th><th>Esito</th><th></th></tr></thead><tbody>'+list.map(r=>{
     const[ry,rm]=(r.mese||'').split('-').map(Number);
-    return'<tr><td>'+fmtDateTime(r.generatoIl)+'</td><td>'+esc(ry&&rm?monthLabel(ry,rm-1):r.mese||'—')+'</td><td>'+(r.metodo==='algoritmo'?'Algoritmo':'IA')+'</td><td><span class="tag '+(r.esito==='completo'?'ok':'warn')+'">'+esc(r.esito||'—')+'</span></td><td><button class="btn ghost small" data-rep-id="'+r.id+'">Apri</button></td></tr>';
+    return'<tr><td>'+fmtDateTime(r.generatoIl)+'</td><td>'+esc(ry&&rm?monthLabel(ry,rm-1):r.mese||'—')+'</td><td>'+esc(r.ambitoLabel||'—')+'</td><td>'+(r.metodo==='algoritmo'?'Algoritmo':'IA')+'</td><td><span class="tag '+(r.esito==='completo'?'ok':'warn')+'">'+esc(r.esito||'—')+'</span></td><td><button class="btn ghost small" data-rep-id="'+r.id+'">Apri</button></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#gen-report-storico [data-rep-id]').forEach(b=>b.addEventListener('click',()=>{const rec=list.find(r=>r.id===b.dataset.repId);if(rec)openGenReport(rec.report);}));
 }
@@ -2733,7 +2754,9 @@ $('#btn-gen').addEventListener('click',async()=>{
   $('#gen-results').innerHTML='<div class="banner info">Generazione in corso…</div>';
   try{const res=await generateMonth(ms,spid,projNameFilter);
   state.lastGenReport=res.report;
-  persistReport(res.report); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
+  // Ciclo E.3: etichetta ambito ("Cognome Nome — Progetto" / "Tutti i progetti" / "N utenti") per "Report
+  // precedenti" — ricalcolata con la stessa determinaAmbito() usata dalla generazione, non dedotta dal report.
+  persistReport(res.report,etichettaAmbitoReport(scope,determinaAmbito(spid,projNameFilter).scopeProjects,state.data.utenti)); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
   let html='<div class="card"><div class="card-pad"><h3>'+res.count+' sessioni create</h3>';
   if(res.anom.length)html+='<div style="margin-top:8px">'+res.anom.map(a=>'<p><strong>'+esc(a.lbl)+'</strong>: '+esc(a.msg)+'</p>').join('')+'</div>';
   else html+='<span class="tag ok">✓ Tutte le frequenze soddisfatte</span>';
@@ -2751,7 +2774,7 @@ $('#btn-gen-ai').addEventListener('click',async()=>{
   $('#gen-results').innerHTML='<div class="banner info">🤖 L\'IA sta analizzando operatori, progetti, disponibilità e vincoli… Questo può richiedere 10–30 secondi.</div>';
   try{const res=await generateMonthAI(ms,spid,notes,projNameFilter);
   state.lastGenReport=res.report;
-  persistReport(res.report); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
+  persistReport(res.report,etichettaAmbitoReport(scope,determinaAmbito(spid,projNameFilter).scopeProjects,state.data.utenti)); // S3 (Ciclo E): salvataggio automatico, non blocca la UI né la generazione se fallisce
   let h='<div class="card"><div class="card-pad"><h3>🤖 '+res.count+' sessioni create con IA</h3>';
   if(res.anom.length)h+='<div style="margin-top:8px"><strong>Note:</strong>'+res.anom.map(a=>'<p>'+esc(a.lbl)+': '+esc(a.msg)+'</p>').join('')+'</div>';
   else h+='<span class="tag ok">✓ Generazione completata senza anomalie</span>';

@@ -76,7 +76,7 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo', 'etichettaAmbitoReport'];
 const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS', 'LISTE_RECORD_SINGOLO'];
 
 function buildSandbox(html) {
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo, etichettaAmbitoReport } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -270,6 +270,19 @@ function runTest(sandbox) {
   check('isRecordSingolo: utenti -> array', isRecordSingolo('utenti'), false);
   check('isRecordSingolo: progetti -> array', isRecordSingolo('progetti'), false);
   check('isRecordSingolo: chiave sconosciuta -> array per default (mai record singolo "per errore")', isRecordSingolo('lista_futura_qualunque'), false);
+
+  // etichettaAmbitoReport — Ciclo E.3 (etichetta utente/progetto in "Report precedenti")
+  {
+    const utenti = [{ id: 'u1', cognome: 'Rossi', nome: 'Anna' }, { id: 'u2', cognome: 'Bianchi', nome: 'Mario' }];
+    check('etichettaAmbitoReport: ambito "single" -> un solo progetto -> Cognome Nome — Progetto', etichettaAmbitoReport('single', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }], utenti), 'Rossi Anna — BrainRx');
+    check('etichettaAmbitoReport: ambito "byname" risolto a un solo progetto -> stessa etichetta diretta (non "1 utente")', etichettaAmbitoReport('byname', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }], utenti), 'Rossi Anna — BrainRx');
+    check('etichettaAmbitoReport: ambito "all" -> sempre "Tutti i progetti", anche con più progetti', etichettaAmbitoReport('all', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }, { id: 'pB', nome: 'Feuerstein', utenteId: 'u2' }], utenti), 'Tutti i progetti');
+    check('etichettaAmbitoReport: ambito "all" con un solo progetto attivo -> comunque il riferimento diretto (vince il conteggio, non l\'ambito)', etichettaAmbitoReport('all', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }], utenti), 'Rossi Anna — BrainRx');
+    check('etichettaAmbitoReport: ambito "byname" con più risultati, utenti distinti -> "N utenti"', etichettaAmbitoReport('byname', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }, { id: 'pB', nome: 'Feuerstein', utenteId: 'u2' }], utenti), '2 utenti');
+    check('etichettaAmbitoReport: ambito "byname" con più progetti dello STESSO utente -> "1 utente" (singolare)', etichettaAmbitoReport('byname', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }, { id: 'pC', nome: 'Feuerstein BS2', utenteId: 'u1' }], utenti), '1 utente');
+    check('etichettaAmbitoReport: ambito "byname" senza risultati -> messaggio esplicito', etichettaAmbitoReport('byname', [], utenti), 'Nessun progetto in ambito');
+    check('etichettaAmbitoReport: progetto con utente non trovato -> "?" invece di lanciare un errore', etichettaAmbitoReport('single', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u9' }], utenti), '? — BrainRx');
+  }
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));
   return fails === 0;
