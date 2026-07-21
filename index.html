@@ -1211,6 +1211,10 @@ function openSessionModal(s={}){
   seBaseline=collectSeState();
   $('#se-save').addEventListener('click',async()=>{
     const rec={...s,id:s.id||uid(),data:$('#se-data').value,oraInizio:$('#se-inizio').value,oraFine:$('#se-fine').value,utenteId:$('#se-utente').value,progettoId:$('#se-progetto').value,operatoreId:$('#se-operatore').value,sede:$('#se-sede').value,aula:($('#se-sede').value==='Cesate'||$('#se-sede').value==='Busto Arsizio')?($('#se-aula').value||null):null,stato:$('#se-stato').value,note:$('#se-note').value.trim(),noteOperatore:s.noteOperatore||''};
+    // Origine (Ciclo F1.1): marcata "manuale" solo alla CREAZIONE da questo modale — una sessione già esistente
+    // (generata o manuale) mantiene la propria origine invariata anche se qui viene solo modificata, tramite lo
+    // spread {...s} sopra. Le "manuali" non vengono mai eliminate da una rigenerazione (proposteDaSostituire).
+    if(isNew)rec.origine='manuale';
     if(!rec.data||!rec.oraInizio||!rec.utenteId||!rec.operatoreId){$('#se-warn').innerHTML='<div class="banner warn">Compila i campi obbligatori.</div>';return;}
     await withBusy(()=>saveRecord('sessioni',rec),isNew?'Sessione creata':'Aggiornata');seBaseline=null;closeModal();refreshCurrent();
   });
@@ -1807,17 +1811,21 @@ function determinaAmbito(spid,nameFilter){
   }
   return{scopeProjects,scopeIds:new Set(scopeProjects.map(p=>p.id))};
 }
-// Sessioni da conservare intatte: tutto TRANNE le "proposta" dei progetti in ambito (le uniche cancellabili/ricreabili).
-// Confermate, eseguite, assenze ingiustificate, annullate e le proposte fuori ambito restano sempre intoccabili.
+// Sessioni da conservare intatte: tutto TRANNE le "proposta" GENERATE dei progetti in ambito (le uniche
+// cancellabili/ricreabili). Confermate, eseguite, assenze ingiustificate, annullate, le proposte fuori ambito E le
+// proposte di origine "manuale" (Ciclo F1.1 — s.origine!=='manuale', vedi campo su creaSessionePiazzata/openSessionModal;
+// assente = "generata" per retrocompatibilità) restano sempre intoccabili, qualunque sia il loro stato.
 function sessioniDaConservare(ms,scopeIds){
-  return state.data.sessioni.filter(s=>!(s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)));
+  return state.data.sessioni.filter(s=>!(s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)&&s.origine!=='manuale'));
 }
-// Complemento ESATTO di sessioniDaConservare (stessa condizione, non negata): le "proposta" del mese in ambito che
-// questo run sta per sostituire — vanno eliminate da SharePoint prima di salvare le nuove (FIX 1, Ciclo E.1), o
-// restano record orfani che ricompaiono come duplicati al prossimo caricamento. Presa come parametro esplicito
-// (non lette da state.data.sessioni) per restare testabile in isolamento in check-sintassi.js.
+// Complemento ESATTO di sessioniDaConservare (stessa condizione, non negata): le "proposta" GENERATE del mese in
+// ambito che questo run sta per sostituire — vanno eliminate da SharePoint prima di salvare le nuove (FIX 1, Ciclo
+// E.1), o restano record orfani che ricompaiono come duplicati al prossimo caricamento. Le proposte di origine
+// "manuale" non sono mai incluse (Ciclo F1.1): l'utente può sempre inserirle a mano senza rischiare che una
+// rigenerazione le cancelli. Presa come parametro esplicito (non lette da state.data.sessioni) per restare
+// testabile in isolamento in check-sintassi.js.
 function proposteDaSostituire(sessioni,ms,scopeIds){
-  return sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId));
+  return sessioni.filter(s=>s.data.startsWith(ms)&&s.stato==='proposta'&&scopeIds.has(s.progettoId)&&s.origine!=='manuale');
 }
 // Giorno di inizio della "settimana" di generazione (finestre di 7 giorni dal 1° del mese: 1-7,8-14,15-21,...),
 // lo stesso schema usato da riepiloghi/Passata 1/Passata 3 e da riepilogoSettimanaleDaSessioni — NON settimane ISO lun-dom.
@@ -2152,7 +2160,7 @@ async function generateMonth(ms,spid,nameFilter){
   // diversamente il proprio conteggio piazzate/placed).
   function creaSessionePiazzata(p,ds,st,en,op,sed,cAula,sessionCount){
     const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
-    return{id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:op.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType?sessType.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType?sessionCount%p.tipiSessione.length:null,onlineDaCasa:null};
+    return{id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:op.id,sede:sed,aula:cAula||null,stato:'proposta',origine:'generata',note:'',composizione:sessType?sessType.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType?sessionCount%p.tipiSessione.length:null,onlineDaCasa:null};
   }
 
   // PASSATA 1: piazzamento di tutte le sessioni (senza ancora decidere online da casa/in sede)
@@ -2235,9 +2243,48 @@ async function generateMonth(ms,spid,nameFilter){
       const ultima=ultimaLezioneValida(keep,p.id);
       let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();let piazzata=false;
       if(!ultima){
-        // Fuori scopo di F.1 stabilire una regola per il primissimo incontro assoluto di un progetto quindicinale/
-        // mensile (nessuna lezione precedente da cui misurare la distanza): nessun piazzamento arbitrario, solo segnalazione.
-        anom.push({lbl,msg:'Modalità '+modo+': nessuna lezione precedente valida (proposta/confermata/eseguita) trovata — impossibile calcolare la prossima data. Inserisci manualmente la prima sessione.'});
+        // BOOTSTRAP (Ciclo F1.1): nessuna lezione precedente valida in alcun mese — non c'è una distanza da cui
+        // calcolare la prossima data, quindi si cerca la PRIMA sessione nel primo giorno utile del mese di
+        // generazione stesso, scorrendo i giorni in ordine (non un unico candidato come nel ramo con ancora sotto)
+        // finché disponibilità utente/operatore, sedi del progetto e chiusure centro non ammettono uno slot — stessa
+        // ricerca giorno/fascia della modalità settimanale sopra, fermata al primo piazzamento riuscito. Le sessioni
+        // successive continueranno a cascata nei run dei mesi successivi, usando questa come nuova ultimaLezioneValida.
+        for(let d=1;d<=days&&!piazzata;d++){
+          const dt=new Date(Y,M-1,d);const dn=dname(dt);if(dn==='Dom')continue;
+          const dsB=Y+'-'+pad2(M)+'-'+pad2(d);
+          if(chiusureDates.has(dsB))continue;
+          const todayPlacedB=(prB[p.id]||[]).filter(b=>b.date===dsB).length;
+          if(todayPlacedB>=maxDay)continue;
+          const pRngB=effRng(p,dsB,dn);
+          if(!pRngB.length){diagNoUtente++;giorniNoUtente.add(dn);continue;}
+          for(const ur of pRngB){
+            if(piazzata)break;
+            const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+            if(rT-rF<(p.durataSessione||60))continue;
+            for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+              const en=st+(p.durataSessione||60);
+              const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===dsB));
+              if(!rfreeConGap(uBN,st,en))continue;
+              const res=sceglieOperatoreEAula(p,dsB,dn,st,en,pool,sessionCount);
+              if(res.chosen){
+                const{chosen,cAula,chosenSed}=res;
+                if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                  const wkMin=minutiSettimana(chosen,dsB,opB,Y,M)+(p.durataSessione||60);
+                  if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+                }
+                const sess=creaSessionePiazzata(p,dsB,st,en,chosen,chosenSed,cAula,sessionCount);
+                newS.push(sess);
+                (opB[chosen.id]=opB[chosen.id]||[]).push({date:dsB,from:st,to:en});
+                (prB[p.id]=prB[p.id]||[]).push({date:dsB,from:st,to:en});
+                if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:dsB,from:st,to:en});
+                piazzata=true;sessionCount++;break;
+              }else{
+                if(res.tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
+              }
+            }
+          }
+        }
+        if(!piazzata)anom.push({lbl,msg:'Modalità '+modo+': nessuna lezione precedente e nessun giorno del mese compatibile con disponibilità/aule/operatori trovato per la prima sessione. Inserisci manualmente la prima sessione.'});
       }else{
         const candidata=slittaGiornoValido(addGiorni(ultima,min),chiusureDates);
         const candidataYM=candidata.slice(0,7);
@@ -2308,7 +2355,7 @@ async function generateMonth(ms,spid,nameFilter){
     const sc=sessionCountByProject[p.id]||0;
     const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sc%p.tipiSessione.length]:null;
     sessionCountByProject[p.id]=sc+1;
-    return{id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:op.id,sede:sed,aula:cAula||null,stato:'proposta',note:'[recuperata — Passata 3]',composizione:sessType?sessType.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType?sc%p.tipiSessione.length:null,onlineDaCasa:null};
+    return{id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:op.id,sede:sed,aula:cAula||null,stato:'proposta',origine:'generata',note:'[recuperata — Passata 3]',composizione:sessType?sessType.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType?sc%p.tipiSessione.length:null,onlineDaCasa:null};
   }
   // Cerca, per la sessione "blocco" (che deve restare nella sua stessa settimana), uno slot alternativo valido con lo stesso operatore
   function trovaAlternativaBlocker(blocco){
@@ -2587,7 +2634,7 @@ Genera il calendario ottimale. Se non riesci a soddisfare tutte le frequenze, ge
       const auConflict=(auBusyKeep[sess.aula]||[]).some(b=>b.date===sess.data&&stF<b.to&&enF>b.from);
       if(auConflict){anom.push({lbl:'Conflitto aula',msg:'Sessione del '+sess.data+' per "'+pr.nome+'": aula "'+sess.aula+'" già occupata da un vincolo attivo. Sessione scartata.'});continue;}
     }
-    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',note:'[generata con IA]',noteOperatore:'',onlineDaCasa:null};
+    const rec={id:uid(),data:sess.data,oraInizio:sess.oraInizio,oraFine:sess.oraFine,utenteId:pr.utenteId,progettoId:sess.progettoId,operatoreId:sess.operatoreId,sede:sedeFinale,aula:sess.aula||null,stato:'proposta',origine:'generata',note:'[generata con IA]',noteOperatore:'',onlineDaCasa:null};
     newS.push(rec);
   }
   // PASSATA 2: per ogni operatore/giornata, in ordine cronologico su TUTTE le sue sessioni (anche fuori ambito), decide onlineDaCasa e l'aula eventuale

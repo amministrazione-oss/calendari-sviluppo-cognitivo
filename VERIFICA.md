@@ -2107,3 +2107,98 @@ Gli scenari applicativi (candidata normale, slittamento, candidata scaduta/non a
 ## Discrepanze da discutere
 
 - **Segnalata, non risolta in autonomia**: la specifica S11 originale (17/07, in `CLAUDE.md`) descriveva la modalità "2 volte/mese" come un'alternanza di settimane (settimana con incontro, settimana vuota); l'implementazione di oggi (Ciclo F.1), su indicazione diretta di Simone in sessione, usa invece "quindicinale" come distanza pura di 12-16 giorni dall'ultima lezione — un meccanismo diverso da quello originale. Il testo originale di S11 è stato conservato in `CLAUDE.md` (sotto "Testo originale S11") per lo storico, non riscritto: la discrepanza è dichiarata esplicitamente lì e qui, non nascosta.
+
+---
+
+# Verifica — Ciclo F1.1: HOTFIX modalità quindicinale (bootstrap + protezione lezione manuale)
+
+Data: 2026-07-21. HOTFIX su due bug emersi dal collaudo di Simone sul Ciclo F.1, entrambi testati su un progetto quindicinale nuovo senza alcuna sessione pregressa. Tocca solo la Passata 1 di `generateMonth` e le funzioni condivise `sessioniDaConservare`/`proposteDaSostituire`; nessuna migrazione distruttiva.
+
+## Causa reale (indagata prima di correggere, come richiesto dal prompt)
+
+Il prompt di apertura proponeva un'ipotesi per il Bug 2: "la pulizia delle proposte avviene prima della ricerca dell'ancora". **Verificato leggendo il codice che l'ipotesi non è quella esatta** — la cancellazione reale su SharePoint (`deleteRecord`, riga ~2445 di `generateMonth`) avviene sì cronologicamente dopo Passata 1, ma non è quello il punto in cui la lezione manuale si perdeva.
+
+La causa reale è a monte, nella riga `const keep=sessioniDaConservare(ms,scopeIds);` calcolata in testa alla funzione, **prima** di qualunque piazzamento: `sessioniDaConservare` (prima di questo hotfix) escludeva già dalla sua definizione ogni `proposta` del mese in generazione appartenente a un progetto in ambito, senza distinguere fra una proposta generata dall'algoritmo e una inserita a mano — perché non esisteva alcun campo per distinguerle. Di conseguenza:
+- `ultimaLezioneValida(keep,p.id)` (usata per calcolare l'ancora, Ciclo F.1) riceveva un `keep` già privo della lezione manuale e restituiva `null` **indipendentemente** dall'ordine in cui la cancellazione SharePoint sarebbe avvenuta più tardi nella stessa run — da cui il Bug 1 (nessuna ancora → nessun bootstrap → 0 sessioni, con lo stesso identico sintomo sia che la lezione manuale esistesse sia che non esistesse alcuna lezione precedente).
+- La lezione manuale, rientrando nella stessa definizione di "proposta sostituibile" di `proposteDaSostituire` (complemento esatto di `sessioniDaConservare`), veniva poi effettivamente cancellata da SharePoint in coda alla run — da cui il Bug 2.
+
+Un'unica causa strutturale comune a entrambi i sintomi osservati da Simone, non due bug indipendenti: l'assenza di un modo per distinguere una sessione manuale da una generata.
+
+## Cosa è stato fatto
+
+**Bug 2 — protezione della lezione manuale (corretto a monte, risolve anche l'ancora):**
+- Nuovo campo `s.origine` (`'manuale'` / `'generata'`) su ogni sessione. `openSessionModal()` lo imposta a `'manuale'` **solo alla creazione** (`isNew`) — un'edit successiva non lo tocca mai, grazie allo spread `{...s}` nel record salvato (decisione 69, `CONTESTO.md`): correggere a mano un dettaglio di una sessione già generata non la rende "manuale".
+- I tre punti di generazione automatica — `creaSessionePiazzata` (Passata 1), `creaSessioneRiparata` (Passata 3), e il record costruito nella validazione post-IA di `generateMonthAI` — impostano sempre `origine:'generata'` esplicito.
+- Retrocompatibilità: sessioni preesistenti senza il campo sono trattate come `'generata'` (nessuna migrazione, come da istruzione esplicita del prompt).
+- `sessioniDaConservare(ms,scopeIds)`/`proposteDaSostituire(sessioni,ms,scopeIds)` — restano l'esatto complemento l'una dell'altra — escludono ora sempre `s.origine==='manuale'` dalla sostituibilità, qualunque sia lo stato della sessione. Effetto: sia la rigenerazione (`generateMonth`/`generateMonthAI`) sia "🗑 Svuota proposte del mese" (riusa `proposteDaSostituire`) non toccano mai più una proposta manuale.
+- **Effetto collaterale corretto, non un secondo intervento**: una volta che `keep` include di nuovo la lezione manuale, `ultimaLezioneValida(keep,p.id)` la trova naturalmente come ancora — non è stata necessaria alcuna modifica a `ultimaLezioneValida` stessa (decisione implicita: la causa era a monte, non lì).
+
+**Bug 1 — bootstrap del primissimo incontro:**
+- Nuovo ramo in `generateMonth`, attivo solo quando `ultimaLezioneValida(keep,p.id)` restituisce `null` (nessuna lezione precedente valida in nessun mese): invece del solo avviso precedente, scorre i giorni del mese di generazione dal giorno 1 in avanti (decisione 67, `CONTESTO.md` — a differenza del ramo con ancora, qui non c'è un giorno "naturale" da cui slittare solo per domenica/chiusura), saltando domeniche e chiusure centro, e per ciascun giorno prova la stessa ricerca giorno/fascia già usata dalla modalità settimanale (disponibilità utente `effRng`, poi per ogni fascia oraria uno scorrimento a passi di 30 minuti con `rfreeConGap`/`sceglieOperatoreEAula`, stessa gestione del tetto ore contrattuali Assunto).
+- Si ferma al **primo** piazzamento riuscito (`piazzata=true`, mai più di una sessione bootstrap per run, coerente col limite "al più una candidata per mese" già esistente per questa modalità dal Ciclo F.1).
+- Se nessun giorno del mese ammette un piazzamento (nessuna eccezione (`throw`) sollevata in alcun caso), resta un avviso esplicito che invita a inserire la sessione a mano — stesso stile testuale dell'avviso precedente, riformulato per riflettere che ora è stata tentata una ricerca su tutto il mese, non un solo giorno.
+- Le sessioni successive del progetto continuano a cascata nei run dei mesi successivi, usando questa come nuova `ultimaLezioneValida` — nessuna modifica necessaria a quella logica, già esistente dal Ciclo F.1.
+
+| Punto | Stato |
+|---|---|
+| Bug 1: bootstrap piazza la prima sessione nel primo giorno utile del mese quando non esiste ancora un'ancora | ✅ Fatto |
+| Bug 1: rispetta disponibilità utente/operatore, sedi progetto, chiusure, orari 09:00-19:30, gap 5 minuti | ✅ Fatto (riusa `effRng`/`sceglieOperatoreEAula`/`rfreeConGap`, stessa Passata 1) |
+| Bug 1: sessioni successive a cascata dai run dei mesi successivi | ✅ Verificato (nessuna modifica necessaria a `ultimaLezioneValida`) |
+| Bug 2: causa reale indagata e riportata prima di correggere | ✅ Fatto (vedi sezione sopra — ipotesi del prompt confutata, causa reale diversa) |
+| Bug 2: sessione manuale mai eliminata da una rigenerazione, qualunque stato | ✅ Fatto (`origine!=='manuale'` in `sessioniDaConservare`/`proposteDaSostituire`) |
+| Bug 2: sessione manuale usata come ancora se compatibile con la cadenza | ✅ Verificato (effetto collaterale della correzione a monte, non un intervento separato) |
+| Campo origine con retrocompatibilità (assente → "generata") | ✅ Fatto |
+| Nessuna migrazione distruttiva | ✅ Verificato |
+
+### Scenario tracciato a mano: i due bug, prima e dopo
+
+1. **Bug 1, prima**: progetto quindicinale creato oggi, nessuna sessione. `ultimaLezioneValida(keep,p.id)` → `null` → ramo `if(!ultima)` → solo `anom.push(...)`, nessun piazzamento. Riepilogo: `piazzate:0,richieste:1`. **Dopo**: stesso progetto, il nuovo ciclo bootstrap scorre i giorni dal 1°; assumendo che il progetto abbia disponibilità utente dichiarata e un operatore del pool libero al giorno 3 del mese (i giorni 1-2 fossero indisponibili per l'utente), la sessione viene piazzata al giorno 3, `piazzata=true`, riepilogo `piazzate:1,richieste:1`.
+2. **Bug 2, prima**: Simone crea a mano una sessione il 2026-08-05 per lo stesso progetto (stato `proposta`, nessun campo `origine` prima di questo hotfix). Genera con algoritmo per agosto: `keep=sessioniDaConservare('2026-08',scopeIds)` la esclude (proposta+in ambito+nel mese) → `ultimaLezioneValida(keep,...)` → `null` → stesso Bug 1 (0 sessioni piazzate) **e** in coda alla run `proposteDaSostituire` la include fra le "da eliminare" → la sessione manuale del 05/08 viene cancellata da SharePoint. **Dopo**: la stessa sessione, creata da `openSessionModal` con `isNew=true`, riceve `origine:'manuale'`. Rigenerando agosto: `sessioniDaConservare` non la esclude più (origine manuale) → resta in `keep` → `ultimaLezioneValida(keep,p.id)` la trova (`'2026-08-05'`, stato `proposta`, valida) → il ramo con ancora (non più il bootstrap) calcola la candidata successiva a partire da lì; `proposteDaSostituire` non la seleziona più per la cancellazione → sopravvive alla rigenerazione.
+3. **Retrocompatibilità verificata**: una sessione preesistente (creata prima di questo hotfix, quindi senza campo `origine`) risulta `s.origine!=='manuale'` (undefined !== 'manuale' → true) → resta sostituibile come sempre, nessun cambio di comportamento per i dati già in SharePoint.
+
+## Estensione di `check-sintassi.js`
+
+4 nuovi casi (122→126 totali): 3 su `proposteDaSostituire` (una proposta con `origine:'manuale'` non è mai fra le "da sostituire"; una con `origine:'generata'` lo è come prima; una senza il campo lo è ugualmente, a riprova della retrocompatibilità) + 1 su `ultimaLezioneValida` (trova correttamente una proposta di origine manuale mantenuta in un `keep` simulato, a riprova che l'ancora torna a funzionare una volta risolto il Bug 2 a monte). **Non estratta** `sessioniDaConservare` stessa: a differenza di `proposteDaSostituire` (riceve `sessioni` come parametro esplicito, per restare testabile in isolamento — nota già presente nel codice dal Ciclo E.1), `sessioniDaConservare` legge `state.data.sessioni` direttamente, quindi fallirebbe in sandbox per assenza del globale `state`; la sua logica condivisa resta comunque coperta dai test su `proposteDaSostituire`, che ne sono l'esatto complemento per costruzione nel codice sorgente (annotato con un commento dedicato in `check-sintassi.js`). Il ramo di bootstrap in `generateMonth` (Bug 1) non è estraibile come funzione pura isolata — è codice inline con chiusure su molte strutture locali della Passata 1 (`opB`/`prB`/`auB`/`opRoom`/`newS`/`anom`), stessa limitazione già presente per il resto di Passata 1/3 fin dal Ciclo F.1 — verificato a mano per coerenza (vedi scenario sopra) invece che con un test automatico dedicato.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — per punto del prompt**: rilette singolarmente le richieste sui due bug (bootstrap compatibile con tutte le regole esistenti, causa reale indagata prima di correggere, sessione manuale mai eliminata qualunque stato, usata come ancora, campo origine con retrocompatibilità, chiusura ciclo con check-sintassi/CLAUDE.md/CONTESTO.md/registro/commit) — vedi tabella sopra, tutte soddisfatte.
+2. **Passata 2 — coerenza interna di `index.html`**: `node check-sintassi.js` (3 blocchi `<script>` OK, 126 test funzionali, tutti passano); grep di tutte le occorrenze di `stato:'proposta'` per confermare che i quattro punti di creazione sessione (modale manuale, `creaSessionePiazzata`, `creaSessioneRiparata`, validazione IA) siano stati tutti coperti dal campo `origine` — nessun quinto punto di creazione trovato (verificato anche che `handleImport`/Excel non crei mai sessioni, solo operatori/utenti).
+3. **Passata 3 — rilettura completa del `git diff` di `index.html`**: confermato che le uniche modifiche sono `sessioniDaConservare`/`proposteDaSostituire` (condizione `origine`), i tre punti di generazione automatica (`origine:'generata'` esplicito), `openSessionModal` (`origine:'manuale'` solo su `isNew`), e il nuovo ramo di bootstrap dentro il blocco `if(!ultima)` — nessuna modifica accidentale a Passata 2, alla modalità settimanale, a `generateMonthAI` (il bootstrap resta esplicitamente fuori scopo lì, come F.2), a `sceglieOperatoreEAula`/`creaSessionePiazzata` stesse (solo riusate, non modificate).
+4. **Passata 4 — scenari tracciati a mano**: i tre scenari sopra (Bug 1 prima/dopo, Bug 2 prima/dopo, retrocompatibilità) più una verifica esplicita che il bootstrap non possa mai piazzare più di una sessione per run (il ciclo `for(let d=1;d<=days&&!piazzata;d++)` si ferma al primo `piazzata=true`, stessa guardia usata dal ramo con ancora).
+5. **Passata 5 — confronto incrociato fra le quattro fonti**: `CLAUDE.md` (sezione Scheduling engine, nuovo paragrafo "Origine manuale vs generata" + bootstrap aggiunto al bullet Passata 1; "Sessioni states" aggiornato), `CONTESTO.md` (Cronologia voce 37 con causa reale e correzione, Backlog voce "Ciclo F1.1" sotto Ciclo F, Registro delle decisioni voci 67-69), questo file, il codice reale — stessi nomi di campo/funzione (`origine`, `'manuale'`/`'generata'`) in tutte e quattro le fonti, nessuna incongruenza propria di questo ciclo trovata.
+
+Nessuna passata aggiuntiva ha trovato nulla di nuovo dopo la quinta: verifica chiusa a 5 passate.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna oltre al prompt di apertura del ciclo, che specificava già in dettaglio i due bug, il comportamento atteso per ciascuno, l'indagine richiesta prima di correggere (con l'ipotesi di partenza da verificare, non da assumere vera), e la chiusura ciclo completa (check-sintassi.js, verifica automatica con elenco fatto/resta, copertura del collaudo sugli stati sessione, CLAUDE.md/CONTESTO.md, registro di sessione, commit e push).
+
+*Domande poste a Simone e risposte ricevute:* nessuna in questo ciclo — il prompt copriva già i casi rilevanti, incluso il chiedere esplicitamente di riportare la causa reale se l'ipotesi fornita fosse risultata sbagliata (è quanto accaduto: vedi "Causa reale" sopra). Tre decisioni implementative non specificate esplicitamente nel prompt sono state prese e dichiarate: la ricerca del bootstrap su tutti i giorni del mese (non un giorno fisso), il campo `origine` esplicito invece di un'euristica sul testo delle note, e `origine` marcata solo alla creazione (non su ogni edit).
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 67-69 (bootstrap su tutti i giorni del mese, non un giorno fisso; campo `origine` esplicito invece di un'euristica su `note`; `origine` impostata solo alla creazione, mai in un'edit successiva).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| Bug 1 | Generazione non si ferma più con 0 sessioni quando non esiste lezione precedente | ✅ Fatto | nuovo ramo di bootstrap in `generateMonth` |
+| Bug 1 | Prima sessione nel primo giorno utile del mese, rispettando tutte le regole esistenti | ✅ Fatto | riusa `effRng`/`sceglieOperatoreEAula`/`rfreeConGap`, stesse regole della modalità settimanale |
+| Bug 1 | Sessioni successive a cascata rispettando la finestra 12-16/23-30 già implementata | ✅ Verificato | nessuna modifica a `ultimaLezioneValida`/finestra, già esistenti dal Ciclo F.1 |
+| Bug 2 | Indagine della causa reale PRIMA di correggere, con verifica esplicita dell'ipotesi fornita | ✅ Fatto | vedi sezione "Causa reale" — l'ipotesi sull'ordine cancellazione/ricerca non era quella esatta |
+| Bug 2 | Ricerca dell'ancora prima di qualunque cancellazione | N/D | non applicabile alla causa reale trovata: il problema non era l'ordine di esecuzione ma la definizione di `keep`, corretta a monte |
+| Bug 2 | Sessioni manuali mai eliminate dalla rigenerazione, qualunque stato | ✅ Fatto | `origine!=='manuale'` in `sessioniDaConservare`/`proposteDaSostituire` |
+| Bug 2 | Campo origine con retrocompatibilità (assente → "generata") | ✅ Fatto | `openSessionModal` (`isNew`) vs. i tre punti di generazione automatica |
+| Bug 2 | Lezione manuale usata come ancora se compatibile con la cadenza | ✅ Verificato | effetto automatico della correzione a monte |
+| Chiusura | `check-sintassi.js` esteso e passante, copertura stati sessione (proposta/confermata/esiti) | ✅ Fatto | 4 nuovi casi (126 totali) — la protezione origine si applica solo a `proposta`, gli altri stati erano già sempre protetti indipendentemente dall'origine (invariato) |
+| Chiusura | CLAUDE.md/CONTESTO.md aggiornati, Registro di sessione | ✅ Fatto | questa voce |
+
+**Cosa manca**: bootstrap non implementato in `generateMonthAI` (stesso limite F.2 della modalità a distanza di giorni in generale, già dichiarato fuori scopo dal Ciclo F.1 — non ampliato da questo hotfix). Non eseguibile in questo ambiente: nessun test dal vivo con login M365/browser reale — il collaudo più utile per Simone è esattamente lo scenario che ha segnalato il bug (progetto quindicinale nuovo, generare con algoritmo, verificare la prima sessione piazzata; poi inserire a mano una sessione su un altro progetto quindicinale nuovo e rigenerare, verificando che sopravviva e che la successiva venga calcolata da quella).
+
+## Limiti di questa verifica
+
+I due scenari (Bug 1, Bug 2) e la retrocompatibilità sono stati tracciati a mano leggendo il codice con valori concreti, non osservati in esecuzione reale — nessun ambiente con login M365/browser disponibile qui. Le funzioni pure coinvolte (`proposteDaSostituire`, `ultimaLezioneValida`) sono invece verificate con `check-sintassi.js`, che le esegue realmente con `node --check` + casi concreti. Il ramo di bootstrap stesso resta verificato solo per lettura/ragionamento (non estraibile in sandbox, vedi sopra): si raccomanda a Simone di ripetere dal vivo il test esatto che ha fatto emergere il Bug 1 (progetto quindicinale nuovo, "Genera con algoritmo") e di verificare a schermo che la prima sessione compaia nel giorno atteso, oltre al test del Bug 2 descritto in "Cosa manca".
+
+## Discrepanze da discutere
+
+Nessuna discrepanza aperta in questo ciclo: entrambi i bug sono stati riprodotti a mano leggendo il codice, la causa reale del Bug 2 è risultata diversa dall'ipotesi del prompt (segnalato sopra, non nascosto) ma pienamente coerente con il sintomo descritto da Simone.

@@ -77,6 +77,10 @@ function extractConst(html, name) {
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
 const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo', 'etichettaAmbitoReport', 'dname', 'rfree', 'rfreeConGap', 'modalitaFrequenza', 'finestraOk', 'dateToISO', 'addGiorni', 'giorniTraDate', 'slittaGiornoValido', 'ultimaLezioneValida', 'calcStrettezza'];
+// NOTA (Ciclo F1.1): sessioniDaConservare NON è estraibile qui — a differenza di proposteDaSostituire (stessa
+// condizione, negata) legge "state.data.sessioni" direttamente invece di riceverlo come parametro, quindi fallirebbe
+// in sandbox (nessun "state" globale). La sua logica condivisa è comunque coperta dai test su proposteDaSostituire
+// sotto (sono l'esatto complemento, per costruzione nel codice sorgente).
 const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS', 'LISTE_RECORD_SINGOLO', 'GIORNI', 'FINESTRE_FREQUENZA', 'GAP_MINUTI'];
 
 function buildSandbox(html) {
@@ -259,6 +263,30 @@ function runTest(sandbox) {
     const daSostituireRun2 = proposteDaSostituire(dopoRun1, '2026-08', scopeIds);
     check('proposteDaSostituire: run 2 individua esattamente le proposte del run 1 (nessun residuo, nessuna omissione)', daSostituireRun2.map(s => s.id).sort(), ['run1-a', 'run1-b']);
     check('proposteDaSostituire: la confermata non viene mai selezionata per l\'eliminazione', daSostituireRun2.some(s => s.id === 'confermata-1'), false);
+  }
+
+  // proposteDaSostituire / origine "manuale" — Ciclo F1.1 (HOTFIX Bug 2: la lezione inserita a mano non deve
+  // mai essere cancellata da una rigenerazione, qualunque sia il suo stato, e resta disponibile come ancora)
+  {
+    const scopeIds = new Set(['pA']);
+    const sessioni = [
+      { id: 'manuale-proposta', data: '2026-08-05', stato: 'proposta', progettoId: 'pA', origine: 'manuale' }, // MAI cancellabile
+      { id: 'generata-proposta', data: '2026-08-06', stato: 'proposta', progettoId: 'pA', origine: 'generata' }, // cancellabile come sempre
+      { id: 'legacy-proposta', data: '2026-08-07', stato: 'proposta', progettoId: 'pA' }, // origine assente -> trattata come "generata" (retrocompatibilità)
+    ];
+    const daSostituire = proposteDaSostituire(sessioni, '2026-08', scopeIds);
+    check('proposteDaSostituire: la proposta "manuale" non è mai tra quelle da sostituire', daSostituire.some(s => s.id === 'manuale-proposta'), false);
+    check('proposteDaSostituire: la proposta "generata" resta sostituibile come prima', daSostituire.some(s => s.id === 'generata-proposta'), true);
+    check('proposteDaSostituire: origine assente -> trattata come "generata", resta sostituibile (retrocompatibilità)', daSostituire.some(s => s.id === 'legacy-proposta'), true);
+  }
+
+  // ultimaLezioneValida + protezione "manuale" — Ciclo F1.1 (HOTFIX Bug 2: una volta che la proposta manuale non è
+  // più tra le "da sostituire" sopra, resta nel set "keep" passato a ultimaLezioneValida e viene trovata come ancora)
+  {
+    const keepConManuale = [
+      { progettoId: 'p1', data: '2026-08-05', stato: 'proposta', origine: 'manuale' },
+    ];
+    check('ultimaLezioneValida: trova la proposta manuale mantenuta in keep, la usa come ancora per la cascata', ultimaLezioneValida(keepConManuale, 'p1'), '2026-08-05');
   }
 
   // isRecordSingolo — Ciclo E.2 (correzione di fondo: array-vs-oggetto da elenco esplicito, non da Array.isArray a runtime)
