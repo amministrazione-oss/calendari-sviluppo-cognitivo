@@ -1913,3 +1913,96 @@ Ricostruito da `git log`/`git show` (non a memoria) — tutti e cinque i commit 
 ## Metodo di verifica: multi-passata (chiusura giornata)
 
 Vedi la sezione "Verifica multi-passata di chiusura giornata" più sotto in questo stesso ciclo (dopo l'aggiornamento di `CONTESTO.md`) per le passate dedicate al controllo incrociato delle quattro fonti.
+
+---
+
+# Verifica — Ciclo H: Unificazione UI Chiusure + Impostazioni
+
+Data: 2026-07-21. Richiesta a sé di Simone (non una delle 11 specifiche S1-S11), fuori sequenza rispetto ai cicli F/G ancora da fare — da qui la lettera H. Solo interfaccia: nessun tocco all'algoritmo di generazione, agli stati sessione, alle liste SharePoint; nessuna migrazione dati.
+
+## Cosa è stato fatto
+
+**Parte 1 — Menu a discesa:**
+- `TABS.Admin` non ha più una voce `chiusure` separata: l'entry `impostazioni` porta ora un campo `children:[{id:'impostazioni',...},{id:'chiusure',...}]`.
+- `buildNav()` distingue le entry con `children`: per queste crea un wrapper `.nav-drop` con un pulsante padre `.nav-drop-toggle` e un pannello `.nav-drop-menu` con un pulsante per figlio; le entry senza `children` sono renderizzate esattamente come prima (nessuna regressione per `TABS.Operatore`, che non ha entry con figli).
+- **Apertura su hover** (desktop/dispositivi con puntatore): CSS `@media (hover:hover){.nav-drop:hover>.nav-drop-menu{display:flex}}` — gated dietro la media query, non scatta su touch.
+- **Apertura su click/tap** (necessaria su mobile, dove l'hover non esiste): il pulsante padre, al click, alterna una classe `.open` sul wrapper (`.nav-drop.open>.nav-drop-menu{display:flex}`); un click sui pulsanti figli chiude sempre il menu e naviga (`showTab`). Un listener `click` a livello di `document` (`chiudiNavDrop()`) richiude qualunque menu aperto quando si clicca/tocca fuori; i pulsanti dentro il menu chiamano `e.stopPropagation()` per non farsi richiudere dal proprio stesso click prima di aver navigato.
+- **Voce padre sempre evidenziata quando si è su una pagina figlia**: `showTab(id)` esegue prima l'evidenziazione generica esistente (`dataset.tab===id`), poi un passaggio supplementare che, per ogni `.nav-drop`, controlla se `id` compare fra i `dataset.tab` dei suoi pulsanti figli e in tal caso aggiunge `.active` anche al pulsante padre.
+- **Guardia di accesso per ruolo**: sostituito il controllo piatto `TABS[state.role].some(t=>t.id===id)` con `trovaTabById(role,id)`, che cerca sia fra le entry di primo livello sia fra i `children` di quelle con menu a discesa — stessa garanzia di prima (nessun id non ammesso per il ruolo corrente è raggiungibile, nemmeno da console), ora estesa a `chiusure`/`impostazioni` nidificati.
+- **`refreshCurrent()`** adattata: esclude il pulsante padre (`:not(.nav-drop-toggle)`) dalla ricerca del pulsante attivo, perché ora — quando si è su Chiusure — sia il padre sia il pulsante figlio "📅 Chiusure" portano la classe `active`, ma solo il figlio ha il `dataset.tab` della pagina realmente aperta.
+
+**Parte 2 — Uniformazione visiva (nessuna funzione spostata, nessun ID cambiato):**
+- Entrambe le intestazioni ora seguono lo stesso schema già in uso da Utenti/Progetti/Operatori: `<h2>` + `<p class="sub" style="margin:0 0 0 8px">` sulla stessa riga, invece del `<p>` libero sotto il blocco `view-title` usato prima da entrambe. Testo delle due descrizioni **invariato** (solo spostato/restilizzato, non riscritto — Registro delle decisioni, voce 57).
+- Il toolbar di Chiusure (select anno + i due pulsanti) è stato spostato dentro la riga `view-title` (dopo un `<div class="grow">`), lo stesso pattern già usato da Utenti/Sessioni/Operatori per i controlli di pagina — prima stava in un blocco separato sotto il paragrafo descrittivo.
+- Margini allineati a **16px** per il primo blocco di contenuto su entrambe le pagine (il `grid2` di Impostazioni li aveva già; il toolbar di Chiusure aveva 10px e la lista 12px, ora entrambi 16px) — stesso valore già usato altrove nell'app per "primo blocco sotto l'intestazione" (Registro delle decisioni, voce 58).
+- Corretti i due `<h3>` interni alle card di Impostazioni ("Formazione Operatori", "Metodi / Progetti"), che non avevano lo stile standard `font-size:15px;margin-bottom:8px` usato altrove per le intestazioni di card (Disponibilità, "📚 Report precedenti" in Genera) — un'incoerenza preesistente al ciclo, corretta di passata.
+- Corretto un commento HTML stantio (`<!-- GENERA CALENDARIO -->`, refuso preesistente sopra la sezione Impostazioni) in `<!-- IMPOSTAZIONI ... -->`, e aggiunto un commento `<!-- CHIUSURE ... -->` prima mancante sopra la sezione Chiusure.
+- **Non toccato**: `initChiusureTab`, `renderChiusure`, `initImpostazioni`, `renderImpostazioni`, `saveImp` — nessuna riga di logica cambiata, solo la posizione/stile degli elementi HTML che quelle funzioni già trovano per `id` (verificato: tutti gli `id` usati da quelle funzioni — `#chiusure-anno`, `#btn-add-chiusura`, `#btn-load-festivita`, `#chiusure-list`, `#imp-formazioni`, `#imp-metodi`, `#imp-f-new`, `#imp-f-add`, `#imp-m-new`, `#imp-m-tipo`, `#imp-m-add` — sono identici a prima).
+
+| Parte | Stato |
+|---|---|
+| Un'unica voce "Impostazioni" nel menu principale | ✅ Fatto |
+| Menu a discesa con Impostazioni + Chiusure, apertura su hover (desktop) | ✅ Fatto (`@media (hover:hover)`) |
+| Apertura anche su click/tap (mobile/tablet) | ✅ Fatto (classe `.open`, toggle su click) |
+| Voce padre evidenziata quando si è su una delle due pagine | ✅ Fatto |
+| Pagine di destinazione invariate (contenuti/funzioni/ID/handler) | ✅ Verificato |
+| Uniformazione intestazioni/pulsanti/spaziature | ✅ Fatto |
+| Nessuna sezione cambiata di pagina, nessuna funzione spostata | ✅ Verificato |
+| Nessun tocco ad algoritmo/stati sessione/liste SharePoint/migrazioni | ✅ Verificato |
+
+### Scenario tracciato a mano: desktop (hover) e mobile (tap)
+
+1. **Desktop, hover**: il mouse entra in `.nav-drop` → la media query `(hover:hover)` è vera → `.nav-drop:hover>.nav-drop-menu{display:flex}` mostra il menu senza alcun click. L'utente clicca "📅 Chiusure": handler del figlio → `stopPropagation()` (irrilevante qui, ma innocuo) → `chiudiNavDrop()` (rimuove un'eventuale classe `.open` residua, il menu resta comunque visibile finché il mouse è sopra) → `showTab('chiusure')` → `trovaTabById('Admin','chiusure')` la trova fra i `children` → passa la guardia → sezione `#view-chiusure` mostrata, `initChiusureTab()` eseguito (guardia `_bound` intatta, nessuna doppia registrazione di listener anche navigando avanti e indietro più volte).
+2. **Mobile, tap**: l'utente tocca "⚙️ Impostazioni" → `click` handler del padre: `era=false` → `chiudiNavDrop()` (no-op) → `wrap.classList.add('open')` → CSS `.open` mostra il menu. L'utente tocca "📅 Chiusure" → `stopPropagation()` impedisce che il click raggiunga il listener `document` prima di chiudere il menu esplicitamente → `chiudiNavDrop()` chiude → `showTab('chiusure')` naviga. Nessun momento in cui Chiusure sia irraggiungibile.
+3. **Mobile, tap fuori per annullare**: menu aperto (`wrap.classList` contiene `open`), l'utente tocca altrove nella pagina (es. il calendario) → il click non ha `stopPropagation()` → risale fino a `document` → `chiudiNavDrop()` chiude il menu; nessuna navigazione avviene (il tap era su un elemento che non ha un proprio handler di navigazione, o se lo aveva, esegue anche la sua azione — comportamento atteso, non diverso da un click fuori da un qualunque menu a tendina).
+4. **Evidenziazione persistente**: da `#view-chiusure` aperto, si richiama `renderCalendar()` altrove nel codice (es. cambio mese) che a sua volta non tocca la nav — l'evidenziazione del padre "⚙️ Impostazioni" resta finché non si chiama di nuovo `showTab()` con un `id` diverso da `impostazioni`/`chiusure`.
+5. **Ruolo Operatore**: `TABS.Operatore` non ha alcuna entry con `children` → il ramo `if(t.children)` di `buildNav()` non scatta mai per questo ruolo → nav identica a prima, nessuna regressione.
+
+## Decisione su `check-sintassi.js`: non estesa in questo ciclo
+
+`trovaTabById`/`chiudiNavDrop` sono tecnicamente pure (deterministiche, senza effetti collaterali se isolate dal DOM che manipolano) ma sono plumbing di navigazione dipendente dalla struttura `TABS` — una configurazione di interfaccia, non una regola di dominio come `parseHM`/`tempoBustoOperatore`/`decidiOnlineDaCasa`, il cui malfunzionamento avrebbe conseguenze su monte ore, aule o assegnazioni reali. Estrarle avrebbe richiesto anche estrarre `TABS` (un oggetto di configurazione, non una costante di dominio come `AULE_CESATE`/`STATI_SESS` già in `EXTRACT_COSTANTI`) per un beneficio marginale. Verificate invece a mano con gli scenari sopra. Registro delle decisioni, voce 59.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — per punto del prompt**: rilette singolarmente PARTE 1 (menu a discesa, hover, tap mobile, evidenziazione voce padre, nessun cambiamento alle pagine di destinazione), PARTE 2 (uniformazione intestazioni/pulsanti/spaziature/ordine sezioni) e VINCOLI (nessun tocco ad algoritmo/stati/liste/migrazioni) — vedi tabella sopra, tutti soddisfatti.
+2. **Passata 2 — coerenza interna di `index.html`**: `node check-sintassi.js` (3 blocchi `<script>` OK, 89 test funzionali invariati e tutti passano — nessuna funzione pura esistente toccata); riletta la CSS aggiunta (`.nav-drop`/`.nav-drop-toggle`/`.nav-drop-menu`, parentesi bilanciate, nessuna proprietà malformata — non coperta da `node --check`, che valida solo i blocchi `<script>`, verificata quindi a occhio); grep di tutte le occorrenze di `chiusure`/`impostazioni` nel file (48 righe) per confermare che nessun altro punto del codice assumesse l'esistenza di un pulsante di primo livello con `dataset.tab==='chiusure'` fuori da `buildNav`/`showTab`/`refreshCurrent` — nessuno trovato.
+3. **Passata 3 — confronto incrociato fra le quattro fonti**: `CLAUDE.md` (punto 6 dell'architettura, aggiornato con la nuova struttura `children`/`.nav-drop`); `CONTESTO.md` (Cronologia voce 35, Backlog voce 21 con Ciclo H aggiunto alla lista A-G, Registro delle decisioni voci 56-59); questo file; il codice reale — stessi nomi di funzione (`trovaTabById`, `chiudiNavDrop`, `buildNav`, `showTab`, `refreshCurrent`) in tutte e quattro le fonti, nessuna incongruenza trovata.
+4. **Passata 4 — scenari tracciati a mano**: i cinque scenari sopra (hover desktop, tap mobile, tap fuori per annullare, persistenza dell'evidenziazione, nessuna regressione per l'Operatore).
+5. **Passata 5 — rilettura completa del diff** (`git diff -- index.html`): confermato che le uniche righe toccate sono la CSS del menu a discesa, le due sezioni HTML Impostazioni/Chiusure, e il blocco `TABS`/`buildNav`/`showTab`/`refreshCurrent` — nessuna modifica accidentale altrove (algoritmo di generazione, `renderChiusure`, `renderImpostazioni`, liste SharePoint, `LISTE_RECORD_SINGOLO` tutti confermati invariati).
+
+Nessuna passata aggiuntiva ha trovato nulla di nuovo dopo la quinta: verifica chiusa a 5 passate.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna oltre al prompt di apertura del ciclo, che già specificava obiettivo, vincoli e chiusura ciclo in dettaglio (menu a discesa desktop+mobile, uniformazione visiva senza spostare funzioni, nessun tocco ad algoritmo/stati/liste/migrazioni, estensione di `check-sintassi.js` solo se si introducono funzioni pure riutilizzabili, riepilogo prima del commit).
+
+*Domande poste a Simone e risposte ricevute:* nessuna — il prompt copriva già i casi rilevanti (comportamento hover vs. tap, persistenza dell'evidenziazione, vincolo "nessuna funzione si sposta").
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 56-59 (la voce padre del menu non naviga da sola, apre solo il sottomenu; le descrizioni di pagina spostate senza riscriverne il testo; margini allineati al valore di 16px già in uso altrove; `trovaTabById`/`chiudiNavDrop` non aggiunte a `check-sintassi.js` perché plumbing di navigazione, non regola di dominio).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| 1 | Una sola voce "Impostazioni" nel menu principale | ✅ Fatto | `TABS.Admin` non ha più l'entry `chiusure` di primo livello |
+| 2 | Hover (desktop) apre il menu con Impostazioni + Chiusure | ✅ Fatto | `@media (hover:hover)` |
+| 3 | Click/tap sulla voce padre apre il menu anche su mobile | ✅ Fatto | classe `.open`, toggle su click |
+| 4 | Voce padre evidenziata come attiva quando si è in una delle due pagine | ✅ Fatto | passaggio supplementare in `showTab()` |
+| 5 | Nessun cambiamento alle pagine di destinazione (contenuti/funzioni/ID/handler) | ✅ Verificato | solo `buildNav`/`showTab`/`refreshCurrent` toccate lato JS di navigazione |
+| 6 | Uniformazione intestazioni/pulsanti/spaziature/ordine sezioni | ✅ Fatto | vedi Parte 2 sopra |
+| 7 | Nessuna sezione cambia pagina, nessuna funzione si sposta | ✅ Verificato | `renderChiusure`/`renderImpostazioni`/`initChiusureTab`/`initImpostazioni` invariate |
+| 8 | Nessun tocco ad algoritmo/stati sessione/liste SharePoint, nessuna migrazione | ✅ Verificato | grep mirato, nessuna occorrenza fuori posto |
+| 9 | `node check-sintassi.js` deve passare | ✅ Verificato | 89 test, invariati |
+| 10 | Verifica multi-passata (min. 4) a quattro fonti | ✅ Fatto | 5 passate |
+| 11 | Registro di sessione in `VERIFICA.md` | ✅ Fatto | sopra |
+| 12 | Riepilogo prima del commit | ⏳ Da fare subito dopo, prima di `git add`/commit/push |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti dal prompt. Non eseguibile in questo ambiente (nessun login M365/browser reale): il collaudo dal vivo del menu a discesa — hover su desktop, tap su un telefono/tablet reale, verifica visiva dell'uniformità fra le due pagine — resta da fare da Simone dopo il deploy.
+
+## Limiti di questa verifica
+
+Il comportamento di hover/tap/click-fuori è stato tracciato a mano leggendo il codice e le regole CSS riga per riga con gli scenari sopra, non osservato in un browser reale (limite dell'ambiente, non della verifica — nessun DOM/browser disponibile qui). Si raccomanda a Simone, dopo il deploy, di verificare in particolare: (a) su un telefono reale, che toccare "⚙️ Impostazioni" apra il menu e che toccare "📅 Chiusure" navighi correttamente; (b) su desktop, che l'hover apra il menu senza click; (c) visivamente, che le due pagine appaiano ora coerenti fra loro (intestazioni, pulsanti, spaziature).
+
+## Discrepanze da discutere
+
+- **Non introdotta da questo ciclo, trovata rileggendo la chiusura di ieri**: la voce "Chiusura giornata 20/07" in questo stesso file termina (sezione "Metodo di verifica: multi-passata (chiusura giornata)", subito sopra questa nuova voce) con un rimando a una sezione "Verifica multi-passata di chiusura giornata... più sotto in questo stesso ciclo" — quella sezione non risulta presente da nessuna parte nel file: il file terminava esattamente a quel rimando. Segnalato qui come richiesto dalla prassi (mai corretto in silenzio); non è stato ricostruito perché non di competenza di questo ciclo (riguarda la chiusura di una sessione precedente, il 20/07) e perché non è possibile ricostruire con certezza cosa quella sezione mancante dovesse contenere di preciso senza inventarlo.

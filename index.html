@@ -62,6 +62,16 @@ nav.tabs{display:flex;gap:2px;flex-wrap:wrap}
 nav.tabs button{background:transparent;border:none;border-radius:8px;padding:8px 13px;font-size:14px;font-weight:600;color:var(--ink-soft)}
 nav.tabs button:hover{background:var(--bg)}
 nav.tabs button.active{background:var(--teal-soft);color:var(--navy)}
+/* Menu a discesa "Impostazioni" (Ciclo H): voce padre + due voci figlie (Impostazioni/Chiusure). */
+.nav-drop{position:relative}
+.nav-drop-toggle{display:inline-flex;align-items:center;gap:4px}
+.nav-drop-toggle::after{content:'▾';font-size:10px;opacity:.6}
+.nav-drop-menu{position:absolute;top:100%;left:0;margin-top:2px;min-width:170px;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:4px;z-index:50;
+  display:none;flex-direction:column;gap:2px}
+.nav-drop-menu button{width:100%;text-align:left;white-space:nowrap}
+.nav-drop.open>.nav-drop-menu{display:flex} /* apertura su tap/click (mobile e desktop) */
+@media (hover:hover){.nav-drop:hover>.nav-drop-menu{display:flex}} /* apertura su hover (solo dispositivi con puntatore) */
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .userchip{display:flex;align-items:center;gap:8px;font-size:13px}
 .userchip .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
@@ -365,24 +375,24 @@ L17.5 11.5 L18.9 11.3 Z" fill="#f7d21e"/>
   <div class="card"><div id="pr-table"></div></div>
 </section>
 
-<!-- GENERA CALENDARIO -->
+<!-- IMPOSTAZIONI (Ciclo H: stile di intestazione/pulsanti/spaziature uniformato con Chiusure, sotto) -->
 <section id="view-impostazioni" class="hidden">
-  <div class="view-title"><h2>⚙️ Impostazioni</h2></div>
-  <p>Gestisci le liste di Formazione operatori e Metodi/Progetti. Queste liste sono usate nell'anagrafica operatore e nella creazione dei progetti.</p>
+  <div class="view-title"><h2>⚙️ Impostazioni</h2><p class="sub" style="margin:0 0 0 8px">Gestisci le liste di Formazione operatori e Metodi/Progetti. Queste liste sono usate nell'anagrafica operatore e nella creazione dei progetti.</p></div>
   <div class="grid2" style="margin-top:16px">
-    <div class="card"><div class="card-pad"><h3>Formazione Operatori</h3><div id="imp-formazioni"></div><div style="display:flex;gap:8px;margin-top:8px"><input id="imp-f-new" placeholder="Nuova formazione…" style="flex:1"><button class="btn primary small" id="imp-f-add">+ Aggiungi</button></div></div></div>
-    <div class="card"><div class="card-pad"><h3>Metodi / Progetti</h3><div id="imp-metodi"></div><div style="display:flex;gap:8px;margin-top:8px"><input id="imp-m-new" placeholder="Nuovo metodo…" style="flex:2;min-width:180px"><select id="imp-m-tipo"><option value="pratico">Pratico</option><option value="digitale">Digitale</option><option value="formazione">Formazione</option></select><button class="btn primary small" id="imp-m-add">+ Aggiungi</button></div><p style="font-size:11px;color:var(--ink-soft);margin-top:4px">Dopo aver aggiunto un metodo, clicca "Durate" per impostare le durate consentite.</p></div></div>
+    <div class="card"><div class="card-pad"><h3 style="font-size:15px;margin-bottom:8px">Formazione Operatori</h3><div id="imp-formazioni"></div><div style="display:flex;gap:8px;margin-top:8px"><input id="imp-f-new" placeholder="Nuova formazione…" style="flex:1"><button class="btn primary small" id="imp-f-add">+ Aggiungi</button></div></div></div>
+    <div class="card"><div class="card-pad"><h3 style="font-size:15px;margin-bottom:8px">Metodi / Progetti</h3><div id="imp-metodi"></div><div style="display:flex;gap:8px;margin-top:8px"><input id="imp-m-new" placeholder="Nuovo metodo…" style="flex:2;min-width:180px"><select id="imp-m-tipo"><option value="pratico">Pratico</option><option value="digitale">Digitale</option><option value="formazione">Formazione</option></select><button class="btn primary small" id="imp-m-add">+ Aggiungi</button></div><p style="font-size:11px;color:var(--ink-soft);margin-top:4px">Dopo aver aggiunto un metodo, clicca "Durate" per impostare le durate consentite.</p></div></div>
   </div>
 </section>
+<!-- CHIUSURE (Ciclo H: stessa struttura di intestazione di Impostazioni — h2+sub+toolbar in un'unica riga) -->
 <section id="view-chiusure" class="hidden">
-  <div class="view-title"><h2>📅 Chiusure Centro</h2></div>
-  <p>Gestisci le chiusure del centro (festività nazionali, chiusure per ferie). L'algoritmo non genera sessioni in questi giorni.</p>
-  <div class="toolbar" style="margin-top:10px">
-    <select id="chiusure-anno" style="max-width:120px"></select>
-    <button class="btn primary small" id="btn-add-chiusura">+ Aggiungi chiusura</button>
-    <button class="btn ghost small" id="btn-load-festivita">🇮🇹 Carica festività italiane</button>
+  <div class="view-title"><h2>📅 Chiusure Centro</h2><p class="sub" style="margin:0 0 0 8px">Gestisci le chiusure del centro (festività nazionali, chiusure per ferie). L'algoritmo non genera sessioni in questi giorni.</p><div class="grow"></div>
+    <div class="toolbar">
+      <select id="chiusure-anno" style="max-width:120px"></select>
+      <button class="btn primary small" id="btn-add-chiusura">+ Aggiungi chiusura</button>
+      <button class="btn ghost small" id="btn-load-festivita">🇮🇹 Carica festività italiane</button>
+    </div>
   </div>
-  <div id="chiusure-list" style="margin-top:12px"></div>
+  <div id="chiusure-list" style="margin-top:16px"></div>
 </section>
 <section id="view-genera" class="hidden">
   <div class="view-title"><h2>Genera calendario</h2></div>
@@ -950,13 +960,45 @@ function resolveRole(account){
    Navigazione
    ============================================================ */
 const TABS={
-  Admin:[{id:'calendario',label:'Calendario'},{id:'sessioni',label:'Sessioni'},{id:'utenti',label:'Utenti'},{id:'progetti',label:'Progetti'},{id:'operatori',label:'Operatori'},{id:'chiusure',label:'📅 Chiusure'},{id:'impostazioni',label:'⚙️ Impostazioni'},{id:'genera',label:'Genera'},{id:'assistente',label:'💬 Assistente'}],
+  // Ciclo H: "Chiusure" e "Impostazioni" non sono più due voci separate nel menu principale — un'unica voce
+  // "Impostazioni" (children) apre un menu a discesa con le due pagine, invariate nei contenuti/ID/handler.
+  Admin:[{id:'calendario',label:'Calendario'},{id:'sessioni',label:'Sessioni'},{id:'utenti',label:'Utenti'},{id:'progetti',label:'Progetti'},{id:'operatori',label:'Operatori'},{id:'impostazioni',label:'⚙️ Impostazioni',children:[{id:'impostazioni',label:'⚙️ Impostazioni'},{id:'chiusure',label:'📅 Chiusure'}]},{id:'genera',label:'Genera'},{id:'assistente',label:'💬 Assistente'}],
   Operatore:[{id:'calendario',label:'Il mio calendario'},{id:'sessioni',label:'Le mie sessioni'},{id:'disponibilita',label:'Disponibilità'}]
 };
-function buildNav(){const nav=$('#nav-tabs');nav.innerHTML='';for(const t of TABS[state.role]){const b=document.createElement('button');b.textContent=t.label;b.dataset.tab=t.id;b.addEventListener('click',()=>showTab(t.id));nav.appendChild(b);}}
+// Trova ricorsivamente in TABS[role] la voce (di primo livello o figlia di un menu a discesa) con l'id dato.
+function trovaTabById(role,id){for(const t of(TABS[role]||[])){if(t.id===id)return t;if(t.children){const c=t.children.find(x=>x.id===id);if(c)return c;}}return null;}
+function chiudiNavDrop(){$$('#nav-tabs .nav-drop.open').forEach(w=>w.classList.remove('open'));}
+function buildNav(){
+  const nav=$('#nav-tabs');nav.innerHTML='';
+  for(const t of TABS[state.role]){
+    if(t.children){
+      const wrap=document.createElement('div');wrap.className='nav-drop';
+      const b=document.createElement('button');b.textContent=t.label;b.dataset.tab=t.id;b.className='nav-drop-toggle';
+      // Click/tap sulla voce padre: su desktop il sottomenu è già apribile via hover (CSS), qui serve soprattutto
+      // per il touch (mobile/tablet), dove l'hover non esiste — senza questo le voci figlie sarebbero irraggiungibili.
+      b.addEventListener('click',e=>{e.stopPropagation();const era=wrap.classList.contains('open');chiudiNavDrop();if(!era)wrap.classList.add('open');});
+      wrap.appendChild(b);
+      const menu=document.createElement('div');menu.className='nav-drop-menu';
+      for(const c of t.children){
+        const cb=document.createElement('button');cb.textContent=c.label;cb.dataset.tab=c.id;
+        cb.addEventListener('click',e=>{e.stopPropagation();chiudiNavDrop();showTab(c.id);});
+        menu.appendChild(cb);
+      }
+      wrap.appendChild(menu);nav.appendChild(wrap);
+    }else{
+      const b=document.createElement('button');b.textContent=t.label;b.dataset.tab=t.id;b.addEventListener('click',()=>showTab(t.id));nav.appendChild(b);
+    }
+  }
+}
+document.addEventListener('click',chiudiNavDrop); // click fuori dal menu -> richiude il sottomenu aperto su mobile
 function showTab(id){
-  if(!TABS[state.role]||!TABS[state.role].some(t=>t.id===id))return; // Blocca l'accesso a tab non consentite per il ruolo corrente (anche da console)
-  $$('#nav-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));$$('main section').forEach(s=>s.classList.add('hidden'));$('#view-'+id).classList.remove('hidden');
+  if(!trovaTabById(state.role,id))return; // Blocca l'accesso a tab non consentite per il ruolo corrente (anche da console)
+  chiudiNavDrop();
+  $$('#nav-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  // Evidenzia anche la voce padre del menu a discesa quando si è su una delle sue pagine figlie (es. Chiusure),
+  // così resta sempre chiaro da dove si è arrivati, anche se il padre stesso non corrisponde a "id".
+  $$('#nav-tabs .nav-drop').forEach(w=>{const figli=Array.from(w.querySelectorAll('.nav-drop-menu button')).map(b=>b.dataset.tab);if(figli.includes(id))w.querySelector('.nav-drop-toggle').classList.add('active');});
+  $$('main section').forEach(s=>s.classList.add('hidden'));$('#view-'+id).classList.remove('hidden');
   if(id==='calendario'){renderCalendar();refreshSendSel();}
   if(id==='sessioni')renderSessioni();if(id==='operatori')renderOperatori();if(id==='utenti')renderUtenti();if(id==='chiusure'&&$('#chiusure-anno'))initChiusureTab();if(id==='impostazioni')initImpostazioni();
   if(id==='progetti')renderProgetti();if(id==='disponibilita')renderDisponibilita();
@@ -2615,7 +2657,9 @@ function openModalStacked(html,onCancel,isDirty,onSaveTrigger){
   return close;
 }
 async function withBusy(fn,okMsg){try{await fn();if(okMsg)toast(okMsg);}catch(e){console.error(e);toast('Errore: '+e.message,true);throw e;}}
-function refreshCurrent(){const active=$('#nav-tabs button.active');if(active)showTab(active.dataset.tab);}
+// Esclude la voce padre del menu a discesa (.nav-drop-toggle): se il tab attivo è una pagina figlia (es. Chiusure),
+// il padre resta evidenziato anch'esso (vedi showTab) ma il suo dataset.tab non è quello della pagina realmente aperta.
+function refreshCurrent(){const active=$('#nav-tabs button.active:not(.nav-drop-toggle)')||$('#nav-tabs button.active');if(active)showTab(active.dataset.tab);}
 function showScreen(id){['screen-loading','screen-login','screen-denied','app'].forEach(s=>$('#'+s).classList.toggle('hidden',s!==id));}
 
 async function afterLogin(account){
