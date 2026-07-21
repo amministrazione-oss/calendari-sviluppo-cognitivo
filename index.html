@@ -1385,7 +1385,7 @@ function renderProgetti(){
   if(!list.length){box.innerHTML='<div class="empty">Nessun progetto.</div>';return;}
   box.innerHTML='<table class="list"><thead><tr><th>Utente</th><th>Progetto</th><th>Frequenza</th><th>Monte ore</th><th>Sede</th><th>Stato</th></tr></thead><tbody>'+list.map(p=>{
     const ut=utById(p.utenteId);const ore=fmtHM(oreErog(p.id));
-    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullNameCN(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':esc(p.frequenza||'—')+'x/sett · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+fmtHM(p.monteOre):'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
+    return'<tr class="rowlink" data-id="'+p.id+'"><td><strong>'+esc(ut?fullNameCN(ut):'?')+'</strong></td><td>'+esc(p.nome)+'</td><td>'+(p.noMonteOre?'Manuale':(modalitaFrequenza(p)==='settimanale'?esc(p.frequenza||'—')+'x/sett':modalitaFrequenza(p)==='quindicinale'?'Quindicinale':'Mensile')+' · '+esc(p.durataSessione||60)+'min')+'</td><td>'+(p.monteOre?ore+'/'+fmtHM(p.monteOre):'—')+'</td><td>'+esc(p.sede||'—')+'</td><td><span class="tag '+((p.stato||'attivo')==='attivo'?'ok':'off')+'">'+esc(p.stato||'attivo')+'</span></td></tr>';
   }).join('')+'</tbody></table>';
   $$('#pr-table tr.rowlink').forEach(tr=>tr.addEventListener('click',()=>{const p=prById(tr.dataset.id);if(p)openProgettoModal(p);}));
 }
@@ -1394,12 +1394,15 @@ function openProgettoModal(p={}){
   let peBaseline=null;
   // pMetodi/pTipi sono dichiarati più sotto (let), ma questa funzione viene invocata solo alla chiusura,
   // quando sono già inizializzati.
-  function collectPeState(){return JSON.stringify({nome:$('#pe-nome').value.trim(),utenteId:$('#pe-utente').value,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value,frequenza:$('#pe-freq').value,durataSessione:$('#pe-dur').value,maxSessioniGiorno:$('#pe-maxday').value,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():'',domicilioTempo:$('#pe-domicilio-tempo')?$('#pe-domicilio-tempo').value:'',sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av')});}
-  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Monte ore totale (h:mm)</label><input id="pe-ore" type="text" placeholder="es. 40:00" value="'+(p.monteOre?fmtHM(p.monteOre):'')+'"></div><div class="field"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Cesate+Online','Cesate+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Cesate+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>peBaseline!==null&&collectPeState()!==peBaseline,()=>{const b=$('#pe-save');if(b)b.click();});
+  function collectPeState(){return JSON.stringify({nome:$('#pe-nome').value.trim(),utenteId:$('#pe-utente').value,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:$('#pe-ore').value,modalitaFrequenza:$('#pe-freqmodo').value,frequenza:$('#pe-freq').value,durataSessione:$('#pe-dur').value,maxSessioniGiorno:$('#pe-maxday').value,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():'',domicilioTempo:$('#pe-domicilio-tempo')?$('#pe-domicilio-tempo').value:'',sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseInt(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av')});}
+  openModal('<h3>'+(isNew?'Nuovo':'Modifica')+' progetto</h3><div class="grid2"><div class="field"><label>Utente *</label><select id="pe-utente"><option value="">— Seleziona —</option>'+uts.map(u=>'<option value="'+u.id+'" '+(p.utenteId===u.id?'selected':'')+'>'+esc(fullNameCN(u))+'</option>').join('')+'</select></div><div class="field"><label>Nome progetto *</label><input id="pe-nome" placeholder="BrainRx, Feuerstein…" value="'+esc(p.nome||'')+'"></div></div><div class="field"><label>Descrizione</label><textarea id="pe-desc">'+esc(p.descrizione||'')+'</textarea></div><div style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label class="chip '+(p.noMonteOre?'on':'')+'"><input type="checkbox" id="pe-nmo" '+(p.noMonteOre?'checked':'')+'>  Nessun monte ore — calendarizzazione manuale</label><div class="field" style="margin-bottom:0"><label>Stato</label><select id="pe-stato" style="width:130px">'+['attivo','concluso'].map(x=>'<option '+((p.stato||'attivo')===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div id="pe-auto"><div class="grid2"><div class="field"><label>Modalità frequenza</label><select id="pe-freqmodo"><option value="settimanale" '+(modalitaFrequenza(p)==='settimanale'?'selected':'')+'>Settimanale</option><option value="quindicinale" '+(modalitaFrequenza(p)==='quindicinale'?'selected':'')+'>Quindicinale (12-16 giorni dalla precedente)</option><option value="mensile" '+(modalitaFrequenza(p)==='mensile'?'selected':'')+'>Mensile (23-30 giorni dalla precedente)</option></select></div><div class="field" id="pe-freq-wrap" style="'+(modalitaFrequenza(p)==='settimanale'?'':'display:none')+'"><label>Frequenza settimanale</label><input id="pe-freq" type="number" value="'+(p.frequenza||3)+'"></div></div><div class="grid2"><div class="field"><label>Monte ore totale (h:mm)</label><input id="pe-ore" type="text" placeholder="es. 40:00" value="'+(p.monteOre?fmtHM(p.monteOre):'')+'"></div><div class="field"><label>Max sessioni/giorno</label><input id="pe-maxday" type="number" min="1" value="'+(p.maxSessioniGiorno||1)+'"></div></div><div class="grid2"><div class="field"><label>Durata sessione (min)</label><input id="pe-dur" type="number" value="'+(p.durataSessione||60)+'"></div><div class="field"><label>Sede</label><select id="pe-sede">'+[...SEDI,'Cesate+Online','Cesate+Domicilio'].map(s=>'<option '+(p.sede===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div></div><div id="pe-domicilio-wrap" style="'+((p.sede==='Domicilio'||p.sede==='Cesate+Domicilio')?'':'display:none')+'"><div class="grid2"><div class="field"><label>Indirizzo domicilio</label><input id="pe-domicilio-addr" value="'+esc(p.domicilioIndirizzo||'')+'"></div><div class="field"><label>Tempo trasferimento (min)</label><input id="pe-domicilio-tempo" type="number" min="0" value="'+(p.domicilioTempo||0)+'" style="max-width:100px"></div></div></div><div class="field"><label>Operatori ammessi</label><select id="pe-ops-dd"><option value="">— Aggiungi operatore —</option>'+ops.filter(o=>!(p.operatoriAmmessi||[]).includes(o.id)).map(o=>'<option value="'+o.id+'">'+esc(fullName(o))+'</option>').join('')+'</select><div id="pe-ops-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+((p.operatoriAmmessi||[]).map(id=>{const ox=opById(id);return ox?'<span class="chip on" data-oid="'+id+'">'+esc(fullName(ox))+' <button type="button" class="icon-btn" style="font-size:13px;padding:0 2px;margin-left:4px">✕</button></span>':'';}).join(''))+'</div></div><div class="field"><label><input type="checkbox" id="pe-fisso" '+(p.operatoreFisso?'checked':'')+' style="width:auto"> Operatore fisso — usa solo il primo selezionato</label></div><div class="field"><label>🧩 Metodi assegnati</label><select id="pe-met-dd"><option value="">— Aggiungi metodo —</option></select><div id="pe-met-list" style="margin-top:8px"></div><div id="pe-met-totale" style="font-size:13px;font-weight:600;margin-top:6px;color:var(--ink-soft)"></div></div><div class="field"><label>📋 Tipi di sessione (composizione)</label><div id="pe-tipi-sess"></div><button class="btn ghost small" id="pe-add-tipo" style="margin-top:8px">+ Aggiungi tipo sessione</button><p style="font-size:11px;color:var(--ink-soft);margin-top:6px">Definisci come si compone ogni sessione. L\'algoritmo alternerà i tipi. Il totale di ogni tipo deve essere uguale alla durata sessione.</p></div><div class="field"><label>Disponibilità utente per questo progetto</label><div id="pe-av"></div></div><div class="field"><label>📅 Eccezioni giornaliere</label><div id="pe-monthly"></div></div></div><div id="pe-warn"></div><div class="modal-actions">'+(!isNew?'<button class="btn danger-o left" id="pe-delete">Elimina</button>':'')+'<button class="btn ghost" data-close>Annulla</button><button class="btn primary" id="pe-save">'+(isNew?'Crea':'Salva')+'</button></div>',async()=>{const w=$('#pe-monthly');if(w&&w._restoreSnapshot)await w._restoreSnapshot();},()=>peBaseline!==null&&collectPeState()!==peBaseline,()=>{const b=$('#pe-save');if(b)b.click();});
   renderMonthlyAvail('pe-monthly',p,false,'pe-av',sediAmmesseProgetto(p.sede));
   const peAvOnChange=()=>{const w=$('#pe-monthly');if(w&&w._refresh)w._refresh();};
   renderAvailEditor('pe-av',p.disponibilita||p.avail||{},peAvOnChange,sediAmmesseProgetto(p.sede));
   const autoDiv=$('#pe-auto');$('#pe-nmo').addEventListener('change',e=>{autoDiv.style.display=e.target.checked?'none':'';});if(p.noMonteOre)autoDiv.style.display='none';
+  // Ciclo F.1, Parte A: il campo "Frequenza settimanale" ha senso solo in modalità settimanale — nelle altre due
+  // (quindicinale/mensile) la distanza è fissa (12-16 / 23-30 giorni), non un numero da impostare.
+  $('#pe-freqmodo').addEventListener('change',()=>{$('#pe-freq-wrap').style.display=$('#pe-freqmodo').value==='settimanale'?'':'none';});
   $('#pe-ore').addEventListener('input',()=>{$('#pe-ore').classList.toggle('hm-invalid',Number.isNaN(parseHM($('#pe-ore').value)));});
   const domWrap=$('#pe-domicilio-wrap');if(domWrap)$('#pe-sede').addEventListener('change',e=>{domWrap.style.display=(e.target.value==='Domicilio'||e.target.value==='Cesate+Domicilio')?'':'none';});
   // S5 (17/07): al cambio Sede, ricalcola le sedi ammesse per le fasce di disponibilità. Le fasce esistenti con
@@ -1471,7 +1474,7 @@ function openProgettoModal(p={}){
     const nome=$('#pe-nome').value.trim(),utenteId=$('#pe-utente').value;
     if(!nome||!utenteId){$('#pe-warn').innerHTML='<div class="banner warn">Nome e utente obbligatori.</div>';return;}
     if(Number.isNaN(parseHM($('#pe-ore').value))||$$('.met-ore').some(inp=>Number.isNaN(parseHM(inp.value)))){$('#pe-warn').innerHTML='<div class="banner warn">Correggi i campi ore evidenziati in rosso (formato h:mm, minuti 00-59) prima di salvare.</div>';return;}
-    const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:parseHM($('#pe-ore').value)||(pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0)||null),oreInMinuti:true,frequenza:parseInt($('#pe-freq').value)||3,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseHM(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av'),eccezioni:$('#pe-monthly')._getExceptions?$('#pe-monthly')._getExceptions():(p.eccezioni||[])};
+    const rec={...p,id:p.id||uid(),nome,utenteId,descrizione:$('#pe-desc').value.trim(),noMonteOre:$('#pe-nmo').checked,stato:$('#pe-stato').value,monteOre:parseHM($('#pe-ore').value)||(pMetodi.reduce((s,m)=>s+(m.oreTotali||0),0)||null),oreInMinuti:true,modalitaFrequenza:$('#pe-freqmodo').value,frequenza:$('#pe-freqmodo').value==='settimanale'?(parseInt($('#pe-freq').value)||3):null,durataSessione:parseInt($('#pe-dur').value)||60,maxSessioniGiorno:parseInt($('#pe-maxday').value)||1,domicilioIndirizzo:$('#pe-domicilio-addr')?$('#pe-domicilio-addr').value.trim():(p.domicilioIndirizzo||''),domicilioTempo:$('#pe-domicilio-tempo')?parseInt($('#pe-domicilio-tempo').value)||0:(p.domicilioTempo||0),sede:$('#pe-sede').value,operatoriAmmessi:Array.from($$('#pe-ops-chips [data-oid]')).map(c=>c.dataset.oid),operatoreFisso:$('#pe-fisso').checked,metodi:pMetodi.map((m,i)=>{const inp=$$('.met-ore')[i];return{...m,oreTotali:inp?parseHM(inp.value)||0:m.oreTotali};}),tipiSessione:pTipi,disponibilita:readAvailEditor('pe-av'),eccezioni:$('#pe-monthly')._getExceptions?$('#pe-monthly')._getExceptions():(p.eccezioni||[])};
     await withBusy(()=>saveRecord('progetti',rec),isNew?'Creato':'Aggiornato');peBaseline=null;closeModal();renderProgetti();
   });
   if(!isNew)$('#pe-delete').addEventListener('click',async()=>{if(!confirm('Eliminare?'))return;peBaseline=null;await withBusy(()=>deleteRecord('progetti',p),'Eliminato');closeModal();renderProgetti();});
@@ -1825,6 +1828,54 @@ function bucketSettimana(giornoDelMese){return Math.floor((giornoDelMese-1)/7)*7
 // esistenti hanno già raggiunto o superato la frequenza (es. sessioni manuali confermate), il margine per le nuove è 0,
 // non un valore negativo. Usata sia dalla Passata 1 (generateMonth) sia dalla validazione post-IA (generateMonthAI).
 function maxNuoveSettimana(frequenza,giaEsistenti){return Math.max(0,(frequenza||0)-(giaEsistenti||0));}
+
+/* Ciclo F.1 (21/07): modalità di frequenza "a distanza di giorni" (quindicinale/mensile), alternative alla
+   settimanale — vedi CLAUDE.md, "Regole di business pianificate", per la specifica completa. */
+// Finestre ammesse (giorni dall'ultima lezione valida) per le modalità quindicinale/mensile. La modalità
+// settimanale non usa questa costante: resta governata da bucketSettimana/maxNuoveSettimana, invariati.
+const FINESTRE_FREQUENZA={quindicinale:{min:12,max:16},mensile:{min:23,max:30}};
+// Modalità di frequenza del progetto: 'quindicinale'/'mensile' solo se il campo lo dichiara esplicitamente,
+// altrimenti (campo assente, non riconosciuto, o letteralmente 'settimanale') sempre 'settimanale' — il
+// comportamento di oggi, invariato per i progetti esistenti senza il campo (nessuna migrazione necessaria).
+function modalitaFrequenza(p){return(p.modalitaFrequenza==='quindicinale'||p.modalitaFrequenza==='mensile')?p.modalitaFrequenza:'settimanale';}
+// Vero se una distanza in giorni cade nella finestra ammessa dalla modalità; per 'settimanale' (nessuna finestra
+// dichiarata in FINESTRE_FREQUENZA) è sempre vera — quella modalità non usa questo meccanismo.
+function finestraOk(modo,distanzaGiorni){const f=FINESTRE_FREQUENZA[modo];return!f||(distanzaGiorni>=f.min&&distanzaGiorni<=f.max);}
+// Data (oggetto Date) -> stringa "YYYY-MM-DD", nello stesso formato usato in tutto il resto del file.
+function dateToISO(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+// Aggiunge n giorni (anche negativi) a una data "YYYY-MM-DD", restituendo una data nello stesso formato.
+function addGiorni(ds,n){const d=new Date(ds+'T00:00');d.setDate(d.getDate()+n);return dateToISO(d);}
+// Differenza in giorni interi fra due date "YYYY-MM-DD" (ds2-ds1); positiva se ds2 è successiva a ds1. Usata per
+// misurare la distanza dall'ultima lezione valida nelle modalità quindicinale/mensile.
+function giorniTraDate(ds1,ds2){return Math.round((new Date(ds2+'T00:00')-new Date(ds1+'T00:00'))/86400000);}
+// Slittamento (Parte B): avanza una data "YYYY-MM-DD" di un giorno alla volta finché non trova un giorno che non
+// sia domenica né una chiusura centro. Ha SEMPRE priorità sulla finestra ammessa (può restituire una data fuori
+// dalla finestra 12-16/23-30 se serve a evitare di saltare la lezione — meglio una lezione fuori finestra che
+// nessuna). NOTA per il futuro collaudo automatico (F.2): lo slittamento fuori finestra può produrre un
+// trascinamento del ritmo su più lezioni successive — da osservare quando esisterà il report qualità dedicato.
+function slittaGiornoValido(ds,chiusureDates){
+  let d=new Date(ds+'T00:00');
+  while(dname(d)==='Dom'||chiusureDates.has(dateToISO(d))){d.setDate(d.getDate()+1);}
+  return dateToISO(d);
+}
+// Ultima sessione valida (stato proposta/confermata/eseguita — annullata e assenza ingiustificata non contano: si
+// prende la valida precedente) di un progetto, cercata su TUTTO lo storico passato (non limitata al mese in
+// generazione), necessaria per datare correttamente il primo incontro del mese anche quando l'ultima lezione
+// valida cade nel mese precedente. Restituisce la data "YYYY-MM-DD" più recente, o null se non esiste.
+function ultimaLezioneValida(sessioni,progettoId){
+  const valide=sessioni.filter(s=>s.progettoId===progettoId&&(s.stato==='proposta'||s.stato==='confermata'||s.stato==='eseguita'));
+  if(!valide.length)return null;
+  return valide.reduce((max,s)=>s.data>max?s.data:max,valide[0].data);
+}
+// Margine minimo, in minuti, fra due sessioni consecutive (regola invariante, CLAUDE.md) — Ciclo F.1, Parte C.
+const GAP_MINUTI=5;
+// Vero se lo slot [st,en] rispetta il margine minimo GAP_MINUTI rispetto a ogni impegno in busy — non solo
+// "nessuna sovrapposizione esatta" come rfree da solo. Fix del bug preesistente (CONTESTO.md, backlog punto 13):
+// prima del Ciclo F.1, il controllo sull'operatore in Passata 1 usava due righe che si annullavano a vicenda
+// (quella priva di margine rendeva quella con margine inefficace), quindi il margine di 5 minuti non era mai
+// realmente applicato. Un unico controllo con margine, usato ovunque serva in Passata 1, risolve.
+function rfreeConGap(busy,st,en){return rfree(busy,st-GAP_MINUTI,en+GAP_MINUTI);}
+
 // Priorità di piazzamento per sede, usata come criterio secondario a parità di indice di rigidità: presenza < composita < remota
 function sedePriorita(sede){
   if(sede==='Cesate'||sede==='Busto Arsizio')return 0;
@@ -1970,14 +2021,23 @@ function riepilogoSettimanaleDaSessioni(target,Y,M,days,newS,keep,chiusureDates)
   });
   return riepiloghi;
 }
+// Ciclo F.1: per le modalità a distanza di giorni non esiste un numero di sessioni/settimana dichiarato — si usa
+// una frequenza equivalente settimanale nominale (7 giorni / punto medio della finestra ammessa), solo per
+// ordinare la priorità fra progetti in Passata 1, senza introdurre alcun vincolo di piazzamento (quello è gestito
+// dalla logica a distanza di giorni stessa). La modalità settimanale resta invariata (p.frequenza||1).
 function calcStrettezza(p){
-  const freq=p.frequenza||1;const dur=p.durataSessione||60;
+  const modo=modalitaFrequenza(p);
+  let freq;
+  if(modo==='settimanale')freq=p.frequenza||1;
+  else{const f=FINESTRE_FREQUENZA[modo];freq=7/((f.min+f.max)/2);}
+  const dur=p.durataSessione||60;
   let totalMin=0;const avail=p.disponibilita||p.avail||{};
   GIORNI.forEach(g=>{const slots=avail[g]||[];slots.forEach(s=>{const f=tmin(s.from||s.da),t=tmin(s.to||s.a);totalMin+=Math.max(0,t-f);});});
   if(totalMin===0)return 999;return totalMin/(freq*dur);
 }
 async function generateMonth(ms,spid,nameFilter){
-  const GAP=5; // 5 min gap between consecutive sessions
+  // Il margine minimo fra sessioni consecutive è la costante top-level GAP_MINUTI (Ciclo F.1, Parte C) — vedi
+  // rfreeConGap(), usata ovunque in questa Passata 1 al posto di rfree() nudo.
   const[Y,M]=ms.split('-').map(Number);const days=new Date(Y,M,0).getDate();
   const{scopeProjects,scopeIds}=determinaAmbito(spid,nameFilter);
   const keep=sessioniDaConservare(ms,scopeIds);
@@ -2024,123 +2084,205 @@ async function generateMonth(ms,spid,nameFilter){
     return{matchSlot,sed};
   }
 
+  // Sceglie operatore+aula per un candidato slot (progetto/giorno/orario), secondo le stesse regole di sempre:
+  // sede compatibile, formazioni richieste dal tipo di sessione in rotazione, margine minimo GAP_MINUTI fra
+  // sessioni consecutive dell'operatore E dell'aula (Parte C, Ciclo F.1 — unico controllo corretto, sostituisce le
+  // due righe ridondanti preesistenti che si annullavano a vicenda: CONTESTO.md, backlog punto 13), tempo di
+  // viaggio Busto/Domicilio, priorità alla stanza già assegnata per la mezza giornata. Usata sia dalla Passata 1
+  // settimanale sia dalla nuova modalità a distanza di giorni (Parte B). Restituisce {chosen,cAula,chosenSed,
+  // tentAulaPiena}: chosen è null se nessun operatore idoneo era libero in questo slot.
+  function sceglieOperatoreEAula(p,ds,dn,st,en,pool,sessionCount){
+    let tentAulaPiena=false;
+    // Priorità: a parità di idoneità, preferisci gli Assunti sotto il monte ore settimanale contrattuale (le P.IVA coprono il resto)
+    const poolOrdinato=[...pool].sort((a,b)=>{
+      const pa=(a.tipoContratto==='Assunto'&&a.oreSettimanali>0&&minutiSettimana(a,ds,opB,Y,M)<a.oreSettimanali*60)?0:1;
+      const pb=(b.tipoContratto==='Assunto'&&b.oreSettimanali>0&&minutiSettimana(b,ds,opB,Y,M)<b.oreSettimanali*60)?0:1;
+      return pa-pb;
+    });
+    for(const op of poolOrdinato){
+      if(!sdComp(p.sede,op.sedi||[]))continue;
+      // Check time AND sede compatibility per slot (in base alla sede richiesta dal progetto)
+      const compat=slotCompatibile(p,op,ds,dn,st,en);
+      if(!compat)continue;
+      const sed=compat.sed;
+      // Formation check: operator must have ALL formations for this session type
+      const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
+      if(sessType){const reqForms=sessType.componenti.map(c=>c.metodo).filter(Boolean);const opForms=op.formazione||[];if(!reqForms.every(rf=>opForms.includes(rf)))continue;}
+      // Margine minimo fra sessioni dell'operatore (Parte C, Ciclo F.1)
+      const opBusy=(opB[op.id]||[]).filter(b=>b.date===ds);
+      if(!rfreeConGap(opBusy,st,en))continue;
+      // Travel time based on sede transitions
+      const opDaySess=[...newS,...keep].filter(sx=>sx.operatoreId===op.id&&sx.data===ds);
+      let travelMin=0;
+      if(sed==='Busto Arsizio'||opDaySess.some(sx=>sx.sede==='Busto Arsizio')){
+        const giaACesate=opDaySess.some(sx=>sx.sede==='Cesate');
+        const tb=tempoBustoOperatore(op,giaACesate);
+        travelMin=Math.max(travelMin,tb.min);
+        if(tb.fallback&&!bustoFallbackWarned.has(op.id)){
+          bustoFallbackWarned.add(op.id);
+          anom.push({lbl:fullName(op),msg:'Manca "Tempo Busto da Cesate": usato "Tempo Busto da casa" come ripiego prudente nel calcolo del tempo di viaggio.'});
+        }
+      }
+      if(sed==='Domicilio')travelMin=Math.max(travelMin,p.domicilioTempo||0);
+      const diffSede=opDaySess.some(sx=>sx.sede&&sx.sede!==sed);
+      if(travelMin>0&&diffSede&&!rfree(opBusy,st-travelMin,en+travelMin))continue;
+      if(sed==='Cesate'||sed==='Busto Arsizio'){
+        const auList=sed==='Cesate'?AULE_CESATE:AULE_BUSTO;
+        const halfDay2=st<tmin('13:30')?'AM':'PM';
+        const dkH2=op.id+'|'+ds+'|'+halfDay2;
+        // Prefer the room already assigned to this operator this half-day
+        const prefRoom=opRoom[dkH2]||null;
+        let al=null;
+        // Margine minimo anche per l'aula (stessa aula, sessioni consecutive) — Parte C, Ciclo F.1
+        if(prefRoom&&auList.includes(prefRoom)&&rfreeConGap((auB[prefRoom]||[]).filter(b=>b.date===ds),st,en)){al=prefRoom;}
+        else{al=auList.find(a=>rfreeConGap((auB[a]||[]).filter(b=>b.date===ds),st,en));}
+        if(!al){tentAulaPiena=true;continue;}
+        const halfDay=st<tmin('13:30')?'AM':'PM';
+        const dkH=op.id+'|'+ds+'|'+halfDay;
+        if(!opRoom[dkH])opRoom[dkH]=al;
+        return{chosen:op,cAula:al,chosenSed:sed,tentAulaPiena:false};
+      }
+      // Online/Domicilio: qui si piazza solo la sessione. Se sarà "online da casa o in sede" lo decide la Passata 2 a fine generazione.
+      return{chosen:op,cAula:null,chosenSed:sed,tentAulaPiena:false};
+    }
+    return{chosen:null,cAula:null,chosenSed:null,tentAulaPiena};
+  }
+  // Costruisce l'oggetto sessione "proposta" per un piazzamento riuscito. Non la inserisce in newS né aggiorna i
+  // registri di occupazione: resta a carico del chiamante (settimanale o a distanza di giorni gestiscono
+  // diversamente il proprio conteggio piazzate/placed).
+  function creaSessionePiazzata(p,ds,st,en,op,sed,cAula,sessionCount){
+    const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
+    return{id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:op.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType?sessType.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType?sessionCount%p.tipiSessione.length:null,onlineDaCasa:null};
+  }
+
   // PASSATA 1: piazzamento di tutte le sessioni (senza ancora decidere online da casa/in sede)
   for(const p of target){
-    const freq=p.frequenza||0;if(!freq)continue;
+    const modo=modalitaFrequenza(p); // Ciclo F.1, Parte A: 'settimanale' (default, invariato) | 'quindicinale' | 'mensile'
+    const freq=p.frequenza||0;
+    if(modo==='settimanale'&&!freq)continue; // invariato: nessuna frequenza settimanale impostata, nulla da fare
     const maxDay=p.maxSessioniGiorno||1;
     const u=utById(p.utenteId);const lbl=(u?fullNameCN(u):'?')+' — '+p.nome;
     const pool=(p.operatoriAmmessi||[]).map(id=>opById(id)).filter(Boolean);
-    if(!pool.length){anom.push({lbl,msg:'Nessun operatore assegnato.'});riepiloghi.push({progettoId:p.id,wk:1,richieste:freq,piazzate:0,diagNoUtente:0,diagAulaPiena:0,diagNessunOperatore:1,giorniNoUtente:[]});continue;}
+    if(!pool.length){anom.push({lbl,msg:'Nessun operatore assegnato.'});riepiloghi.push({progettoId:p.id,wk:1,richieste:modo==='settimanale'?freq:1,piazzate:0,diagNoUtente:0,diagAulaPiena:0,diagNessunOperatore:1,giorniNoUtente:[]});continue;}
     const allPU=state.data.progetti.filter(x=>x.utenteId===p.utenteId).map(x=>x.id);
     let sessionCount=0; // Indice di rotazione dei "Tipi di sessione": continua per tutto il mese, non si azzera a ogni settimana
-    let wk=1;
-    while(wk<=days){
-      const we=Math.min(wk+6,days);let placed=0;
-      // Vincolo duro sulla frequenza settimanale (S7, 17/07): le sessioni già esistenti (kept/protette) di QUESTO
-      // progetto in questa finestra di 7 giorni contano nel conteggio — la Passata 1 non piazza mai più di
-      // (frequenza - già esistenti) sessioni NUOVE in questa finestra, mai la frequenza stessa da sola.
-      const dsWk=Y+'-'+pad2(M)+'-'+pad2(wk),dsWe=Y+'-'+pad2(M)+'-'+pad2(we);
-      const giaEsistenti=(prB[p.id]||[]).filter(b=>b.date>=dsWk&&b.date<=dsWe).length;
-      const maxNuove=maxNuoveSettimana(freq,giaEsistenti);
-      let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();
-      for(let d=wk;d<=we&&placed<maxNuove;d++){
-        const dt=new Date(Y,M-1,d);const dn=dname(dt);if(dn==='Dom')continue;
-        const ds=Y+'-'+pad2(M)+'-'+pad2(d);
-        if(chiusureDates.has(ds))continue;  // Skip chiusure centro
-        // Check how many sessions already placed today for this project
-        const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===ds).length;
-        if(todayPlaced>=maxDay)continue;
-        // effRng gestisce già malattia/ferie/permesso del progetto (giornata intera o solo la fascia indicata)
-        const pRng=effRng(p,ds,dn);
-        if(!pRng.length){diagNoUtente++;giorniNoUtente.add(dn);}
-        for(const ur of pRng){
-          if(placed>=maxNuove)break;
-          const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
-          if(rT-rF<(p.durataSessione||60))continue;
-          for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
-            const en=st+(p.durataSessione||60);
-            // Check user not busy across all their projects
-            const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
-            if(!rfree(uBN,st,en))continue;
-            let chosen=null,cAula=null,chosenSed=null,tentAulaPiena=false;
-            // Priorità: a parità di idoneità, preferisci gli Assunti sotto il monte ore settimanale contrattuale (le P.IVA coprono il resto)
-            const poolOrdinato=[...pool].sort((a,b)=>{
-              const pa=(a.tipoContratto==='Assunto'&&a.oreSettimanali>0&&minutiSettimana(a,ds,opB,Y,M)<a.oreSettimanali*60)?0:1;
-              const pb=(b.tipoContratto==='Assunto'&&b.oreSettimanali>0&&minutiSettimana(b,ds,opB,Y,M)<b.oreSettimanali*60)?0:1;
-              return pa-pb;
-            });
-            for(const op of poolOrdinato){
-              if(!sdComp(p.sede,op.sedi||[]))continue;
-              // Check time AND sede compatibility per slot (in base alla sede richiesta dal progetto)
-              const compat=slotCompatibile(p,op,ds,dn,st,en);
-              if(!compat)continue;
-              const sed=compat.sed;
-              // Formation check: operator must have ALL formations for this session type
-              const sessType=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
-              if(sessType){const reqForms=sessType.componenti.map(c=>c.metodo).filter(Boolean);const opForms=op.formazione||[];if(!reqForms.every(rf=>opForms.includes(rf)))continue;}
-              // Check operator busy with GAP
-              const opBusy=(opB[op.id]||[]).filter(b=>b.date===ds);
-              if(!rfree(opBusy,st-GAP,en+GAP)&&!rfree(opBusy,st,en))continue;
-              if(!rfree(opBusy,st,en))continue;
-              // Travel time based on sede transitions
-              const opDaySess=[...newS,...keep].filter(sx=>sx.operatoreId===op.id&&sx.data===ds);
-              let travelMin=0;
-              if(sed==='Busto Arsizio'||opDaySess.some(sx=>sx.sede==='Busto Arsizio')){
-                const giaACesate=opDaySess.some(sx=>sx.sede==='Cesate');
-                const tb=tempoBustoOperatore(op,giaACesate);
-                travelMin=Math.max(travelMin,tb.min);
-                if(tb.fallback&&!bustoFallbackWarned.has(op.id)){
-                  bustoFallbackWarned.add(op.id);
-                  anom.push({lbl:fullName(op),msg:'Manca "Tempo Busto da Cesate": usato "Tempo Busto da casa" come ripiego prudente nel calcolo del tempo di viaggio.'});
+
+    if(modo==='settimanale'){
+      // Comportamento ATTUALE, invariato (Parte A, Ciclo F.1) — solo l'estrazione di sceglieOperatoreEAula/
+      // creaSessionePiazzata sopra e il fix del margine (rfreeConGap al posto di rfree nudo) cambiano la forma del
+      // codice, non la logica: stesso ordine di condizioni, stessi effetti, stesso vincolo di frequenza/finestra.
+      let wk=1;
+      while(wk<=days){
+        const we=Math.min(wk+6,days);let placed=0;
+        // Vincolo duro sulla frequenza settimanale (S7, 17/07): le sessioni già esistenti (kept/protette) di QUESTO
+        // progetto in questa finestra di 7 giorni contano nel conteggio — la Passata 1 non piazza mai più di
+        // (frequenza - già esistenti) sessioni NUOVE in questa finestra, mai la frequenza stessa da sola.
+        const dsWk=Y+'-'+pad2(M)+'-'+pad2(wk),dsWe=Y+'-'+pad2(M)+'-'+pad2(we);
+        const giaEsistenti=(prB[p.id]||[]).filter(b=>b.date>=dsWk&&b.date<=dsWe).length;
+        const maxNuove=maxNuoveSettimana(freq,giaEsistenti);
+        let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();
+        for(let d=wk;d<=we&&placed<maxNuove;d++){
+          const dt=new Date(Y,M-1,d);const dn=dname(dt);if(dn==='Dom')continue;
+          const ds=Y+'-'+pad2(M)+'-'+pad2(d);
+          if(chiusureDates.has(ds))continue;  // Skip chiusure centro
+          // Check how many sessions already placed today for this project
+          const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===ds).length;
+          if(todayPlaced>=maxDay)continue;
+          // effRng gestisce già malattia/ferie/permesso del progetto (giornata intera o solo la fascia indicata)
+          const pRng=effRng(p,ds,dn);
+          if(!pRng.length){diagNoUtente++;giorniNoUtente.add(dn);}
+          for(const ur of pRng){
+            if(placed>=maxNuove)break;
+            const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+            if(rT-rF<(p.durataSessione||60))continue;
+            for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+              const en=st+(p.durataSessione||60);
+              // Check user not busy across all their projects
+              const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===ds));
+              if(!rfreeConGap(uBN,st,en))continue;
+              const res=sceglieOperatoreEAula(p,ds,dn,st,en,pool,sessionCount);
+              if(res.chosen){
+                const{chosen,cAula,chosenSed}=res;
+                // Contract hour check for Assunti
+                if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                  const wkMin=minutiSettimana(chosen,ds,opB,Y,M)+(p.durataSessione||60);
+                  if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullNameCN(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
                 }
+                const sess=creaSessionePiazzata(p,ds,st,en,chosen,chosenSed,cAula,sessionCount);
+                newS.push(sess);
+                (opB[chosen.id]=opB[chosen.id]||[]).push({date:ds,from:st,to:en});
+                (prB[p.id]=prB[p.id]||[]).push({date:ds,from:st,to:en});
+                if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:ds,from:st,to:en});
+                placed++;sessionCount++;break;
+              }else{
+                if(res.tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
               }
-              if(sed==='Domicilio')travelMin=Math.max(travelMin,p.domicilioTempo||0);
-              const diffSede=opDaySess.some(sx=>sx.sede&&sx.sede!==sed);
-              if(travelMin>0&&diffSede&&!rfree(opBusy,st-travelMin,en+travelMin))continue;
-              if(sed==='Cesate'||sed==='Busto Arsizio'){
-                const auList=sed==='Cesate'?AULE_CESATE:AULE_BUSTO;
-                const halfDay2=st<tmin('13:30')?'AM':'PM';
-                const dkH2=op.id+'|'+ds+'|'+halfDay2;
-                // Prefer the room already assigned to this operator this half-day
-                const prefRoom=opRoom[dkH2]||null;
-                let al=null;
-                if(prefRoom&&auList.includes(prefRoom)&&rfree((auB[prefRoom]||[]).filter(b=>b.date===ds),st,en)){al=prefRoom;}
-                else{al=auList.find(a=>rfree((auB[a]||[]).filter(b=>b.date===ds),st,en));}
-                if(!al){tentAulaPiena=true;continue;}
-                chosen=op;cAula=al;chosenSed=sed;
-                // Track room for operator per half-day (morning vs afternoon)
-                const halfDay=st<tmin('13:30')?'AM':'PM';
-                const dkH=op.id+'|'+ds+'|'+halfDay;
-                if(!opRoom[dkH])opRoom[dkH]=al;
-                break;
-              }
-              // Online/Domicilio: qui si piazza solo la sessione. Se sarà "online da casa o in sede" lo decide la Passata 2 a fine generazione.
-              chosen=op;chosenSed=sed;break;
-            }
-            if(chosen){
-              // Contract hour check for Assunti
-              if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
-                const wkMin=minutiSettimana(chosen,ds,opB,Y,M)+(p.durataSessione||60);
-                if(wkMin>chosen.oreSettimanali*60){anom.push({lbl:(u?fullNameCN(u):'?')+' — '+p.nome,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
-              }
-              const sed=chosenSed;
-              const sessType2=p.tipiSessione&&p.tipiSessione.length?p.tipiSessione[sessionCount%p.tipiSessione.length]:null;
-              const sess={id:uid(),data:ds,oraInizio:mtime(st),oraFine:mtime(en),utenteId:p.utenteId,progettoId:p.id,operatoreId:chosen.id,sede:sed,aula:cAula||null,stato:'proposta',note:'',composizione:sessType2?sessType2.componenti.filter(c=>c.metodo&&c.durata):null,tipoSessioneIdx:sessType2?sessionCount%p.tipiSessione.length:null,onlineDaCasa:null};
-              newS.push(sess);
-              (opB[chosen.id]=opB[chosen.id]||[]).push({date:ds,from:st,to:en});
-              (prB[p.id]=prB[p.id]||[]).push({date:ds,from:st,to:en});
-              if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:ds,from:st,to:en});
-              placed++;sessionCount++;break;
-            }else{
-              if(tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
             }
           }
         }
+        const totSettimana=placed+giaEsistenti; // esistenti (kept) + nuove piazzate ora: mai oltre freq, per costruzione (S7)
+        riepiloghi.push({progettoId:p.id,wk,richieste:freq,piazzate:totSettimana,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
+        if(totSettimana<freq)anom.push({lbl,msg:'Settimana '+wk+'/'+M+': '+totSettimana+'/'+freq+' incontri.'});
+        wk+=7;
       }
-      const totSettimana=placed+giaEsistenti; // esistenti (kept) + nuove piazzate ora: mai oltre freq, per costruzione (S7)
-      riepiloghi.push({progettoId:p.id,wk,richieste:freq,piazzate:totSettimana,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
-      if(totSettimana<freq)anom.push({lbl,msg:'Settimana '+wk+'/'+M+': '+totSettimana+'/'+freq+' incontri.'});
-      wk+=7;
+    }else{
+      // Ciclo F.1, Parte B — modalità a distanza di giorni (quindicinale/mensile): al più UNA candidata per
+      // l'intero mese, alla distanza minima ammessa dall'ultima lezione valida. Query cross-mese su "keep" (non
+      // limitata al mese in generazione — esclude solo le "proposta" di QUESTO mese in ambito che questo stesso
+      // run sta per sostituire, stessa fonte già usata sopra per i registri di occupazione). NON genera mai
+      // sessioni fuori dal mese "ms" (nessuno sconfinamento cross-mese: fuori scopo di F.1, vedi CLAUDE.md).
+      const{min,max}=FINESTRE_FREQUENZA[modo];
+      const ultima=ultimaLezioneValida(keep,p.id);
+      let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();let piazzata=false;
+      if(!ultima){
+        // Fuori scopo di F.1 stabilire una regola per il primissimo incontro assoluto di un progetto quindicinale/
+        // mensile (nessuna lezione precedente da cui misurare la distanza): nessun piazzamento arbitrario, solo segnalazione.
+        anom.push({lbl,msg:'Modalità '+modo+': nessuna lezione precedente valida (proposta/confermata/eseguita) trovata — impossibile calcolare la prossima data. Inserisci manualmente la prima sessione.'});
+      }else{
+        const candidata=slittaGiornoValido(addGiorni(ultima,min),chiusureDates);
+        const candidataYM=candidata.slice(0,7);
+        if(!finestraOk(modo,giorniTraDate(ultima,candidata))){
+          anom.push({lbl,msg:'Modalità '+modo+': lo slittamento (domenica/chiusura centro) porta la prossima lezione al '+fmtDate(candidata)+', fuori dalla finestra di '+min+'-'+max+' giorni dalla lezione precedente ('+fmtDate(ultima)+'). Piazzata comunque, per non saltare la lezione.'});
+        }
+        if(candidataYM===ms){
+          const d=parseInt(candidata.split('-')[2]);const dt=new Date(Y,M-1,d);const dn=dname(dt);
+          const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===candidata).length;
+          if(todayPlaced<maxDay){
+            const pRng=effRng(p,candidata,dn);
+            if(!pRng.length){diagNoUtente++;giorniNoUtente.add(dn);}
+            for(const ur of pRng){
+              if(piazzata)break;
+              const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+              if(rT-rF<(p.durataSessione||60))continue;
+              for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+                const en=st+(p.durataSessione||60);
+                const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===candidata));
+                if(!rfreeConGap(uBN,st,en))continue;
+                const res=sceglieOperatoreEAula(p,candidata,dn,st,en,pool,sessionCount);
+                if(res.chosen){
+                  const{chosen,cAula,chosenSed}=res;
+                  if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                    const wkMin=minutiSettimana(chosen,candidata,opB,Y,M)+(p.durataSessione||60);
+                    if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+                  }
+                  const sess=creaSessionePiazzata(p,candidata,st,en,chosen,chosenSed,cAula,sessionCount);
+                  newS.push(sess);
+                  (opB[chosen.id]=opB[chosen.id]||[]).push({date:candidata,from:st,to:en});
+                  (prB[p.id]=prB[p.id]||[]).push({date:candidata,from:st,to:en});
+                  if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:candidata,from:st,to:en});
+                  piazzata=true;sessionCount++;break;
+                }else{
+                  if(res.tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
+                }
+              }
+            }
+          }
+        }else if(candidataYM<ms){
+          anom.push({lbl,msg:'Modalità '+modo+': la prossima lezione risulterebbe già scaduta (calcolata al '+fmtDate(candidata)+', prima di questo mese) — verifica lo storico del progetto o inserisci manualmente la sessione mancante.'});
+        }
+        // else candidataYM>ms: non ancora dovuta in questo mese, nessuna azione (caso normale, nessun avviso)
+      }
+      riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:piazzata?1:0,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
     }
     sessionCountByProject[p.id]=sessionCount;
   }

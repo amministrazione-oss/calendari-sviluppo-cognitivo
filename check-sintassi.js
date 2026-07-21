@@ -76,8 +76,8 @@ function extractConst(html, name) {
 }
 
 // Nomi da estrarre: aggiungere qui quando un ciclo futuro tocca altre funzioni pure.
-const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo', 'etichettaAmbitoReport'];
-const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS', 'LISTE_RECORD_SINGOLO'];
+const EXTRACT_FUNZIONI = ['tmin', 'parseHM', 'fmtHM', 'tempoBustoOperatore', 'decidiOnlineDaCasa', 'bucketSettimana', 'maxNuoveSettimana', 'sediAmmesseProgetto', 'statiSelezionabili', 'transizioneAmmessa', 'pesoStato', 'pesoMassimoSelezione', 'riepilogoStati', 'riepilogoStatoProgetto', 'filtraReportUtenti', 'proposteDaSostituire', 'isRecordSingolo', 'etichettaAmbitoReport', 'dname', 'rfree', 'rfreeConGap', 'modalitaFrequenza', 'finestraOk', 'dateToISO', 'addGiorni', 'giorniTraDate', 'slittaGiornoValido', 'ultimaLezioneValida', 'calcStrettezza'];
+const EXTRACT_COSTANTI = ['pad2', 'AULE_CESATE', 'AULE_BUSTO', 'STATI_SESS', 'LISTE_RECORD_SINGOLO', 'GIORNI', 'FINESTRE_FREQUENZA', 'GAP_MINUTI'];
 
 function buildSandbox(html) {
   const src = [
@@ -97,7 +97,7 @@ function buildSandbox(html) {
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo, etichettaAmbitoReport } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo, etichettaAmbitoReport, dname, rfree, rfreeConGap, modalitaFrequenza, finestraOk, dateToISO, addGiorni, giorniTraDate, slittaGiornoValido, ultimaLezioneValida, calcStrettezza } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -282,6 +282,65 @@ function runTest(sandbox) {
     check('etichettaAmbitoReport: ambito "byname" con più progetti dello STESSO utente -> "1 utente" (singolare)', etichettaAmbitoReport('byname', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u1' }, { id: 'pC', nome: 'Feuerstein BS2', utenteId: 'u1' }], utenti), '1 utente');
     check('etichettaAmbitoReport: ambito "byname" senza risultati -> messaggio esplicito', etichettaAmbitoReport('byname', [], utenti), 'Nessun progetto in ambito');
     check('etichettaAmbitoReport: progetto con utente non trovato -> "?" invece di lanciare un errore', etichettaAmbitoReport('single', [{ id: 'pA', nome: 'BrainRx', utenteId: 'u9' }], utenti), '? — BrainRx');
+  }
+
+  // modalitaFrequenza — Ciclo F.1, Parte A (tre modalità mutuamente esclusive, default esplicito settimanale)
+  check('modalitaFrequenza: campo assente -> settimanale (default esplicito, nessuna migrazione necessaria)', modalitaFrequenza({}), 'settimanale');
+  check('modalitaFrequenza: quindicinale', modalitaFrequenza({ modalitaFrequenza: 'quindicinale' }), 'quindicinale');
+  check('modalitaFrequenza: mensile', modalitaFrequenza({ modalitaFrequenza: 'mensile' }), 'mensile');
+  check('modalitaFrequenza: valore non riconosciuto -> settimanale (ripiego difensivo)', modalitaFrequenza({ modalitaFrequenza: 'boh' }), 'settimanale');
+
+  // finestraOk — Ciclo F.1, Parte B (finestre 12-16 quindicinale / 23-30 mensile)
+  check('finestraOk quindicinale: 12 (minimo incluso)', finestraOk('quindicinale', 12), true);
+  check('finestraOk quindicinale: 16 (massimo incluso)', finestraOk('quindicinale', 16), true);
+  check('finestraOk quindicinale: 11 (sotto il minimo) -> falso', finestraOk('quindicinale', 11), false);
+  check('finestraOk quindicinale: 17 (sopra il massimo) -> falso', finestraOk('quindicinale', 17), false);
+  check('finestraOk mensile: 23 (minimo incluso)', finestraOk('mensile', 23), true);
+  check('finestraOk mensile: 30 (massimo incluso)', finestraOk('mensile', 30), true);
+  check('finestraOk mensile: 22 (sotto il minimo) -> falso', finestraOk('mensile', 22), false);
+  check('finestraOk mensile: 31 (sopra il massimo) -> falso', finestraOk('mensile', 31), false);
+  check('finestraOk settimanale: nessuna finestra dichiarata -> sempre vero', finestraOk('settimanale', 999), true);
+
+  // giorniTraDate — Ciclo F.1, Parte B (distanza in giorni, anche a cavallo di due mesi)
+  check('giorniTraDate: 14 giorni nello stesso mese', giorniTraDate('2026-07-01', '2026-07-15'), 14);
+  check('giorniTraDate: 11 giorni a cavallo di due mesi (25/07 -> 05/08)', giorniTraDate('2026-07-25', '2026-08-05'), 11);
+  check('giorniTraDate: stessa data -> 0', giorniTraDate('2026-07-01', '2026-07-01'), 0);
+  check('giorniTraDate: ordine invertito -> negativo', giorniTraDate('2026-07-15', '2026-07-01'), -14);
+
+  // slittaGiornoValido — Ciclo F.1, Parte B (domenica + chiusure, priorità sulla finestra: avanza comunque)
+  check('slittaGiornoValido: giorno feriale senza chiusure -> invariato', slittaGiornoValido('2026-09-01', new Set()), '2026-09-01');
+  check('slittaGiornoValido: domenica -> lunedì successivo', slittaGiornoValido('2026-07-19', new Set()), '2026-07-20');
+  check('slittaGiornoValido: chiusura centro (non domenica) -> giorno successivo', slittaGiornoValido('2026-09-01', new Set(['2026-09-01'])), '2026-09-02');
+  check('slittaGiornoValido: sabato di chiusura seguito da domenica -> slitta oltre entrambi fino al lunedì', slittaGiornoValido('2026-08-15', new Set(['2026-08-15'])), '2026-08-17');
+
+  // rfreeConGap — Ciclo F.1, Parte C (fix del margine 5 minuti: prima le due righe si annullavano a vicenda)
+  check('rfreeConGap: sessione a ridosso (gap 0 min) -> bloccata dal margine', rfreeConGap([{ from: 600, to: 660 }], 660, 700), false);
+  check('rfreeConGap: gap di 4 min (sotto il minimo di 5) -> bloccata', rfreeConGap([{ from: 600, to: 660 }], 664, 700), false);
+  check('rfreeConGap: gap di esattamente 5 min -> libera', rfreeConGap([{ from: 600, to: 660 }], 665, 700), true);
+  check('rfreeConGap: sovrapposizione diretta -> bloccata', rfreeConGap([{ from: 600, to: 660 }], 630, 690), false);
+  check('rfreeConGap: nessun impegno -> sempre libera', rfreeConGap([], 600, 660), true);
+
+  // ultimaLezioneValida — Ciclo F.1, Parte B (proposta/confermata/eseguita contano, annullata/assenza ingiustificata no)
+  {
+    const sessioni = [
+      { progettoId: 'p1', data: '2026-06-10', stato: 'eseguita' },
+      { progettoId: 'p1', data: '2026-06-24', stato: 'annullata' }, // più recente ma NON valida: non deve vincere
+      { progettoId: 'p1', data: '2026-06-20', stato: 'proposta' },
+      { progettoId: 'p1', data: '2026-06-22', stato: 'assenza ingiustificata' }, // non valida
+      { progettoId: 'p2', data: '2026-06-30', stato: 'confermata' }, // altro progetto: non deve interferire
+    ];
+    check('ultimaLezioneValida: prende la più recente fra le valide, ignora annullata/assenza ingiustificata anche se più recenti', ultimaLezioneValida(sessioni, 'p1'), '2026-06-20');
+    check('ultimaLezioneValida: nessuna sessione valida per il progetto -> null', ultimaLezioneValida(sessioni, 'p3'), null);
+    check('ultimaLezioneValida: solo annullata/assenza ingiustificata -> null', ultimaLezioneValida([{ progettoId: 'p4', data: '2026-06-01', stato: 'annullata' }], 'p4'), null);
+  }
+
+  // calcStrettezza — Ciclo F.1 (mode-aware: settimanale invariata, quindicinale/mensile con frequenza equivalente nominale)
+  {
+    const dispo = { disponibilita: { Lun: [{ from: '09:00', to: '11:00' }] } }; // 120 minuti disponibili
+    check('calcStrettezza: settimanale, formula invariata (120min / (freq*dur))', calcStrettezza({ ...dispo, frequenza: 2, durataSessione: 60 }), 1);
+    check('calcStrettezza: quindicinale, frequenza equivalente 0.5/settimana', calcStrettezza({ ...dispo, modalitaFrequenza: 'quindicinale', durataSessione: 60 }), 4);
+    check('calcStrettezza: mensile, frequenza equivalente ~0.264/settimana', calcStrettezza({ ...dispo, modalitaFrequenza: 'mensile', durataSessione: 60 }), 7.571428571428571);
+    check('calcStrettezza: nessuna disponibilità -> 999 (invariato per ogni modalità)', calcStrettezza({ modalitaFrequenza: 'mensile', durataSessione: 60 }), 999);
   }
 
   console.log(fails === 0 ? ('--- Test funzionali: TUTTI OK (' + count + ' casi) ---\n') : ('--- Test funzionali: ' + fails + '/' + count + ' FALLITI ---\n'));

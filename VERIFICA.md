@@ -2006,3 +2006,104 @@ Il comportamento di hover/tap/click-fuori è stato tracciato a mano leggendo il 
 ## Discrepanze da discutere
 
 - **Non introdotta da questo ciclo, trovata rileggendo la chiusura di ieri**: la voce "Chiusura giornata 20/07" in questo stesso file termina (sezione "Metodo di verifica: multi-passata (chiusura giornata)", subito sopra questa nuova voce) con un rimando a una sezione "Verifica multi-passata di chiusura giornata... più sotto in questo stesso ciclo" — quella sezione non risulta presente da nessuna parte nel file: il file terminava esattamente a quel rimando. Segnalato qui come richiesto dalla prassi (mai corretto in silenzio); non è stato ricostruito perché non di competenza di questo ciclo (riguarda la chiusura di una sessione precedente, il 20/07) e perché non è possibile ricostruire con certezza cosa quella sezione mancante dovesse contenere di preciso senza inventarlo.
+
+---
+
+# Verifica — Ciclo F.1: Frequenza a distanza di giorni (quindicinale/mensile) + fix margine 5 minuti
+
+Data: 2026-07-21. Tocca l'algoritmo (Passata 1 di `generateMonth`), nessuna migrazione distruttiva. Prima tappa del Ciclo F (approccio a tappe): Passata 3, `generateMonthAI`, report e sconfinamento cross-mese restano fuori scopo (Ciclo F.2).
+
+## Cosa è stato fatto
+
+**Parte A — tre modalità mutuamente esclusive:**
+- Nuovo campo `modalitaFrequenza` sul progetto (`settimanale`/`quindicinale`/`mensile`), letto tramite la funzione pura `modalitaFrequenza(p)`: qualunque valore diverso dai due espliciti (`quindicinale`/`mensile`) — campo assente, `null`, `'settimanale'` letterale, o un valore non riconosciuto — ricade su `'settimanale'`. **Nessuna migrazione**: i progetti esistenti continuano a comportarsi esattamente come oggi, senza bisogno di scrivere nulla nei loro record.
+- Editor progetto: nuovo select "Modalità frequenza" prima del campo "Frequenza settimanale"; quest'ultimo si nasconde (`#pe-freq-wrap`) quando la modalità non è settimanale. Al salvataggio, `frequenza` è scritta solo in modalità settimanale, altrimenti `null` esplicito. `collectPeState()` (confronto per il dialogo "modifiche non salvate") include il nuovo campo, altrimenti un cambio di sola modalità non sarebbe stato rilevato come modifica.
+- Riga della tabella Progetti aggiornata per mostrare "Quindicinale"/"Mensile" invece di un fuorviante "—x/sett" quando `frequenza` è `null`.
+
+**Parte B — logica a distanza di giorni (solo Passata 1, `generateMonth`):**
+- `ultimaLezioneValida(sessioni,progettoId)`: ultima sessione `proposta`/`confermata`/`eseguita` del progetto (annullata/assenza ingiustificata escluse, si prende la valida precedente), cercata su `keep` — l'array che `generateMonth` già costruisce con `sessioniDaConservare(ms,scopeIds)` e che esclude **solo** le "proposta" di questo mese in ambito che il run sta per sostituire, non l'intero storico per gli altri criteri: include quindi correttamente sessioni di mesi precedenti, come richiesto esplicitamente dal vincolo tecnico cross-mese.
+- Candidata: `slittaGiornoValido(addGiorni(ultima,min),chiusureDates)` — parte dal minimo della finestra (12 per quindicinale, 23 per mensile), poi avanza di un giorno alla volta finché non trova un giorno che non sia domenica né una chiusura centro (`Gestionale_Chiusure`). Lo slittamento ha priorità sulla finestra: se il risultato finale cade fuori da [min,max] (`finestraOk`/`giorniTraDate`), un'anomalia esplicita lo segnala, ma la sessione viene comunque tentata.
+- Un solo giorno candidato per l'intero mese per progetto: se `candidataYM===ms`, si tenta il piazzamento (stessa logica di scelta operatore/aula della modalità settimanale, tramite `sceglieOperatoreEAula`); se `candidataYM<ms` (candidata scaduta, nel passato rispetto al mese generato), un'anomalia esplicita invita a verificare; se `candidataYM>ms` (non ancora dovuta questo mese — il caso normale per la maggior parte dei mesi con cadenze superiori alla settimana), nessuna azione né avviso.
+- Nessuno sconfinamento: il ciclo giorni (`for(let d=wk;d<=we...)`) della modalità settimanale non supera mai `days` (ultimo giorno del mese `ms`); la modalità a distanza di giorni non genera mai una data fuori da `ms` per costruzione (il controllo `candidataYM===ms` la esclude a monte).
+
+**Parte C — fix del margine 5 minuti (backlog CONTESTO.md #13):**
+- Nuova funzione pura `rfreeConGap(busy,st,en)` = `rfree(busy,st-GAP_MINUTI,en+GAP_MINUTI)` (`GAP_MINUTI=5`), sostituisce ovunque in Passata 1 le chiamate a `rfree` nude su operatore, aula e utente (fra i progetti diversi della stessa persona). Prima del fix, il controllo operatore era due righe (`if(!rfree(gap)&&!rfree(raw))continue;` seguita da `if(!rfree(raw))continue;`) che si annullavano a vicenda: la seconda riga, da sola, bloccava già ogni sovrapposizione oraria vera e propria, rendendo la prima (quella con il margine) incapace di bloccare mai un caso "vicino ma non sovrapposto" che la seconda non avrebbe già bloccato. Verificato con un caso concreto: operatore libero 10:00-11:00 (`{from:600,to:660}`), candidata 11:01-11:40 (`st=661`) — prima del fix, veniva piazzata (nessuna sovrapposizione esatta); con `rfreeConGap` viene correttamente bloccata (margine di 1 minuto, sotto i 5 richiesti).
+
+**Refactoring di supporto (comportamento della modalità settimanale dimostrato invariato):**
+- `sceglieOperatoreEAula(p,ds,dn,st,en,pool,sessionCount)`: estrae la scelta operatore/aula (sede compatibile, formazioni, margine, viaggio, aula per mezza giornata) dal ciclo settimanale in una funzione condivisa, riusata identica dal nuovo ramo. Stesso ordine di condizioni, stessi effetti collaterali (`anom` per il ripiego Busto, `opRoom` per la stanza di mezza giornata) del codice originale — solo la forma cambia.
+- `creaSessionePiazzata(p,ds,st,en,op,sed,cAula,sessionCount)`: estrae la costruzione dell'oggetto sessione "proposta", identica al literal originale.
+- `calcStrettezza` resa mode-aware: per settimanale la formula resta `p.frequenza||1` (letterale, invariata); per quindicinale/mensile usa una frequenza equivalente settimanale nominale (7 / punto medio della finestra) solo per l'ordinamento di priorità fra progetti, senza introdurre alcun vincolo di piazzamento.
+
+| Parte | Stato |
+|---|---|
+| Tre modalità mutuamente esclusive nell'editor progetto, settimanale invariata come default | ✅ Fatto |
+| Query cross-mese sull'ultima lezione valida (proposta/confermata/eseguita) | ✅ Fatto (`ultimaLezioneValida` su `keep`) |
+| Slittamento domenica/chiusura con priorità sulla finestra | ✅ Fatto (`slittaGiornoValido`) |
+| Nessuno sconfinamento oltre il mese generato | ✅ Verificato |
+| Fix del margine 5 minuti, applicato a operatore/aula/utente in Passata 1 | ✅ Fatto (`rfreeConGap`) |
+| Comportamento della modalità settimanale invariato (a parte il fix del margine, esplicitamente richiesto anche lì) | ✅ Dimostrato (vedi Passata 2 sotto) |
+| Nessuna migrazione distruttiva | ✅ Verificato |
+| Vincoli invariati (aule fisse mezza giornata, orari 09:00-19:30, confermate mai toccate, regole sede, domenica esclusa) | ✅ Verificato — nessuna di queste logiche toccata |
+
+### Scenario tracciato a mano: progetto quindicinale, generazione di settembre 2026
+
+1. **Caso normale**: ultima lezione valida (eseguita) il 2026-08-20 (giovedì). Candidata grezza = `addGiorni('2026-08-20',12)` = 2026-09-01 (martedì — verificato con `new Date(...).getDay()`, non a memoria). Non è domenica né chiusura → `slittaGiornoValido` la restituisce invariata. `candidataYM='2026-09'===ms` → si tenta il piazzamento quel giorno esatto. `giorniTraDate('2026-08-20','2026-09-01')=12`, dentro [12,16] → nessuna anomalia di finestra. Se operatore e utente sono disponibili quel giorno, la sessione viene creata; il riepilogo registra `richieste:1,piazzate:1`.
+2. **Slittamento con più giorni non validi consecutivi**: chiusura centro il 2026-08-15 (sabato) + 2026-08-16 è domenica (verificato) — `slittaGiornoValido('2026-08-15',{'2026-08-15'})` avanza da sabato (chiusura) a domenica (weekend) a lunedì 2026-08-17 (primo giorno valido) — stesso identico caso già coperto come test unitario in `check-sintassi.js`, qui ricondotto allo scenario applicativo: se questa fosse la candidata grezza di un progetto quindicinale con ultima lezione il 2026-08-05, la distanza finale (`giorniTraDate('2026-08-05','2026-08-17')=12`) resterebbe comunque dentro la finestra, nessuna anomalia.
+3. **Candidata scaduta**: se per qualche motivo si genera settembre ma l'ultima lezione valida risale a giugno (progetto trascurato per mesi), la candidata calcolata cadrebbe in luglio o agosto — `candidataYM<ms` → anomalia esplicita "la prossima lezione risulterebbe già scaduta", nessun piazzamento silenzioso.
+4. **Non ancora dovuta**: progetto mensile con ultima lezione il 2026-09-10, si genera ottobre — candidata ≈ 2026-10-03/10 → `candidataYM='2026-10'===ms` in questo caso specifico verrebbe comunque tentata (è il caso normale); se invece l'ultima fosse stata il 2026-09-25 e si generasse ottobre, candidata ≈ 2026-10-18/25, ancora `candidataYM==='2026-10'` — il caso "candidata in un mese successivo a quello generato" si verifica tipicamente generando **due mesi dopo** l'ultima lezione di un progetto mensile: nessuna azione, nessun avviso, verificato che il codice non produca falsi allarmi per la situazione normale.
+5. **Nessun avviso di finestra quando lo slittamento non è necessario**: verificato che `finestraOk(modo,giorniTraDate(ultima,candidata))` sia sempre vero quando `candidata===addGiorni(ultima,min)` non slittata (la distanza è esattamente `min`, sempre dentro [min,max] per costruzione) — l'anomalia di finestra scatta solo quando lo slittamento ha effettivamente spostato la data.
+
+### Scenario tracciato a mano: comportamento invariato della modalità settimanale
+
+Confrontato riga per riga il nuovo codice col codice originale (`git diff`): stesso ordine — controllo utente (ora con margine), poi `sceglieOperatoreEAula` (stesso ordine interno: sede, slot, formazioni, margine operatore, viaggio, aula/mezza giornata), poi controllo ore contrattuali Assunto, poi costruzione e inserimento della sessione, stessi effetti su `opB`/`prB`/`auB`/`opRoom`/`sessionCount`/`placed`. L'unica differenza di comportamento (non di struttura) è il margine di 5 minuti, ora realmente applicato anche lì — cambiamento esplicitamente richiesto dalla Parte C per l'intera Passata 1, non un effetto collaterale involontario del refactoring.
+
+## Estensione di `check-sintassi.js`
+
+33 nuovi casi (89→122 totali) su 10 funzioni pure nuove (`modalitaFrequenza`, `finestraOk`, `dateToISO`, `addGiorni`, `giorniTraDate`, `slittaGiornoValido`, `rfreeConGap`, `ultimaLezioneValida`, più `dname`/`rfree` — preesistenti ma mai estratte prima) e su `calcStrettezza` (preesistente, mai testata prima, ora coperta anche per la modifica mode-aware). Le date usate nei test (`2026-07-19` domenica, `2026-08-15` sabato, `2026-08-16` domenica) sono state verificate con `new Date(...).getDay()` in Node prima di scriverle nei test, non assunte a memoria.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — per punto del prompt**: riletti singolarmente Parte A (tre modalità, editor, default settimanale), Parte B (query cross-mese, slittamento, priorità sulla finestra, un solo giorno candidato, niente sconfinamento), Parte C (fix margine, applicato ovunque in Passata 1), Vincoli invariati (aule/orari/confermate/sede/domenica) e Chiusura ciclo (check-sintassi.js, verifica multi-passata, CLAUDE.md/CONTESTO.md aggiornati, Registro di sessione) — vedi tabella sopra, tutti soddisfatti.
+2. **Passata 2 — coerenza interna di `index.html`**: `node check-sintassi.js` (3 blocchi `<script>` OK, 122 test funzionali, tutti passano); grep mirato per `GAP` residuo (nessuno, tutto migrato a `GAP_MINUTI`/`rfreeConGap`); grep di tutte le occorrenze di `modalitaFrequenza(` (5: definizione, `calcStrettezza`, il ciclo di Passata 1, la riga tabella Progetti, il markup dell'editor) per confermare che ogni punto d'uso sia coerente; verificato che nessuna variabile locale (`chosen`/`cAula`/`chosenSed`/`tentAulaPiena`) sia rimasta dichiarata fuori dalla funzione estratta.
+3. **Passata 3 — rilettura completa del `git diff` di `index.html`**: confermato che le uniche modifiche sono la riga della tabella Progetti, l'editor progetto (markup + 3 punti JS: listener modalità, `collectPeState`, salvataggio), il blocco di nuove funzioni pure dopo `maxNuoveSettimana`, `calcStrettezza`, e il blocco di Passata 1 (helper + ciclo per-progetto) — nessuna modifica accidentale a Passata 2, Passata 3, `generateMonthAI`, liste SharePoint, `LISTE_RECORD_SINGOLO`, stati sessione.
+4. **Passata 4 — scenari tracciati a mano**: i cinque scenari quindicinale/mensile sopra (caso normale, slittamento multiplo, candidata scaduta, non ancora dovuta, nessun falso avviso di finestra) più il confronto riga-per-riga della modalità settimanale (invariata a parte il fix del margine, esplicitamente richiesto anche lì).
+5. **Passata 5 — confronto incrociato fra le quattro fonti**: `CLAUDE.md` (bullet Passata 1 e Progetti aggiornati, voce S11 riscritta con nota di fedeltà sulla discrepanza "quindicinale" vs. "2 volte/mese" originale), `CONTESTO.md` (Cronologia voce 36, Backlog voce 21 con Ciclo F diviso in F.1/F.2, backlog voce 13 chiusa, Registro delle decisioni voci 60-66), questo file, il codice reale — stessi nomi di funzione in tutte e quattro le fonti, nessuna incongruenza propria di questo ciclo trovata.
+
+Nessuna passata aggiuntiva ha trovato nulla di nuovo dopo la quinta: verifica chiusa a 5 passate.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna oltre al prompt di apertura del ciclo, che specificava già in dettaglio le tre parti (A/B/C), i vincoli invariati, e la chiusura ciclo completa (estensione check-sintassi.js con quattro categorie di test, verifica multi-passata, aggiornamento CLAUDE.md/CONTESTO.md, Registro di sessione, riepilogo prima del commit).
+
+*Domande poste a Simone e risposte ricevute:* nessuna in questo ciclo — il prompt copriva già i casi rilevanti (punto di partenza del conteggio, priorità dello slittamento sulla finestra, stati sessione validi). Due decisioni implementative non specificate esplicitamente nel prompt sono state prese e dichiarate (non chieste a Simone, dato il contesto "sola lettura" delle due sessioni precedenti che avevano preceduto questo ciclo di lavoro effettivo): candidata calcolata al minimo della finestra (non al punto medio), e un solo giorno candidato per mese senza ricerca di alternative nella finestra.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 60-66 (terminologia "quindicinale" al posto di "2 volte/mese"; un solo giorno candidato senza ricerca di alternative; candidata al minimo della finestra; query su `keep` non su tutto lo storico grezzo; candidata scaduta segnalata vs. non ancora dovuta silenziosa; estrazione di `sceglieOperatoreEAula`/`creaSessionePiazzata`; margine di 5 minuti esteso a utente e aula, non solo operatore).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| A.1 | Frequenza come scelta fra tre modalità mutuamente esclusive | ✅ Fatto | select `#pe-freqmodo`, campo numero nascosto per le altre due |
+| A.2 | Settimanale = comportamento attuale invariato | ✅ Dimostrato | confronto riga-per-riga nel diff |
+| A.3 | Quindicinale = 12-16 giorni; Mensile = 23-30 giorni | ✅ Fatto | `FINESTRE_FREQUENZA` |
+| A.4 | Migrazione non distruttiva, default settimanale per progetti esistenti | ✅ Fatto | `modalitaFrequenza(p)`, nessuna scrittura richiesta |
+| B.1 | Punto di partenza: ultima proposta/confermata/eseguita, annullata/assenza esclusa | ✅ Fatto | `ultimaLezioneValida` |
+| B.2 | Query esplicita cross-mese, non solo mese corrente | ✅ Fatto | su `keep`, non su `state.data.sessioni` filtrato per `ms` |
+| B.3 | Nessuno sconfinamento: solo datazione del primo incontro del mese | ✅ Verificato | `candidataYM===ms` come unico caso che piazza |
+| B.4 | Slittamento su domenica/chiusura, primo giorno utile successivo | ✅ Fatto | `slittaGiornoValido` |
+| B.5 | Slittamento ha priorità sulla finestra | ✅ Fatto | mai un `continue`/blocco per finestra, solo segnalazione |
+| B.6 | Nota sul trascinamento del ritmo, per il futuro collaudo automatico | ✅ Fatto | commento dedicato su `slittaGiornoValido` |
+| C.1 | Margine 5 minuti sempre rispettato fra sessioni consecutive | ✅ Fatto | `rfreeConGap`/`GAP_MINUTI` |
+| C.2 | Fix coerente ovunque `rfree` usato in Passata 1 | ✅ Fatto | operatore, aula, utente |
+| Vincoli | Aule fisse mezza giornata, orari 09:00-19:30, confermate intoccabili, regole sede, domenica esclusa | ✅ Verificato | nessuna di queste logiche toccata |
+| Chiusura | `check-sintassi.js` esteso e passante, verifica multi-passata (min. 4), CLAUDE.md/CONTESTO.md aggiornati, Registro di sessione | ✅ Fatto | 5 passate, 122 test |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti per F.1. Esplicitamente fuori scopo (Ciclo F.2, non di questo ciclo): estensione a Passata 3 (riparazione), `generateMonthAI`, report di generazione (diagnostica granulare), sconfinamento cross-mese con relativa protezione anti-doppione. Non eseguibile in questo ambiente: nessun test dal vivo con login M365/browser reale — il collaudo più utile per Simone sarebbe generare un mese reale con un progetto quindicinale/mensile di prova e verificare a schermo la singola sessione piazzata nel giorno atteso.
+
+## Limiti di questa verifica
+
+Gli scenari applicativi (candidata normale, slittamento, candidata scaduta/non ancora dovuta) sono stati tracciati a mano leggendo il codice con valori concreti e verificando le date di calendario con Node (`new Date(...).getDay()`), non osservati in esecuzione reale — nessun ambiente con login M365/browser disponibile qui. Le funzioni pure sottostanti (distanza in giorni, verifica finestra, slittamento, margine 5 minuti) sono invece verificate con `check-sintassi.js`, che le esegue realmente con `node --check` + casi concreti, non solo tracciate a mano. Si raccomanda a Simone, dopo il deploy, di generare un mese con un progetto di prova in ciascuna delle due nuove modalità per osservare dal vivo la sessione candidata, e di verificare in particolare il caso "candidata scaduta" (impostando ad arte un progetto quindicinale/mensile con un'ultima lezione lontana nel tempo) per vedere l'anomalia comparire nel banner dei risultati di generazione.
+
+## Discrepanze da discutere
+
+- **Segnalata, non risolta in autonomia**: la specifica S11 originale (17/07, in `CLAUDE.md`) descriveva la modalità "2 volte/mese" come un'alternanza di settimane (settimana con incontro, settimana vuota); l'implementazione di oggi (Ciclo F.1), su indicazione diretta di Simone in sessione, usa invece "quindicinale" come distanza pura di 12-16 giorni dall'ultima lezione — un meccanismo diverso da quello originale. Il testo originale di S11 è stato conservato in `CLAUDE.md` (sotto "Testo originale S11") per lo storico, non riscritto: la discrepanza è dichiarata esplicitamente lì e qui, non nascosta.
