@@ -362,6 +362,37 @@ function runTest(sandbox) {
     check('ultimaLezioneValida: solo annullata/assenza ingiustificata -> null', ultimaLezioneValida([{ progettoId: 'p4', data: '2026-06-01', stato: 'annullata' }], 'p4'), null);
   }
 
+  // Cascata intra-mese dal bootstrap + continuità cross-mese — Ciclo F1.2. `tentaProssimaLezioneDistanza`
+  // (la funzione che incatena i piazzamenti) non è estraibile in sandbox: chiude su troppo stato di generateMonth
+  // (opB/prB/auB/newS/anom/pool/sessionCount/...), stessa limitazione già documentata per il ramo di bootstrap del
+  // Ciclo F1.1. Questi casi verificano invece, con le stesse primitive pure che quella funzione compone
+  // (addGiorni/slittaGiornoValido/giorniTraDate/finestraOk), che la catena di date che il codice reale produce sia
+  // corretta: la scelta concreta (venerdì 4 settembre 2026, la vera data del bootstrap collaudata da Simone su
+  // "prova 4 psico") non è arbitraria — verificata con dname/getDay, non assunta a memoria.
+  {
+    const chiusureVuote = new Set();
+    // Scenario 1 — CASCATA INTRA-MESE: bootstrap piazza la prima lezione ven 4/09/2026; la cascata deve trovare
+    // altre due candidate ancora dentro settembre (12 giorni di distanza ciascuna) prima di uscire dal mese.
+    const prima = '2026-09-04';
+    const cand1 = slittaGiornoValido(addGiorni(prima, 12), chiusureVuote);
+    check('Cascata F1.2: 1a successiva dopo il bootstrap (4/09+12gg) resta in settembre', cand1.slice(0, 7), '2026-09');
+    check('Cascata F1.2: 1a successiva = 16/09/2026 (nessuna domenica/chiusura da slittare)', cand1, '2026-09-16');
+    check('Cascata F1.2: distanza 1a successiva dentro la finestra quindicinale [12,16]', finestraOk('quindicinale', giorniTraDate(prima, cand1)), true);
+    const cand2 = slittaGiornoValido(addGiorni(cand1, 12), chiusureVuote);
+    check('Cascata F1.2: 2a successiva (16/09+12gg) resta ANCORA in settembre (30 giorni nel mese)', cand2.slice(0, 7), '2026-09');
+    check('Cascata F1.2: 2a successiva = 28/09/2026', cand2, '2026-09-28');
+    const cand3 = slittaGiornoValido(addGiorni(cand2, 12), chiusureVuote);
+    check('Cascata F1.2: 3a successiva (28/09+12gg) esce da settembre -> la cascata deve fermarsi qui (oltreMese)', cand3.slice(0, 7), '2026-10');
+
+    // Scenario 2 — CONTINUITÀ CROSS-MESE: la candidata che ha fermato la cascata di settembre (cand3, sopra) deve
+    // essere ESATTAMENTE quella che il run di ottobre piazzerebbe partendo dall'ultima sessione di settembre (28/09)
+    // come ancora — nessun buco (la distanza resta 12, dentro finestra) e nessun doppione (è strettamente successiva
+    // al 28/09, non lo stesso giorno né uno precedente già piazzato in settembre).
+    check('Continuità cross-mese: la candidata di ottobre (ancora=28/09) coincide con quella che ha fermato la cascata di settembre', slittaGiornoValido(addGiorni('2026-09-28', 12), chiusureVuote), cand3);
+    check('Continuità cross-mese: nessun buco, distanza 28/09->10/10 dentro la finestra [12,16]', finestraOk('quindicinale', giorniTraDate('2026-09-28', cand3)), true);
+    check('Continuità cross-mese: nessun doppione, la candidata di ottobre è strettamente successiva alle tre di settembre', cand3 > cand2 && cand3 > cand1 && cand3 > prima, true);
+  }
+
   // calcStrettezza — Ciclo F.1 (mode-aware: settimanale invariata, quindicinale/mensile con frequenza equivalente nominale)
   {
     const dispo = { disponibilita: { Lun: [{ from: '09:00', to: '11:00' }] } }; // 120 minuti disponibili

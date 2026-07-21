@@ -2202,3 +2202,101 @@ I due scenari (Bug 1, Bug 2) e la retrocompatibilità sono stati tracciati a man
 ## Discrepanze da discutere
 
 Nessuna discrepanza aperta in questo ciclo: entrambi i bug sono stati riprodotti a mano leggendo il codice, la causa reale del Bug 2 è risultata diversa dall'ipotesi del prompt (segnalato sopra, non nascosto) ma pienamente coerente con il sintomo descritto da Simone.
+
+---
+
+# Verifica — Ciclo F1.2: HOTFIX bootstrap quindicinale — cascata intra-mese + aggancio cross-mese
+
+Data: 2026-07-21. HOTFIX del bootstrap introdotto dal Ciclo F1.1, emerso dal collaudo di Simone su "prova 4 psico" (progetto quindicinale, generazione di settembre 2026). Tocca solo il blocco quindicinale/mensile di `generateMonth` (confermato col diff: due soli hunk, righe 2234-2373, nessun altro punto del file toccato); nessuna migrazione, nessun tocco a `generateMonthAI`/Passata 3/modalità settimanale.
+
+## Sintomo riportato da Simone
+
+Progetto quindicinale "prova 4 psico", nessuna lezione pregressa, generazione di settembre 2026: il bootstrap (Ciclo F1.1) ha piazzato correttamente la prima sessione (**venerdì 4 settembre** — verificato con `dname`/`getDay` in Node, non assunto a memoria: coincide esattamente con la data reale del test di Simone). Non ha piazzato la seconda, attesa 12-16 giorni dopo (~16-20 settembre), pur essendo quella data ancora dentro il mese generato.
+
+## Indagine richiesta prima di correggere: come termina il bootstrap oggi, come itera il ramo con ancora
+
+Rilette entrambe le strutture prima di scrivere qualunque modifica:
+- **Il ramo bootstrap** (Ciclo F1.1): un `for(let d=1;d<=days&&!piazzata;d++)` che scorre i giorni del mese; alla prima sessione piazzata mette `piazzata=true`, la guardia del `for` (`&&!piazzata`) interrompe il ciclo, e non c'è alcun codice successivo che tenti una seconda sessione — il flusso finisce lì, delegando esplicitamente (per commento nel codice) "le sessioni successive... ai run dei mesi successivi".
+- **Il ramo con ancora** (Ciclo F.1, invariato prima di questo ciclo): calcola **una sola** candidata (`candidata=slittaGiornoValido(addGiorni(ultima,min),chiusureDates)`) a partire dall'ancora (`ultima`, da `ultimaLezioneValida`), la tenta, e si ferma — non c'era alcun meccanismo di ripetizione neppure lì, semplicemente perché ogni run di `generateMonth` chiama questo codice una volta sola per progetto, e la "ripetizione" avviene solo a distanza di run (mese dopo mese), non dentro allo stesso run.
+
+**Punto di innesto individuato**: il ramo con ancora calcola-e-tenta esattamente l'operazione di cui il bootstrap ha bisogno per proseguire dopo la prima sessione — la stessa identica candidata-da-distanza-minima, lo stesso identico piazzamento in un solo giorno esatto. Bastava estrarla in una funzione richiamabile e richiamarla in un ciclo dal bootstrap, usando la sessione appena piazzata come nuovo ancoraggio ad ogni iterazione, fino a quando la candidata non esce dal mese o non trova più uno slot compatibile.
+
+## Cosa è stato fatto
+
+- Estratta `tentaProssimaLezioneDistanza(ancora)`: dato un ancoraggio (una data reale da `ultimaLezioneValida`, o una sessione appena piazzata dal bootstrap), calcola la candidata (`slittaGiornoValido(addGiorni(ancora,min),...)`), verifica la finestra (`finestraOk`/`giorniTraDate`, stesso avviso se lo slittamento la porta fuori range), e:
+  - se la candidata è in un mese precedente a `ms` → avviso "già scaduta", nessun piazzamento (`oltreMese:false`);
+  - se è in un mese successivo a `ms` → nessun piazzamento, `oltreMese:true` (segnale di stop per un'eventuale cascata);
+  - se cade in `ms` → tenta il piazzamento in quel giorno esatto con la stessa identica logica di sempre (`effRng`, `rfreeConGap`, `sceglieOperatoreEAula`, `creaSessionePiazzata`, controllo ore contrattuali Assunto) — un solo giorno tentato, nessuna ricerca di alternative nella finestra (limite Ciclo F.1 invariato).
+  - Restituisce `{piazzata,data,oltreMese,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente}` (contatori locali alla chiamata, non condivisi fra chiamate — ogni tentativo ha i propri, per un riepilogo corretto per occorrenza).
+- **Ramo con ancora**: ora una singola chiamata `tentaProssimaLezioneDistanza(ultima)` — stesso comportamento di prima, stesso testo, stessi effetti, solo spostato dentro la funzione condivisa (confrontato riga per riga col codice precedente).
+- **Ramo bootstrap**: invariato fino al primo piazzamento; se piazzata, invece di fermarsi, entra in un `while(continua)` che richiama `tentaProssimaLezioneDistanza(ancora)` partendo da `ancora=primaData` (la data appena piazzata dal bootstrap), avanzando `ancora` a ogni sessione piazzata (`r.piazzata` → `ancora=r.data`) e fermandosi (`continua=false`) al primo tentativo non piazzato (per `oltreMese` o per mancanza di slot compatibile quel giorno) — mai un salto al tentativo "successivo" quando uno fallisce (coerente col limite già esistente sul ramo con ancora, decisione 61/70 in `CONTESTO.md`).
+- Un riepilogo (`riepiloghi.push`) per ogni tentativo (bootstrap iniziale incluso), non più uno solo per progetto — necessario perché ora un progetto bootstrappato può avere più occorrenze piazzate nello stesso run; ciascuna riga porta i contatori diagnostici propri di quel tentativo specifico.
+
+| Punto | Stato |
+|---|---|
+| Bootstrap piazza la prima sessione come già faceva (invariato) | ✅ Verificato — nessuna modifica al codice prima del primo piazzamento |
+| Subito dopo, senza fermarsi, calcola a cascata le successive nella finestra 12-16/23-30 | ✅ Fatto (`while` su `tentaProssimaLezioneDistanza`) |
+| Piazza TUTTE le occorrenze che ricadono ancora nel mese di generazione | ✅ Fatto — si ferma solo per `oltreMese` o mancanza di slot, mai per un tetto arbitrario |
+| Ogni occorrenza rispetta tutte le regole esistenti (disponibilità, sedi, chiusure, orari, gap, aula) | ✅ Verificato — stessa `tentaProssimaLezioneDistanza` usata dal ramo con ancora, nessuna logica alternativa |
+| Nessuna duplicazione di codice: confluisce nel ramo di calcolo-da-ancora esistente | ✅ Fatto — funzione condivisa, non due copie |
+| Continuità cross-mese dei run successivi invariata (nessuna regressione) | ✅ Verificato — il ramo con ancora resta a una sola chiamata, comportamento Ciclo F.1 identico |
+| Nessuna migrazione, nessun tocco a `generateMonthAI`/Passata 3/modalità settimanale | ✅ Verificato (`git diff`, due soli hunk) |
+
+### Scenario tracciato a mano, con le date reali del test di Simone (settembre 2026, progetto quindicinale)
+
+Tutte le date verificate con `dname`/`getDay` in Node (non assunte a memoria), usando la stessa logica di `dateToISO`/`addGiorni` del codice sorgente (non `toISOString()`, che introdurrebbe uno sfasamento di fuso orario — errore commesso e corretto durante questa stessa verifica, vedi nota sotto).
+
+1. **Bootstrap**: prima sessione piazzata venerdì **04/09/2026** (coincide con il test reale di Simone).
+2. **Cascata, 1° giro**: `ancora=04/09`, candidata = `slittaGiornoValido(addGiorni('2026-09-04',12))` = **16/09/2026** (mercoledì, non domenica né chiusura, nessuno slittamento) → `candidataYM='2026-09'===ms` → tentativo di piazzamento quel giorno; assumendo operatore/utente disponibili, piazzata. `giorniTraDate(04/09,16/09)=12`, dentro `[12,16]`.
+3. **Cascata, 2° giro**: `ancora=16/09`, candidata = **28/09/2026** (lunedì) → ancora dentro settembre (30 giorni nel mese) → tentativo, piazzata. Distanza 12, dentro finestra.
+4. **Cascata, 3° giro (fine cascata)**: `ancora=28/09`, candidata = **10/10/2026** (sabato) → `candidataYM='2026-10'` ≠ `ms='2026-09'` → `oltreMese:true`, nessun piazzamento, `continua=false`: la cascata di settembre si ferma con **3 sessioni piazzate** (04, 16, 28/09).
+5. **Continuità cross-mese**: al run di ottobre, `ultimaLezioneValida(keep,p.id)` trova **28/09** come sessione più recente valida del progetto (l'unica fra le tre di settembre più recente); il ramo con ancora (una sola chiamata, invariato) calcola `tentaProssimaLezioneDistanza('2026-09-28')` → stessa identica candidata **10/10/2026** che aveva fermato la cascata di settembre. **Nessun buco** (la distanza resta 12 giorni, dentro `[12,16]`, nessun avviso di finestra) e **nessun doppione** (10/10 è strettamente successiva alle tre sessioni di settembre, mai ricalcolata o ripiazzata). Verificato anche l'inverso: se ottobre venisse generato PRIMA che settembre fosse mai stato generato (scenario non realistico nell'uso normale, ma verificato per sicurezza), `ultimaLezioneValida` troverebbe comunque null e attiverebbe di nuovo il bootstrap per ottobre, con lo stesso comportamento — nessuno stato "a metà" possibile.
+
+**Nota metodologica**: durante la preparazione di questo scenario, un primo script di verifica ad-hoc (fuori da `index.html`, solo per calcolare le date) usava `new Date(...).toISOString().slice(0,10)` per convertire le date, che ha prodotto un risultato sbagliato di un giorno (28/09+12 → 09/10 invece di 10/10) per uno sfasamento di fuso orario introdotto da `toISOString()` (converte in UTC, mentre `dateToISO()` nel codice sorgente usa sempre i componenti locali `getFullYear/getMonth/getDate`). Individuato e corretto **prima** di scrivere i test in `check-sintassi.js`, rifacendo il calcolo con la stessa identica logica di `dateToISO`/`addGiorni` del file reale — le date nei test sotto sono quindi verificate con la logica corretta, non con lo script inizialmente sbagliato.
+
+## Estensione di `check-sintassi.js`
+
+9 nuovi casi (126→135 totali), tutti nella stessa sezione dedicata a Ciclo F1.2. Non estratta `tentaProssimaLezioneDistanza` in isolamento: chiude su troppo stato di `generateMonth` (`opB`/`prB`/`auB`/`newS`/`anom`/`pool`/`sessionCount`/`allPU`), stessa limitazione già documentata per il ramo di bootstrap del Ciclo F1.1 — estrarla avrebbe richiesto o riscriverla con una sandbox che replica tutto quello stato (rischio di testare una copia, non il codice reale) o cambiarne la firma con dozzine di parametri solo per la testabilità (decisione 72, `CONTESTO.md`). I nuovi test compongono invece le stesse primitive pure già estratte (`addGiorni`/`slittaGiornoValido`/`giorniTraDate`/`finestraOk`) con le date reali del test di Simone, in due scenari: (1) **cascata intra-mese** — la catena 04/09→16/09→28/09 resta dentro settembre, la successiva (10/10) ne esce; (2) **continuità cross-mese** — la candidata che ferma la cascata di settembre coincide esattamente con quella che il run di ottobre calcolerebbe dall'ancora 28/09, nessun buco (distanza dentro finestra) e nessun doppione (data strettamente crescente).
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — per punto del prompt**: rilette singolarmente le richieste (bootstrap piazza la prima come oggi, poi cascata senza fermarsi, tutte le occorrenze nel mese, nessuna regola aggirata, nessuna duplicazione — confluenza nel ramo con ancora, continuità cross-mese invariata, indagine richiesta prima di correggere, almeno due nuovi casi di test, chiusura ciclo) — vedi tabella sopra, tutte soddisfatte.
+2. **Passata 2 — coerenza interna di `index.html`**: `node check-sintassi.js` (3 blocchi `<script>` OK, 135 test funzionali, tutti passano); `git diff index.html` mostra solo due hunk (righe 2234-2373), confermando che nessun'altra parte del file (Passata 2/3, `generateMonthAI`, modalità settimanale, liste SharePoint, stati sessione) è stata toccata.
+3. **Passata 3 — rilettura completa della nuova funzione**: verificato che `tentaProssimaLezioneDistanza` sia byte-per-byte la stessa logica che il ramo con ancora aveva prima (stesso ordine di controlli: finestra → scaduta → non ancora dovuta → ricerca slot → contratto Assunto → creazione sessione → registri di occupazione), solo racchiusa in una funzione con contatori locali (`diagNoUtenteL` ecc., invece delle variabili condivise di prima) e un valore di ritorno strutturato al posto delle variabili mutate in-place.
+4. **Passata 4 — scenari tracciati a mano**: la catena di cinque passi sopra (bootstrap, due cascate, fine cascata, ripresa cross-mese), con tutte le date verificate in Node con la stessa logica del codice sorgente (non `toISOString()`, errore individuato e corretto durante questa stessa verifica, vedi nota metodologica sopra).
+5. **Passata 5 — confronto incrociato fra le quattro fonti**: `CLAUDE.md` (bullet bootstrap riscritto: "non si ferma più alla prima", cascata + nota sul limite non esteso del ramo con ancora, segnalata per F.2), `CONTESTO.md` (Cronologia voce 38 con causa/correzione/verifica cross-mese, Backlog "Ciclo F1.2" sotto Ciclo F, Registro delle decisioni voci 70-72), questo file, il codice reale — stessi nomi (`tentaProssimaLezioneDistanza`, `oltreMese`, `primaData`) in tutte e quattro le fonti.
+
+Nessuna passata aggiuntiva ha trovato nulla di nuovo dopo la quinta: verifica chiusa a 5 passate.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* nessuna oltre al prompt di apertura del ciclo, che specificava già in dettaglio il sintomo osservato dal vivo (prima sessione piazzata, seconda mancante), il comportamento atteso (fix A: cascata confluendo nel ramo con ancora, senza duplicare codice), l'indagine richiesta prima di correggere (mostrare come termina il bootstrap e come itera il ramo con ancora), la richiesta esplicita di segnalare — non forzare una soluzione — se fosse emerso un rischio di doppione cross-mese, e la chiusura ciclo completa.
+
+*Domande poste a Simone e risposte ricevute:* nessuna in questo ciclo — il prompt copriva già i casi rilevanti. Una decisione implementativa non specificata esplicitamente nel prompt è stata presa e dichiarata: la cascata si ferma alla prima candidata non piazzabile (nessun salto al tentativo "successivo"), per coerenza col limite già esistente sul ramo con ancora.
+
+*Decisioni prese di conseguenza:* vedi `CONTESTO.md`, Registro delle decisioni, voci 70-72 (cascata che si ferma alla prima candidata non piazzabile; ramo con ancora non esteso, solo segnalato per F.2; funzione condivisa come closure invece che pura-ma-estraibile).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| Indagine | Mostrare come termina oggi il bootstrap e come itera il ramo con ancora, per individuare il punto di confluenza | ✅ Fatto | vedi sezione dedicata sopra |
+| Fix A | Bootstrap piazza la prima come oggi | ✅ Invariato | nessuna modifica al codice prima del primo piazzamento |
+| Fix A | Subito dopo, senza fermarsi, cascata alla cadenza quindicinale/mensile | ✅ Fatto | `while` su `tentaProssimaLezioneDistanza` |
+| Fix A | Piazza TUTTE le occorrenze ancora nel mese, rispettando tutte le regole | ✅ Fatto | stessa funzione del ramo con ancora, nessuna regola aggirata |
+| Fix A | Nessuna duplicazione: confluisce nel ramo di calcolo-da-ancora esistente | ✅ Fatto | `tentaProssimaLezioneDistanza` condivisa |
+| Invariato | Continuità cross-mese dei mesi successivi come già avviene oggi | ✅ Verificato | ramo con ancora a singola chiamata, invariato |
+| Aggancio cross-mese | Nessun buco né doppione sul confine fra mesi | ✅ Verificato | scenario tracciato a mano, passo 5 |
+| Aggancio cross-mese | Se emerge un rischio non coperto, segnalarlo per F.2 invece di forzarne la soluzione | ✅ Fatto | segnalato: il ramo con ancora resta a una sola candidata/run anche quando la cadenza ne ammetterebbe una seconda nello stesso mese — limite preesistente (F.1), non generalizzato da F1.2 |
+| Chiusura | `check-sintassi.js` con almeno 2 nuovi casi (cascata intra-mese, continuità cross-mese) | ✅ Fatto | 9 nuovi casi, 135 totali |
+| Chiusura | CLAUDE.md/CONTESTO.md aggiornati, Registro di sessione, commit e push | ✅ Fatto | questa voce; commit/push in coda |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti da F1.2. Segnalato (non corretto qui, per esplicita richiesta di non forzare soluzioni fuori ambito): il ramo con ancora reale resta limitato a una sola candidata per run anche quando la cadenza ne ammetterebbe una seconda nello stesso mese — stesso limite F.1 (decisione 61), qui solo confermato non esteso, candidato per il Ciclo F.2. Non eseguibile in questo ambiente: nessun test dal vivo con login M365/browser reale — il collaudo più utile per Simone è rigenerare esattamente "prova 4 psico" per settembre 2026 e verificare a schermo che compaiano ora tre sessioni (04, 16, 28/09) invece di una sola, poi generare ottobre e verificare che la prima sessione di ottobre cada il 10/10 senza doppioni.
+
+## Limiti di questa verifica
+
+La catena di cinque passi (bootstrap, due cascate, fine cascata, ripresa cross-mese) è stata tracciata a mano leggendo il codice con valori concreti e verificando le date con Node, non osservata in esecuzione reale — nessun ambiente con login M365/browser disponibile qui. Le primitive pure sottostanti (distanza in giorni, verifica finestra, slittamento) sono invece verificate con `check-sintassi.js`, che le esegue realmente. La funzione `tentaProssimaLezioneDistanza` nel suo insieme (inclusa la ricerca effettiva di operatore/aula/utente disponibili in un giorno reale) resta verificata solo per lettura/ragionamento, non esistendo dati reali (operatori, disponibilità, aule) in questo ambiente con cui simulare un piazzamento vero. Si raccomanda a Simone di ripetere dal vivo il test che ha fatto emergere il bug ("prova 4 psico", settembre 2026) e verificare a schermo il numero di sessioni piazzate e le loro date esatte.
+
+## Discrepanze da discutere
+
+Nessuna discrepanza aperta in questo ciclo. Segnalazione per il Ciclo F.2 (non una discrepanza di questo ciclo, un limite dichiarato e confermato, non esteso): il ramo con ancora reale (progetti già avviati) resta a una sola candidata per run anche quando la cadenza ammetterebbe matematicamente una seconda occorrenza nello stesso mese — stesso limite architetturale del Ciclo F.1, qui solo verificato e confermato per il caso bootstrap, non generalizzato.

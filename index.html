@@ -2234,21 +2234,79 @@ async function generateMonth(ms,spid,nameFilter){
         wk+=7;
       }
     }else{
-      // Ciclo F.1, Parte B — modalità a distanza di giorni (quindicinale/mensile): al più UNA candidata per
-      // l'intero mese, alla distanza minima ammessa dall'ultima lezione valida. Query cross-mese su "keep" (non
-      // limitata al mese in generazione — esclude solo le "proposta" di QUESTO mese in ambito che questo stesso
-      // run sta per sostituire, stessa fonte già usata sopra per i registri di occupazione). NON genera mai
-      // sessioni fuori dal mese "ms" (nessuno sconfinamento cross-mese: fuori scopo di F.1, vedi CLAUDE.md).
+      // Ciclo F.1, Parte B — modalità a distanza di giorni (quindicinale/mensile), Ciclo F1.2 (cascata intra-mese
+      // dal bootstrap): query cross-mese su "keep" (non limitata al mese in generazione — esclude solo le
+      // "proposta" di QUESTO mese in ambito che questo stesso run sta per sostituire, stessa fonte già usata sopra
+      // per i registri di occupazione). NON genera mai sessioni fuori dal mese "ms" (nessuno sconfinamento
+      // cross-mese: fuori scopo di F.1/F1.2, vedi CLAUDE.md).
       const{min,max}=FINESTRE_FREQUENZA[modo];
       const ultima=ultimaLezioneValida(keep,p.id);
-      let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();let piazzata=false;
+      // Dato un ancoraggio (una data reale, da ultimaLezioneValida, o una sessione appena piazzata dal bootstrap
+      // sotto), calcola e tenta di piazzare la PROSSIMA candidata alla distanza minima ammessa dalla finestra —
+      // un solo giorno tentato, nessuna ricerca di alternative (limite dichiarato dal Ciclo F.1, decisione 61 in
+      // CONTESTO.md, invariato). Funzione unica riusata sia dal ramo "con ancora" sotto (una sola chiamata,
+      // comportamento Ciclo F.1 invariato) sia dalla cascata intra-mese del bootstrap (Ciclo F1.2: chiamata
+      // ripetutamente finché la candidata resta nel mese "ms") — nessuna duplicazione della logica di piazzamento.
+      // Restituisce {piazzata,data,oltreMese,diag...}: oltreMese=true quando la candidata cade in un mese
+      // successivo a "ms" (nulla da fare in questo run — il caso normale a fine cascata/per la maggior parte dei
+      // mesi non bootstrappati), segnale per il chiamante di fermare un'eventuale cascata.
+      function tentaProssimaLezioneDistanza(ancora){
+        const candidata=slittaGiornoValido(addGiorni(ancora,min),chiusureDates);
+        const candidataYM=candidata.slice(0,7);
+        let diagNoUtenteL=0,diagAulaPienaL=0,diagNessunOperatoreL=0;const giorniNoUtenteL=new Set();let piazzataL=false;
+        if(!finestraOk(modo,giorniTraDate(ancora,candidata))){
+          anom.push({lbl,msg:'Modalità '+modo+': lo slittamento (domenica/chiusura centro) porta la prossima lezione al '+fmtDate(candidata)+', fuori dalla finestra di '+min+'-'+max+' giorni dalla lezione precedente ('+fmtDate(ancora)+'). Piazzata comunque, per non saltare la lezione.'});
+        }
+        if(candidataYM<ms){
+          anom.push({lbl,msg:'Modalità '+modo+': la prossima lezione risulterebbe già scaduta (calcolata al '+fmtDate(candidata)+', prima di questo mese) — verifica lo storico del progetto o inserisci manualmente la sessione mancante.'});
+          return{piazzata:false,data:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        }
+        if(candidataYM>ms){
+          // Non ancora dovuta in questo mese: caso normale (per il ramo con ancora) o fine naturale della cascata
+          // (per il bootstrap) — nessuna azione, nessun avviso.
+          return{piazzata:false,data:null,oltreMese:true,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        }
+        const d=parseInt(candidata.split('-')[2]);const dt=new Date(Y,M-1,d);const dn=dname(dt);
+        const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===candidata).length;
+        if(todayPlaced<maxDay){
+          const pRng=effRng(p,candidata,dn);
+          if(!pRng.length){diagNoUtenteL++;giorniNoUtenteL.add(dn);}
+          for(const ur of pRng){
+            if(piazzataL)break;
+            const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+            if(rT-rF<(p.durataSessione||60))continue;
+            for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+              const en=st+(p.durataSessione||60);
+              const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===candidata));
+              if(!rfreeConGap(uBN,st,en))continue;
+              const res=sceglieOperatoreEAula(p,candidata,dn,st,en,pool,sessionCount);
+              if(res.chosen){
+                const{chosen,cAula,chosenSed}=res;
+                if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                  const wkMin=minutiSettimana(chosen,candidata,opB,Y,M)+(p.durataSessione||60);
+                  if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+                }
+                const sess=creaSessionePiazzata(p,candidata,st,en,chosen,chosenSed,cAula,sessionCount);
+                newS.push(sess);
+                (opB[chosen.id]=opB[chosen.id]||[]).push({date:candidata,from:st,to:en});
+                (prB[p.id]=prB[p.id]||[]).push({date:candidata,from:st,to:en});
+                if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:candidata,from:st,to:en});
+                piazzataL=true;sessionCount++;break;
+              }else{
+                if(res.tentAulaPiena)diagAulaPienaL++;else diagNessunOperatoreL++;
+              }
+            }
+          }
+        }
+        return{piazzata:piazzataL,data:piazzataL?candidata:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+      }
       if(!ultima){
         // BOOTSTRAP (Ciclo F1.1): nessuna lezione precedente valida in alcun mese — non c'è una distanza da cui
         // calcolare la prossima data, quindi si cerca la PRIMA sessione nel primo giorno utile del mese di
-        // generazione stesso, scorrendo i giorni in ordine (non un unico candidato come nel ramo con ancora sotto)
+        // generazione stesso, scorrendo i giorni in ordine (non un unico candidato come nel ramo con ancora sopra)
         // finché disponibilità utente/operatore, sedi del progetto e chiusure centro non ammettono uno slot — stessa
-        // ricerca giorno/fascia della modalità settimanale sopra, fermata al primo piazzamento riuscito. Le sessioni
-        // successive continueranno a cascata nei run dei mesi successivi, usando questa come nuova ultimaLezioneValida.
+        // ricerca giorno/fascia della modalità settimanale sopra, fermata al primo piazzamento riuscito.
+        let diagNoUtente=0,diagAulaPiena=0,diagNessunOperatore=0;const giorniNoUtente=new Set();let piazzata=false,primaData=null;
         for(let d=1;d<=days&&!piazzata;d++){
           const dt=new Date(Y,M-1,d);const dn=dname(dt);if(dn==='Dom')continue;
           const dsB=Y+'-'+pad2(M)+'-'+pad2(d);
@@ -2277,59 +2335,39 @@ async function generateMonth(ms,spid,nameFilter){
                 (opB[chosen.id]=opB[chosen.id]||[]).push({date:dsB,from:st,to:en});
                 (prB[p.id]=prB[p.id]||[]).push({date:dsB,from:st,to:en});
                 if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:dsB,from:st,to:en});
-                piazzata=true;sessionCount++;break;
+                piazzata=true;primaData=dsB;sessionCount++;break;
               }else{
                 if(res.tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
               }
             }
           }
         }
-        if(!piazzata)anom.push({lbl,msg:'Modalità '+modo+': nessuna lezione precedente e nessun giorno del mese compatibile con disponibilità/aule/operatori trovato per la prima sessione. Inserisci manualmente la prima sessione.'});
-      }else{
-        const candidata=slittaGiornoValido(addGiorni(ultima,min),chiusureDates);
-        const candidataYM=candidata.slice(0,7);
-        if(!finestraOk(modo,giorniTraDate(ultima,candidata))){
-          anom.push({lbl,msg:'Modalità '+modo+': lo slittamento (domenica/chiusura centro) porta la prossima lezione al '+fmtDate(candidata)+', fuori dalla finestra di '+min+'-'+max+' giorni dalla lezione precedente ('+fmtDate(ultima)+'). Piazzata comunque, per non saltare la lezione.'});
-        }
-        if(candidataYM===ms){
-          const d=parseInt(candidata.split('-')[2]);const dt=new Date(Y,M-1,d);const dn=dname(dt);
-          const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===candidata).length;
-          if(todayPlaced<maxDay){
-            const pRng=effRng(p,candidata,dn);
-            if(!pRng.length){diagNoUtente++;giorniNoUtente.add(dn);}
-            for(const ur of pRng){
-              if(piazzata)break;
-              const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
-              if(rT-rF<(p.durataSessione||60))continue;
-              for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
-                const en=st+(p.durataSessione||60);
-                const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===candidata));
-                if(!rfreeConGap(uBN,st,en))continue;
-                const res=sceglieOperatoreEAula(p,candidata,dn,st,en,pool,sessionCount);
-                if(res.chosen){
-                  const{chosen,cAula,chosenSed}=res;
-                  if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
-                    const wkMin=minutiSettimana(chosen,candidata,opB,Y,M)+(p.durataSessione||60);
-                    if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
-                  }
-                  const sess=creaSessionePiazzata(p,candidata,st,en,chosen,chosenSed,cAula,sessionCount);
-                  newS.push(sess);
-                  (opB[chosen.id]=opB[chosen.id]||[]).push({date:candidata,from:st,to:en});
-                  (prB[p.id]=prB[p.id]||[]).push({date:candidata,from:st,to:en});
-                  if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:candidata,from:st,to:en});
-                  piazzata=true;sessionCount++;break;
-                }else{
-                  if(res.tentAulaPiena)diagAulaPiena++;else diagNessunOperatore++;
-                }
-              }
-            }
+        if(!piazzata){
+          anom.push({lbl,msg:'Modalità '+modo+': nessuna lezione precedente e nessun giorno del mese compatibile con disponibilità/aule/operatori trovato per la prima sessione. Inserisci manualmente la prima sessione.'});
+          riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:0,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
+        }else{
+          riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:1,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
+          // CASCATA INTRA-MESE (Ciclo F1.2): subito dopo la prima sessione bootstrap, confluisce nello stesso
+          // calcolo-da-ancora di tentaProssimaLezioneDistanza usato dal ramo "con ancora" sotto, ripetuto usando
+          // ogni sessione appena piazzata come nuovo ancoraggio, finché la prossima candidata non esce dal mese
+          // "ms" (oltreMese) o non trova più uno slot compatibile quel giorno esatto (nessuna ricerca di
+          // alternative, stesso limite del ramo con ancora) — mai più di una candidata "sprecata" per mancanza di
+          // slot: la cascata si ferma alla prima candidata non piazzabile, senza saltare al tentativo successivo.
+          let ancora=primaData,continua=true;
+          while(continua){
+            const r=tentaProssimaLezioneDistanza(ancora);
+            riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:r.piazzata?1:0,diagNoUtente:r.diagNoUtente,diagAulaPiena:r.diagAulaPiena,diagNessunOperatore:r.diagNessunOperatore,giorniNoUtente:r.giorniNoUtente});
+            if(r.piazzata)ancora=r.data;else continua=false;
           }
-        }else if(candidataYM<ms){
-          anom.push({lbl,msg:'Modalità '+modo+': la prossima lezione risulterebbe già scaduta (calcolata al '+fmtDate(candidata)+', prima di questo mese) — verifica lo storico del progetto o inserisci manualmente la sessione mancante.'});
         }
-        // else candidataYM>ms: non ancora dovuta in questo mese, nessuna azione (caso normale, nessun avviso)
+      }else{
+        // Ramo con ancora reale (Ciclo F.1, invariato): una sola chiamata, un solo giorno candidato per mese —
+        // la continuità cross-mese (mese dopo mese) resta affidata a ultimaLezioneValida che, al run successivo,
+        // troverà come ancora l'ultima sessione piazzata qui (o dalla cascata del bootstrap sopra), senza bisogno
+        // di alcuna cascata dentro a QUESTO run.
+        const r=tentaProssimaLezioneDistanza(ultima);
+        riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:r.piazzata?1:0,diagNoUtente:r.diagNoUtente,diagAulaPiena:r.diagAulaPiena,diagNessunOperatore:r.diagNessunOperatore,giorniNoUtente:r.giorniNoUtente});
       }
-      riepiloghi.push({progettoId:p.id,wk:1,richieste:1,piazzate:piazzata?1:0,diagNoUtente,diagAulaPiena,diagNessunOperatore,giorniNoUtente:[...giorniNoUtente]});
     }
     sessionCountByProject[p.id]=sessionCount;
   }
