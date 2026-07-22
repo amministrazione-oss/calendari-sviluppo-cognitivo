@@ -2242,63 +2242,87 @@ async function generateMonth(ms,spid,nameFilter){
       const{min,max}=FINESTRE_FREQUENZA[modo];
       const ultima=ultimaLezioneValida(keep,p.id);
       // Dato un ancoraggio (una data reale, da ultimaLezioneValida, o una sessione appena piazzata dal bootstrap
-      // sotto), calcola e tenta di piazzare la PROSSIMA candidata alla distanza minima ammessa dalla finestra —
-      // un solo giorno tentato, nessuna ricerca di alternative (limite dichiarato dal Ciclo F.1, decisione 61 in
-      // CONTESTO.md, invariato). Funzione unica riusata sia dal ramo "con ancora" sotto (una sola chiamata,
-      // comportamento Ciclo F.1 invariato) sia dalla cascata intra-mese del bootstrap (Ciclo F1.2: chiamata
-      // ripetutamente finché la candidata resta nel mese "ms") — nessuna duplicazione della logica di piazzamento.
-      // Restituisce {piazzata,data,oltreMese,diag...}: oltreMese=true quando la candidata cade in un mese
-      // successivo a "ms" (nulla da fare in questo run — il caso normale a fine cascata/per la maggior parte dei
-      // mesi non bootstrappati), segnale per il chiamante di fermare un'eventuale cascata.
+      // sotto), CERCA la prossima sessione piazzabile nella finestra ammessa dalla modalità — Ciclo F1.3, 22/07:
+      // la finestra [min,max] (12-16 quindicinale, 23-30 mensile, letta da FINESTRE_FREQUENZA[modo], nessun
+      // hardcode) è una finestra di RICERCA, non di sola validazione di un unico giorno teorico. Prima di F1.3 si
+      // tentava solo il giorno a distanza "min" (slittato per domenica/chiusura) e ci si arrendeva subito se quel
+      // giorno non aveva operatore/utente/aula disponibile (limite dichiarato dal Ciclo F.1, decisione 61 in
+      // CONTESTO.md — superato da questa versione, non più valido). Ora si itera l'offset in giorni da min a max:
+      // per ciascuno si applica lo stesso slittamento di sempre e si tenta il piazzamento con TUTTE le regole
+      // consuete (disponibilità, sedi, orari 09:00-19:30, gap 5 minuti, aula, formazioni); il PRIMO offset
+      // piazzabile vince, senza provare oltre max. L'ancora della chiamata successiva (sia dal ramo bootstrap sia
+      // dal ramo con ancora sotto) diventa così automaticamente la DATA REALE piazzata (es. +13), mai la distanza
+      // minima teorica (+12) — nessun cambio richiesto ai due chiamanti, che già usano r.data come nuova ancora.
+      // Funzione unica riusata sia dal ramo "con ancora" sotto (una sola invocazione per run, comportamento Ciclo
+      // F.1 invariato) sia dalla cascata intra-mese del bootstrap (Ciclo F1.2: invocata ripetutamente finché la
+      // candidata non esce dal mese "ms") — nessuna duplicazione della logica di ricerca fra le due modalità
+      // quindicinale/mensile (condividono FINESTRE_FREQUENZA[modo] e questa stessa funzione, nessun if separato).
+      // Nota per una futura Passata 3 (NON implementata qui, solo un vincolo di design da non violare): la scelta
+      // "primo giorno buono" resta volutamente rivedibile — una lezione piazzata qui potrà in futuro essere
+      // spostata a un altro giorno ammissibile della STESSA finestra per liberare/assegnare ore ad altri utenti.
+      // Restituisce {piazzata,data,oltreMese,diag...}: oltreMese=true solo quando NESSUN giorno della finestra
+      // cade nel mese "ms" perché la finestra è interamente nel futuro rispetto a "ms" (caso normale, nessun
+      // avviso — la maggior parte dei mesi non bootstrappati per cadenze superiori alla settimana); se la finestra
+      // intersecava "ms" ma nessun giorno al suo interno era piazzabile, l'anomalia viene segnalata una sola volta
+      // qui (mai un avviso per ciascun giorno singolarmente tentato).
       function tentaProssimaLezioneDistanza(ancora){
-        const candidata=slittaGiornoValido(addGiorni(ancora,min),chiusureDates);
-        const candidataYM=candidata.slice(0,7);
-        let diagNoUtenteL=0,diagAulaPienaL=0,diagNessunOperatoreL=0;const giorniNoUtenteL=new Set();let piazzataL=false;
-        if(!finestraOk(modo,giorniTraDate(ancora,candidata))){
-          anom.push({lbl,msg:'Modalità '+modo+': lo slittamento (domenica/chiusura centro) porta la prossima lezione al '+fmtDate(candidata)+', fuori dalla finestra di '+min+'-'+max+' giorni dalla lezione precedente ('+fmtDate(ancora)+'). Piazzata comunque, per non saltare la lezione.'});
-        }
-        if(candidataYM<ms){
-          anom.push({lbl,msg:'Modalità '+modo+': la prossima lezione risulterebbe già scaduta (calcolata al '+fmtDate(candidata)+', prima di questo mese) — verifica lo storico del progetto o inserisci manualmente la sessione mancante.'});
-          return{piazzata:false,data:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
-        }
-        if(candidataYM>ms){
-          // Non ancora dovuta in questo mese: caso normale (per il ramo con ancora) o fine naturale della cascata
-          // (per il bootstrap) — nessuna azione, nessun avviso.
-          return{piazzata:false,data:null,oltreMese:true,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
-        }
-        const d=parseInt(candidata.split('-')[2]);const dt=new Date(Y,M-1,d);const dn=dname(dt);
-        const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===candidata).length;
-        if(todayPlaced<maxDay){
-          const pRng=effRng(p,candidata,dn);
-          if(!pRng.length){diagNoUtenteL++;giorniNoUtenteL.add(dn);}
-          for(const ur of pRng){
-            if(piazzataL)break;
-            const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
-            if(rT-rF<(p.durataSessione||60))continue;
-            for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
-              const en=st+(p.durataSessione||60);
-              const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===candidata));
-              if(!rfreeConGap(uBN,st,en))continue;
-              const res=sceglieOperatoreEAula(p,candidata,dn,st,en,pool,sessionCount);
-              if(res.chosen){
-                const{chosen,cAula,chosenSed}=res;
-                if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
-                  const wkMin=minutiSettimana(chosen,candidata,opB,Y,M)+(p.durataSessione||60);
-                  if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+        let diagNoUtenteL=0,diagAulaPienaL=0,diagNessunOperatoreL=0;const giorniNoUtenteL=new Set();
+        let piazzataL=false,dataPiazzata=null;
+        let entratoNelMese=false,vistaDataPrimaDelMese=false,vistaDataDopoIlMese=false;
+        for(let off=min;off<=max&&!piazzataL;off++){
+          const candidata=slittaGiornoValido(addGiorni(ancora,off),chiusureDates);
+          // Caso-limite (Ciclo F1.3): lo slittamento di QUESTO offset ha sforato la finestra ammessa (es. una
+          // catena di chiusure vicino al bordo max) — questo giorno non è piazzabile, si prova l'offset
+          // successivo (il ciclo for continua finché off<=max), mai un piazzamento fuori finestra come prima.
+          if(!finestraOk(modo,giorniTraDate(ancora,candidata)))continue;
+          const candidataYM=candidata.slice(0,7);
+          if(candidataYM<ms){vistaDataPrimaDelMese=true;continue;}
+          if(candidataYM>ms){vistaDataDopoIlMese=true;break;} // monotono: nessun offset successivo può rientrare in "ms"
+          entratoNelMese=true;
+          const d=parseInt(candidata.split('-')[2]);const dt=new Date(Y,M-1,d);const dn=dname(dt);
+          const todayPlaced=(prB[p.id]||[]).filter(b=>b.date===candidata).length;
+          if(todayPlaced<maxDay){
+            const pRng=effRng(p,candidata,dn);
+            if(!pRng.length){diagNoUtenteL++;giorniNoUtenteL.add(dn);}
+            for(const ur of pRng){
+              if(piazzataL)break;
+              const rF=Math.max(tmin(ur.from||ur.da),tmin('09:00')),rT=Math.min(tmin(ur.to||ur.a),tmin('19:30'));
+              if(rT-rF<(p.durataSessione||60))continue;
+              for(let st=rF;st+(p.durataSessione||60)<=rT;st+=30){
+                const en=st+(p.durataSessione||60);
+                const uBN=allPU.flatMap(pid=>(prB[pid]||[]).filter(b=>b.date===candidata));
+                if(!rfreeConGap(uBN,st,en))continue;
+                const res=sceglieOperatoreEAula(p,candidata,dn,st,en,pool,sessionCount);
+                if(res.chosen){
+                  const{chosen,cAula,chosenSed}=res;
+                  if(chosen.tipoContratto==='Assunto'&&chosen.oreSettimanali>0){
+                    const wkMin=minutiSettimana(chosen,candidata,opB,Y,M)+(p.durataSessione||60);
+                    if(wkMin>chosen.oreSettimanali*60){anom.push({lbl,msg:fullName(chosen)+' supera le '+chosen.oreSettimanali+'h settimanali ('+Math.round(wkMin/60*10)/10+'h). Sessione comunque creata.'});}
+                  }
+                  const sess=creaSessionePiazzata(p,candidata,st,en,chosen,chosenSed,cAula,sessionCount);
+                  newS.push(sess);
+                  (opB[chosen.id]=opB[chosen.id]||[]).push({date:candidata,from:st,to:en});
+                  (prB[p.id]=prB[p.id]||[]).push({date:candidata,from:st,to:en});
+                  if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:candidata,from:st,to:en});
+                  piazzataL=true;dataPiazzata=candidata;sessionCount++;break;
+                }else{
+                  if(res.tentAulaPiena)diagAulaPienaL++;else diagNessunOperatoreL++;
                 }
-                const sess=creaSessionePiazzata(p,candidata,st,en,chosen,chosenSed,cAula,sessionCount);
-                newS.push(sess);
-                (opB[chosen.id]=opB[chosen.id]||[]).push({date:candidata,from:st,to:en});
-                (prB[p.id]=prB[p.id]||[]).push({date:candidata,from:st,to:en});
-                if(cAula)(auB[cAula]=auB[cAula]||[]).push({date:candidata,from:st,to:en});
-                piazzataL=true;sessionCount++;break;
-              }else{
-                if(res.tentAulaPiena)diagAulaPienaL++;else diagNessunOperatoreL++;
               }
             }
           }
         }
-        return{piazzata:piazzataL,data:piazzataL?candidata:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        if(piazzataL)return{piazzata:true,data:dataPiazzata,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        if(!entratoNelMese&&vistaDataDopoIlMese&&!vistaDataPrimaDelMese){
+          // Tutta la finestra cade dopo "ms": progetto non ancora dovuto questo mese, caso normale, nessun avviso.
+          return{piazzata:false,data:null,oltreMese:true,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        }
+        if(!entratoNelMese&&vistaDataPrimaDelMese&&!vistaDataDopoIlMese){
+          anom.push({lbl,msg:'Modalità '+modo+': la prossima lezione risulterebbe già scaduta (l\'intera finestra di '+min+'-'+max+' giorni dal '+fmtDate(ancora)+' cade prima di questo mese) — verifica lo storico del progetto o inserisci manualmente la sessione mancante.'});
+          return{piazzata:false,data:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
+        }
+        anom.push({lbl,msg:'Modalità '+modo+': nessun giorno disponibile nella finestra di '+min+'-'+max+' giorni per la prossima lezione dopo il '+fmtDate(ancora)+'.'});
+        return{piazzata:false,data:null,oltreMese:false,diagNoUtente:diagNoUtenteL,diagAulaPiena:diagAulaPienaL,diagNessunOperatore:diagNessunOperatoreL,giorniNoUtente:[...giorniNoUtenteL]};
       }
       if(!ultima){
         // BOOTSTRAP (Ciclo F1.1): nessuna lezione precedente valida in alcun mese — non c'è una distanza da cui

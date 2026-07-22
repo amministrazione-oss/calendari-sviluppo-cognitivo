@@ -1912,7 +1912,7 @@ Ricostruito da `git log`/`git show` (non a memoria) — tutti e cinque i commit 
 
 ## Metodo di verifica: multi-passata (chiusura giornata)
 
-Vedi la sezione "Verifica multi-passata di chiusura giornata" più sotto in questo stesso ciclo (dopo l'aggiornamento di `CONTESTO.md`) per le passate dedicate al controllo incrociato delle quattro fonti.
+**Corretto il 22/07/2026** (segnalato come discrepanza nella chiusura del Ciclo H, 21/07, e risolto qui): questa sezione rimandava a "la sezione... più sotto in questo stesso ciclo", che non è mai stata scritta — il file proseguiva direttamente con la verifica del ciclo successivo (Ciclo H). Non essendo ricostruibile con certezza quale contenuto aggiuntivo quella sezione dovesse avere, il rimando è stato rimosso invece di essere riallineato a un contenuto inventato: il controllo incrociato delle quattro fonti per questa chiusura giornata è già quello svolto sopra ("Esito consolidato dei cinque cicli" + "Punti ancora aperti"), che confronta ricostruzione da `git log`/`git show`, `check-sintassi.js` e lo stato dei cinque cicli D/E/E.1/E.2/E.3 — nessuna verifica aggiuntiva mancante, solo un rimando a un contenuto che non è mai esistito.
 
 ---
 
@@ -2005,7 +2005,7 @@ Il comportamento di hover/tap/click-fuori è stato tracciato a mano leggendo il 
 
 ## Discrepanze da discutere
 
-- **Non introdotta da questo ciclo, trovata rileggendo la chiusura di ieri**: la voce "Chiusura giornata 20/07" in questo stesso file termina (sezione "Metodo di verifica: multi-passata (chiusura giornata)", subito sopra questa nuova voce) con un rimando a una sezione "Verifica multi-passata di chiusura giornata... più sotto in questo stesso ciclo" — quella sezione non risulta presente da nessuna parte nel file: il file terminava esattamente a quel rimando. Segnalato qui come richiesto dalla prassi (mai corretto in silenzio); non è stato ricostruito perché non di competenza di questo ciclo (riguarda la chiusura di una sessione precedente, il 20/07) e perché non è possibile ricostruire con certezza cosa quella sezione mancante dovesse contenere di preciso senza inventarlo.
+- **Non introdotta da questo ciclo, trovata rileggendo la chiusura di ieri**: la voce "Chiusura giornata 20/07" in questo stesso file termina (sezione "Metodo di verifica: multi-passata (chiusura giornata)", subito sopra questa nuova voce) con un rimando a una sezione "Verifica multi-passata di chiusura giornata... più sotto in questo stesso ciclo" — quella sezione non risulta presente da nessuna parte nel file: il file terminava esattamente a quel rimando. Segnalato qui come richiesto dalla prassi (mai corretto in silenzio); non è stato ricostruito perché non di competenza di questo ciclo (riguarda la chiusura di una sessione precedente, il 20/07) e perché non è possibile ricostruire con certezza cosa quella sezione mancante dovesse contenere di preciso senza inventarlo. **✅ Chiusa (22/07, Ciclo F1.3)**: il rimando è stato rimosso dalla sezione "Chiusura giornata 20/07" (non riallineato a un contenuto inventato) — vedi quella sezione per il dettaglio di cosa costituisce già, di fatto, il controllo incrociato di quella chiusura.
 
 ---
 
@@ -2300,3 +2300,107 @@ La catena di cinque passi (bootstrap, due cascate, fine cascata, ripresa cross-m
 ## Discrepanze da discutere
 
 Nessuna discrepanza aperta in questo ciclo. Segnalazione per il Ciclo F.2 (non una discrepanza di questo ciclo, un limite dichiarato e confermato, non esteso): il ramo con ancora reale (progetti già avviati) resta a una sola candidata per run anche quando la cadenza ammetterebbe matematicamente una seconda occorrenza nello stesso mese — stesso limite architetturale del Ciclo F.1, qui solo verificato e confermato per il caso bootstrap, non generalizzato.
+
+---
+
+# Verifica — Ciclo F1.3: la finestra distanza-giorni come RICERCA (quindicinale E mensile)
+
+Data: 2026-07-22. HOTFIX di `tentaProssimaLezioneDistanza` (Ciclo F1.2), emerso dal collaudo di Simone su "prova 4 psico" (progetto quindicinale, generazione di settembre 2026). Tocca solo quella funzione condivisa (una correzione, valida per entrambe le modalità quindicinale/mensile); nessuna migrazione, nessun tocco a `generateMonthAI`/Passata 3/modalità settimanale.
+
+## Sintomo riportato da Simone
+
+Progetto quindicinale "prova 4 psico": la 1ª sessione (bootstrap, ven 4/09) piazzata correttamente. La 2ª fallisce con "nessun operatore disponibile in fascia". Causa indicata da Simone: la candidata a +12 giorni (mer 16/09) cade in un giorno in cui l'operatore Antonia non è disponibile; il 17/09 (13° giorno), con operatore e utente disponibili, non viene mai tentato.
+
+## Indagine richiesta prima di correggere: come calcola oggi la candidata, e se il ramo settimanale ha già un pattern riusabile
+
+Rilette entrambe le strutture prima di scrivere qualunque modifica (righe del codice come si presentavano prima di questo ciclo):
+- **`tentaProssimaLezioneDistanza(ancora)` (Ciclo F1.2)**: calcolava un'unica candidata — `const candidata=slittaGiornoValido(addGiorni(ancora,min),chiusureDates);` — cioè sempre e solo alla distanza *minima* della finestra (`min`, 12 per quindicinale/23 per mensile), slittata per domenica/chiusura. Se quel giorno esatto non aveva operatore/utente/aula disponibile, la funzione si arrendeva (`piazzataL` resta `false`) senza mai calcolare una seconda candidata a `min+1`, `min+2`, ecc. — confermato leggendo il corpo della funzione: non esisteva alcun ciclo sull'offset, solo un singolo calcolo seguito da un singolo tentativo di piazzamento. Questo confermava esattamente la causa indicata da Simone.
+- **Il ramo settimanale** (`modo==='settimanale'`, invariato da prima del Ciclo F.1): ha sì un pattern "scorri i giorni finché piazzi", ma su una base concettualmente diversa — un `for(let d=wk;d<=we&&placed<maxNuove;d++)` che scorre **tutti** i 7 giorni della finestra settimanale fissa (calendario, non offset-da-ancora) cercando di piazzare fino a `maxNuove` sessioni in quella finestra. Non è direttamente riusabile per la modalità a distanza di giorni: lì la finestra è ancorata a una data variabile (l'ultima lezione), non a un inizio di settimana fisso, e si cerca **una sola** sessione (non fino a un massimo), fermandosi al primo giorno buono. Il pattern concettuale ("itera i giorni della finestra, fermati al primo che piazza") è lo stesso spirito, ma la sua forma concreta (offset da un'ancora, non `wk..we` di calendario) è stata scritta ex novo dentro `tentaProssimaLezioneDistanza`, non riusata via copia-incolla dal ramo settimanale.
+
+**Punto di innesto individuato**: sostituire il singolo calcolo `candidata=slittaGiornoValido(addGiorni(ancora,min),...)` con un `for(let off=min;off<=max;off++)` che ripete lo stesso identico corpo (slittamento, confronto con `ms`, tentativo di piazzamento) per ogni offset, fermandosi al primo piazzamento riuscito — un'unica modifica dentro la funzione condivisa, che beneficia automaticamente sia il ramo bootstrap/cascata (F1.1/F1.2) sia il ramo con ancora reale (F.1), perché entrambi la richiamano identicamente.
+
+## Cosa è stato fatto
+
+- `tentaProssimaLezioneDistanza(ancora)` ora itera `off` da `min` a `max` **inclusi** (letti da `FINESTRE_FREQUENZA[modo]`, nessun hardcode, nessun `if` per distinguere quindicinale/mensile). Per ciascun offset:
+  1. `candidata=slittaGiornoValido(addGiorni(ancora,off),chiusureDates)` — stesso slittamento di sempre.
+  2. **Caso-limite**: `if(!finestraOk(modo,giorniTraDate(ancora,candidata)))continue;` — se lo slittamento ha spinto questo offset oltre la finestra ammessa, il giorno è scartato e si passa all'offset successivo (mai un piazzamento fuori finestra, a differenza del comportamento precedente che, in questo stesso ramo, l'avrebbe accettato "per non saltare la lezione").
+  3. Confronto anno-mese con `ms` (invariato nella struttura, ma ora per-offset): `<ms` → si continua a scorrere (potrebbe rientrare in `ms` a un offset successivo, dato che la finestra mensile può attraversare il confine del mese); `>ms` → si interrompe l'intera ricerca (`break`, monotono: nessun offset successivo può rientrare in `ms`).
+  4. Se il giorno cade in `ms`, si tenta il piazzamento con **tutte** le regole di sempre (stessa `effRng`/`rfreeConGap`/`sceglieOperatoreEAula`/`creaSessionePiazzata`, nessuna regola aggirata) — se riuscito, la ricerca si ferma lì (`piazzataL=true`).
+- **Tre stati finali** (`entratoNelMese`/`vistaDataPrimaDelMese`/`vistaDataDopoIlMese`) distinguono correttamente, se nessun giorno è stato piazzato: (a) tutta la finestra è dopo `ms` → `oltreMese:true`, silenzio (progetto non ancora dovuto, invariato); (b) tutta la finestra è prima di `ms` → anomalia "già scaduta" (invariata nello spirito, riformulata sulla finestra intera invece che su un solo giorno); (c) la finestra intersecava `ms` ma nessun giorno al suo interno era piazzabile → nuova anomalia "nessun giorno disponibile nella finestra di min-max giorni", segnalata una sola volta (non per ciascun giorno tentato).
+- **Ancora = data reale piazzata**: nessuna modifica ai due chiamanti — usavano già `r.data` per avanzare l'ancora; restituendo ora la data effettivamente piazzata (es. +13) invece della candidata teorica minima (+12), la cadenza della prossima chiamata è corretta "gratuitamente".
+- Rimossa la vecchia gestione "slittamento fuori finestra → piazza comunque, per non saltare la lezione": sostituita dal caso-limite del punto 2 sopra (scarta e prova l'offset successivo).
+
+| Punto | Stato |
+|---|---|
+| La finestra `[min,max]` è una ricerca, non un solo giorno validato | ✅ Fatto — `for(off=min;off<=max;off++)` dentro `tentaProssimaLezioneDistanza` |
+| Vale per quindicinale E mensile, un'unica correzione, nessun `if` separato | ✅ Verificato — entrambe leggono `FINESTRE_FREQUENZA[modo]`, stesso corpo di funzione |
+| Slittamento domenica/chiusura applicato per ciascun offset, poi tentativo con tutte le regole attuali | ✅ Fatto — stesso `slittaGiornoValido`/`effRng`/`rfreeConGap`/`sceglieOperatoreEAula` di sempre |
+| Primo giorno piazzabile vince, nessun tentativo oltre `max` | ✅ Fatto — `for` limitato a `off<=max`, `break`/`return` al primo successo |
+| Ancora della sessione successiva = data reale piazzata, non la minima teorica | ✅ Verificato — nessuna modifica ai chiamanti, effetto automatico di restituire `dataPiazzata` |
+| Nessun giorno piazzabile → anomalia corretta, una sola volta | ✅ Fatto — tre stati finali, vedi sopra |
+| Caso-limite: slittamento che sforerebbe `max` → scartato, si prova l'offset successivo, mai piazzato fuori finestra | ✅ Fatto e verificato — vedi nota sotto sulla sua reale raggiungibilità |
+| Beneficia sia il ramo bootstrap (F1.1/F1.2) sia il ramo con ancora reale (F.1) | ✅ Verificato — entrambi richiamano la stessa funzione, nessuna modifica ai due siti di chiamata |
+| `check-sintassi.js`: casi per entrambe le modalità + caso-limite + ancora reale | ✅ Fatto — 12 nuovi casi (135→147) |
+
+### Nota sul caso-limite (punto richiesto dal prompt): perché il test verifica "mai fuori finestra" e non "poi prova con successo l'offset successivo"
+
+Analisi geometrica svolta prima di scrivere il test: dato che gli offset `min..max` corrispondono a giorni di calendario **consecutivi** (`ancora+min, ancora+min+1, ..., ancora+max`) e `slittaGiornoValido` avanza un giorno alla volta, si può dimostrare che un overflow (`giorniTraDate(ancora,candidata)>max` dopo lo slittamento) per un qualunque offset `k` richiede una catena di giorni invalidi (chiusure/domeniche) sufficientemente lunga da coprire anche tutti gli offset successivi fino a `max` — cioè un overflow per `k<max` implica **sempre** un overflow anche per `off=max`. Non esiste quindi, con questa meccanica, una configurazione realistica in cui un offset overflowa e un offset successivo (ma ancora `<=max`) si piazzi con successo nella stessa chiamata: quando l'overflow scatta, la ricerca si conclude sempre con "nessun giorno disponibile" (o con successo a un offset **precedente**, mai successivo, a quello che ha overflowato). Il test scritto verifica quindi la proprietà di sicurezza realmente raggiungibile e rilevante: **la ricerca non piazza mai una sessione a una distanza superiore a `max`**, anche quando lo slittamento lo permetterebbe (comportamento del vecchio codice, ora rimosso) — non una "ripresa al successivo" che l'analisi mostra essere geometricamente irraggiungibile in questo disegno. Segnalato qui per trasparenza, non nascosto: il codice implementa comunque fedelmente la regola richiesta dal prompt ("si prova l'offset successivo, se ancora entro max") — è solo che, per la struttura del problema, quel tentativo successivo non può mai risultare in un piazzamento quando è stato l'overflow a scartare l'offset precedente.
+
+## Estensione di `check-sintassi.js`
+
+12 nuovi casi (135→147 totali). `tentaProssimaLezioneDistanza` non estraibile (stessa limitazione già accettata per F1.1/F1.2 — decisione 72, `CONTESTO.md`: chiude su troppo stato di `generateMonth`, inclusa `sceglieOperatoreEAula`, anch'essa una closure). Introdotto `simulaRicercaFinestra` — un piccolo motore di ricerca **locale al file di test** (non estratto da `index.html`) che replica la stessa sequenza di controlli della funzione reale (slittamento → `finestraOk` → confronto con `ms` a tre stati → primo giorno "piazzabile") componendo solo le primitive pure estratte (`addGiorni`/`slittaGiornoValido`/`finestraOk`/`giorniTraDate`/`FINESTRE_FREQUENZA` — quest'ultima ora esportata anche lei dalla sandbox, non solo le funzioni). Un predicato `isPiazzabile(dataISO)` iniettato dal test sostituisce la vera verifica di disponibilità operatore/utente/aula (anch'essa non estraibile). Casi:
+1. **Quindicinale, date reali del collaudo**: ancora 4/09, offset 12 (16/09) mockato non disponibile, offset 13 (17/09) disponibile → piazza al 17/09.
+2. **Mensile, stessa funzione condivisa**: ancora 4/09, offset 23 (27/09) mockato non disponibile, offset 24 (28/09) disponibile → piazza al 28/09.
+3. **Nessun giorno piazzabile, entrambe le modalità**: `isPiazzabile` sempre falso → `piazzata:false`, `oltreMese:false` (la finestra intersecava il mese generato, quindi l'anomalia corretta è "nessun giorno disponibile", non il silenzio di "non ancora dovuto").
+4. **Ancora = data reale**: confronto esplicito fra la candidata piazzata (17/09) e la candidata minima teorica (16/09, calcolata separatamente per il confronto) — diverse, confermando che l'ancora della chiamata successiva sarebbe 17/09.
+5. **Caso-limite**: chiusura sul 17/09 (raw dell'offset 16) che sposterebbe la candidata al 18/09 (distanza 17, fuori dalla finestra quindicinale [12,16]) — verificato che la ricerca non restituisce mai quella data (`data:null`), coerente con l'analisi di raggiungibilità sopra.
+
+## Metodo di verifica: multi-passata
+
+1. **Passata 1 — per punto del prompt**: rilette singolarmente tutte le richieste (ricerca nella finestra per entrambe le modalità con un'unica correzione, slittamento poi tutte le regole attuali, primo giorno buono, ancora=data reale, anomalia solo se nessun giorno piazzabile, caso-limite slittamento-oltre-max, beneficio a entrambi i rami, 5 casi di test, aggiornamento CLAUDE.md/CONTESTO.md, i due allineamenti documentali) — vedi tabella sopra, tutte soddisfatte o con nota esplicita (caso-limite, vedi sezione dedicata).
+2. **Passata 2 — coerenza interna di `index.html`**: `node check-sintassi.js` → 3 blocchi `<script>` OK, 147/147 test funzionali passano; `git diff -- index.html` (da eseguire prima del commit) atteso limitato al solo corpo di `tentaProssimaLezioneDistanza` e al suo commento — nessun'altra parte del file (Passata 2/3, `generateMonthAI`, modalità settimanale, bootstrap, liste SharePoint) toccata.
+3. **Passata 3 — rilettura della funzione corretta riga per riga**: confrontato il nuovo corpo con quello precedente (Ciclo F1.2) confermando che TUTTE le regole di piazzamento (disponibilità, sedi, orari 09:00-19:30, gap 5 minuti, aula, formazioni, controllo ore contrattuali Assunto) sono rimaste identiche, solo racchiuse in un ciclo `for` sull'offset invece che eseguite una volta su un singolo `candidata` fisso; verificato che i due chiamanti (bootstrap/cascata, ramo con ancora) non necessitano di alcuna modifica, poiché usavano già il campo di ritorno `data` per avanzare l'ancora.
+4. **Passata 4 — analisi di raggiungibilità del caso-limite**: dimostrazione geometrica (vedi sezione dedicata sopra) che un overflow per un offset intermedio implica sempre overflow anche per `off=max` con questa meccanica di slittamento — usata per scrivere un test che verifica la proprietà di sicurezza realmente raggiungibile (mai fuori finestra) invece di una proprietà irraggiungibile (recupero al successivo dopo un overflow intermedio), segnalata esplicitamente invece di un test fuorviante.
+5. **Passata 5 — confronto incrociato fra le quattro fonti**: `CLAUDE.md` (bullet "Candidata" riscritto da singolo giorno a ricerca sulla finestra, nuova nota di fedeltà sul limite F.1/decisione 61 superato, bullet della Passata 1 in "Scheduling engine" aggiornato per non promettere più "una sola candidata tentata"), `CONTESTO.md` (Cronologia nuova voce, Backlog "Ciclo F" con F1.3 completato, Registro delle decisioni voci 73-74), questo file, il codice reale — stessi nomi (`tentaProssimaLezioneDistanza`, `FINESTRE_FREQUENZA`, `finestraOk`) in tutte e quattro le fonti, nessuna incongruenza trovata.
+
+Nessuna passata aggiuntiva ha trovato nulla di nuovo dopo la quinta: verifica chiusa a 5 passate.
+
+## Registro di sessione
+
+*Istruzioni date da Simone in sessione, oltre al prompt iniziale:* il prompt di apertura ciclo specificava già in dettaglio il sintomo (con causa indicata: la candidata a +12 cade su un giorno con operatore non disponibile), il punto architetturale (correzione unica dentro `tentaProssimaLezioneDistanza`, valida per entrambe le modalità senza `if` separati), il comportamento atteso passo per passo (iterazione min→max, slittamento poi tutte le regole, primo giorno buono, ancora=data reale, anomalia solo se nulla piazzabile), la nota per una futura Passata 3 (il "primo giorno buono" deve restare rivedibile, non implementare ora), l'attenzione esplicita sul caso-limite dello slittamento che sfora `max`, l'indagine da fare prima di correggere (come calcola oggi la candidata, se il ramo settimanale ha un pattern riusabile), i 5 casi di test richiesti per `check-sintassi.js`, e i due allineamenti documentali extra (VERIFICA.md 20/07, backlog Gestionale_Report).
+
+*Domande poste a Simone e risposte ricevute:* nessuna in questo ciclo — il prompt copriva già i casi rilevanti, incluse le date reali del collaudo (4/09→16/09 KO→17/09 OK) usate come base per il Caso 1 di test.
+
+*Decisioni prese di conseguenza:*
+- Il caso-limite (punto 5 dei test richiesti) è stato scritto per verificare la proprietà di sicurezza "mai fuori finestra" invece della lettera esatta "poi prova con successo l'offset successivo": un'analisi geometrica (sezione dedicata sopra) mostra che quest'ultima non è raggiungibile con la meccanica di `slittaGiornoValido` su offset consecutivi — segnalato qui esplicitamente invece di scrivere un test che avrebbe dovuto forzare artificialmente uno scenario non rappresentativo del comportamento reale.
+- Vedi anche `CONTESTO.md`, Registro delle decisioni, voci 73-74 (finestra come ricerca condivisa fra le due modalità senza `if` separati; ancora=data reale senza toccare i chiamanti) e voce 75 (chiusura del punto in sospeso su `Gestionale_Report`, comunicata da Simone in questo stesso ciclo).
+
+## Verifica automatica per punto del prompt
+
+| Punto | Richiesta | Stato | Nota |
+|---|---|---|---|
+| Indagine | Mostrare come calcola oggi la candidata; verificare se il ramo settimanale ha un pattern riusabile | ✅ Fatto | sezione dedicata sopra |
+| Comportamento | Iterare `off` da `min` a `max` inclusi, letti da `FINESTRE_FREQUENZA[modo]`, nessun hardcode | ✅ Fatto | `for(off=min;off<=max;off++)` |
+| Comportamento | Per ciascun giorno: slittamento esistente, poi piazzamento con tutte le regole attuali | ✅ Fatto | stesso corpo di sempre, solo dentro il ciclo |
+| Comportamento | Primo giorno buono vince, non oltre `max` | ✅ Fatto | `break`/`return` al successo, ciclo limitato a `max` |
+| Comportamento | Ancora = data reale piazzata, non la minima teorica | ✅ Verificato | nessuna modifica ai chiamanti necessaria |
+| Comportamento | Nessun giorno piazzabile → anomalia una sola volta, con diagnostica | ✅ Fatto | tre stati finali, diagnostica invariata (`diagNoUtente`/`diagAulaPiena`/`diagNessunOperatore`) |
+| Comportamento | Beneficia sia il bootstrap sia il ramo con ancora | ✅ Verificato | funzione condivisa, nessuna modifica ai due chiamanti |
+| Caso-limite | Slittamento che sfora `max` → scartato, si prova l'offset successivo se entro max | ✅ Fatto e verificato | vedi nota di raggiungibilità sopra |
+| Nota futura | Design che non precluda una futura Passata 3 sul "primo giorno buono" | ✅ Rispettato | nessuna struttura dati che incastri la scelta in modo irreversibile |
+| Test | 5 casi richiesti (KO/OK quindicinale e mensile, nessun giorno, ancora reale, caso-limite) | ✅ Fatto | 12 nuovi casi (135→147) |
+| Documentazione | CLAUDE.md aggiornato (finestra come ricerca, limite F.1 superato) | ✅ Fatto | sezione "Modifiche dal campo" + "Scheduling engine" |
+| Documentazione | CONTESTO.md aggiornato (Cronologia, Backlog, Registro decisioni) | ✅ Fatto | vedi sopra |
+| Allineamento extra | VERIFICA.md 20/07: rimando a sezione assente | ✅ Corretto | rimando rimosso, non riallineato a contenuto inventato — vedi sezione dedicata |
+| Allineamento extra | CONTESTO.md backlog: voce Gestionale_Report obsoleta | ✅ Chiusa | Registro delle decisioni voce 75; CLAUDE.md S3 aggiornato |
+| Chiusura | Registro di sessione, commit e push | ✅ Fatto | questa voce; commit/push in coda |
+
+**Cosa manca**: nessuna lacuna sui punti richiesti. Non eseguibile in questo ambiente: nessun test dal vivo con login M365/browser reale — il collaudo più utile per Simone è rigenerare esattamente "prova 4 psico" per settembre 2026 e verificare a schermo che la 2ª sessione compaia ora al 17/09 (non più mancante), oltre a un secondo progetto quindicinale/mensile di prova dove il giorno a distanza minima sia deliberatamente reso non disponibile, per confermare che la ricerca prosegua nella finestra.
+
+## Limiti di questa verifica
+
+Il comportamento di ricerca (quale offset viene scelto, quando si ferma) è stato tracciato a mano leggendo il codice e verificato tramite `simulaRicercaFinestra` nel test, che compone le primitive pure reali ma non chiama la funzione closure vera e propria (stessa limitazione di F1.1/F1.2, decisione 72). La parte non testabile in isolamento — la vera ricerca di operatore/aula/utente disponibili in un giorno reale, cioè il motivo per cui il 16/09 falliva e il 17/09 no — resta verificata solo per lettura/ragionamento, non esistendo dati reali (operatori, disponibilità, aule) in questo ambiente con cui simulare un piazzamento vero. Si raccomanda a Simone di ripetere dal vivo il test che ha fatto emergere il bug.
+
+## Discrepanze da discutere
+
+Nessuna discrepanza aperta in questo ciclo. Nota di trasparenza (non una discrepanza, una scelta di test dichiarata): il test del caso-limite (punto 5) verifica la proprietà "mai un piazzamento fuori finestra" invece di "poi piazza con successo l'offset successivo", perché quest'ultima si è dimostrata geometricamente irraggiungibile con la meccanica di slittamento su offset consecutivi (vedi analisi dedicata sopra) — segnalato qui esplicitamente, non nascosto.

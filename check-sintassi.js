@@ -87,7 +87,10 @@ function buildSandbox(html) {
   const src = [
     ...EXTRACT_COSTANTI.map(name => extractConst(html, name)),
     ...EXTRACT_FUNZIONI.map(name => extractFunction(html, name)),
-    'module.exports={' + EXTRACT_FUNZIONI.join(',') + '};',
+    // Ciclo F1.3: esporta anche le costanti (non solo le funzioni) — serve a simulaRicercaFinestra sotto, che ha
+    // bisogno di leggere FINESTRE_FREQUENZA direttamente (gli stessi min/max che il codice reale usa), non un
+    // valore duplicato a mano nel test.
+    'module.exports={' + EXTRACT_FUNZIONI.concat(EXTRACT_COSTANTI).join(',') + '};',
   ].join('\n\n');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csc-sandbox-'));
   const file = path.join(tmpDir, 'sandbox.js');
@@ -98,10 +101,40 @@ function buildSandbox(html) {
 }
 
 // ---------------------------------------------------------------------------
+// Ciclo F1.3: piccolo motore di ricerca LOCALE al test (non estratto da index.html) che replica esattamente la
+// stessa sequenza di controlli della funzione reale tentaProssimaLezioneDistanza in index.html — slittamento
+// -> finestraOk -> confronto con "ms" -> primo giorno "piazzabile" — componendo SOLO le primitive pure estratte
+// (addGiorni/slittaGiornoValido/finestraOk/giorniTraDate/FINESTRE_FREQUENZA). tentaProssimaLezioneDistanza stessa
+// NON è estraibile in sandbox (chiude su troppo stato di generateMonth: opB/prB/auB/newS/anom/pool/sessionCount/
+// sceglieOperatoreEAula — quest'ultima anch'essa una closure, non estraibile), stessa limitazione già accettata
+// per il bootstrap/cascata del Ciclo F1.1/F1.2 (Registro delle decisioni, CONTESTO.md, voce 72). Il parametro
+// isPiazzabile(dataISO) sostituisce qui la vera verifica di disponibilità operatore/utente/aula (anch'essa non
+// estraibile): un predicato iniettato dal test per simulare "quel giorno l'operatore non è disponibile".
+function simulaRicercaFinestra(sandbox, ancora, modo, ms, chiusureDates, isPiazzabile) {
+  const { addGiorni, slittaGiornoValido, finestraOk, giorniTraDate, FINESTRE_FREQUENZA } = sandbox;
+  const { min, max } = FINESTRE_FREQUENZA[modo];
+  // Stessa logica a tre stati della funzione reale (index.html): "entratoNelMese" distingue "nessun giorno
+  // piazzabile ma la finestra intersecava ms" (anomalia) da "la finestra è del tutto successiva a ms" (silenzio,
+  // caso normale) — necessario perché una finestra mensile (23-30 giorni) può attraversare il confine del mese.
+  let entratoNelMese = false, vistaDataDopoIlMese = false;
+  for (let off = min; off <= max; off++) {
+    const candidata = slittaGiornoValido(addGiorni(ancora, off), chiusureDates);
+    if (!finestraOk(modo, giorniTraDate(ancora, candidata))) continue; // slittamento sfora la finestra: si prova l'offset successivo
+    const ym = candidata.slice(0, 7);
+    if (ym < ms) continue;
+    if (ym > ms) { vistaDataDopoIlMese = true; break; } // monotono: nessun offset successivo può rientrare in "ms"
+    entratoNelMese = true;
+    if (isPiazzabile(candidata)) return { piazzata: true, data: candidata, oltreMese: false };
+  }
+  if (!entratoNelMese && vistaDataDopoIlMese) return { piazzata: false, data: null, oltreMese: true };
+  return { piazzata: false, data: null, oltreMese: false };
+}
+
+// ---------------------------------------------------------------------------
 // 3) test funzionali — estendere qui a ogni ciclo che tocca funzioni pure
 // ---------------------------------------------------------------------------
 function runTest(sandbox) {
-  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo, etichettaAmbitoReport, dname, rfree, rfreeConGap, modalitaFrequenza, finestraOk, dateToISO, addGiorni, giorniTraDate, slittaGiornoValido, ultimaLezioneValida, calcStrettezza } = sandbox;
+  const { parseHM, fmtHM, tempoBustoOperatore, decidiOnlineDaCasa, bucketSettimana, maxNuoveSettimana, sediAmmesseProgetto, statiSelezionabili, transizioneAmmessa, pesoStato, pesoMassimoSelezione, riepilogoStati, riepilogoStatoProgetto, filtraReportUtenti, proposteDaSostituire, isRecordSingolo, etichettaAmbitoReport, dname, rfree, rfreeConGap, modalitaFrequenza, finestraOk, dateToISO, addGiorni, giorniTraDate, slittaGiornoValido, ultimaLezioneValida, calcStrettezza, FINESTRE_FREQUENZA } = sandbox;
   let fails = 0, count = 0;
   function check(label, actual, expected) {
     count++;
@@ -391,6 +424,54 @@ function runTest(sandbox) {
     check('Continuità cross-mese: la candidata di ottobre (ancora=28/09) coincide con quella che ha fermato la cascata di settembre', slittaGiornoValido(addGiorni('2026-09-28', 12), chiusureVuote), cand3);
     check('Continuità cross-mese: nessun buco, distanza 28/09->10/10 dentro la finestra [12,16]', finestraOk('quindicinale', giorniTraDate('2026-09-28', cand3)), true);
     check('Continuità cross-mese: nessun doppione, la candidata di ottobre è strettamente successiva alle tre di settembre', cand3 > cand2 && cand3 > cand1 && cand3 > prima, true);
+  }
+
+  // Ciclo F1.3 — la finestra distanza-giorni come RICERCA (quindicinale E mensile), non più un unico giorno
+  // teorico validato. Usa simulaRicercaFinestra sopra (motore locale di test, non estratto da index.html — vedi
+  // il commento su quella funzione per il perché). Stesso limite di estraibilità già accettato per F1.1/F1.2.
+  {
+    // Caso 1 — quindicinale: offset 12 (16/09) KO per operatore non disponibile, la ricerca prova l'offset 13
+    // (17/09) e piazza lì. Date reali del collaudo di Simone su "prova 4 psico" (4/09 -> 16/09 KO -> 17/09 OK).
+    const ancora1 = '2026-09-04', modo1 = 'quindicinale', ms1 = '2026-09';
+    const nonDisponibile1 = new Set(['2026-09-16']); // Antonia non disponibile quel giorno
+    const r1 = simulaRicercaFinestra(sandbox, ancora1, modo1, ms1, new Set(), ds => !nonDisponibile1.has(ds));
+    check('F1.3 quindicinale: offset 12 (16/09) KO, la ricerca prova l\'offset 13 e piazza al 17/09', r1.data, '2026-09-17');
+    check('F1.3 quindicinale: piazzata=true al primo giorno buono della finestra, non solo al minimo teorico', r1.piazzata, true);
+    // Caso 4 — l'ancora della sessione successiva è la data REALE piazzata (17/09), non la distanza minima
+    // teorica (16/09, quella che sarebbe stata tentata — e basta — prima di F1.3).
+    const candidataTeoricaMinima1 = slittaGiornoValido(addGiorni(ancora1, 12), new Set());
+    check('F1.3: la candidata minima teorica resta 16/09 (per confronto)', candidataTeoricaMinima1, '2026-09-16');
+    check('F1.3: la data piazzata (17/09) è diversa dalla minima teorica (16/09) -> l\'ancora successiva è la data REALE', r1.data !== candidataTeoricaMinima1, true);
+
+    // Caso 2 — mensile: offset 23 (27/09) KO, la ricerca prova l'offset 24 e piazza al 28/09. Stessa funzione
+    // condivisa di Caso 1, nessuna logica separata per la modalità mensile (solo min/max diversi).
+    const ancora2 = '2026-09-04', modo2 = 'mensile', ms2 = '2026-09';
+    const nonDisponibile2 = new Set(['2026-09-27']);
+    const r2 = simulaRicercaFinestra(sandbox, ancora2, modo2, ms2, new Set(), ds => !nonDisponibile2.has(ds));
+    check('F1.3 mensile: offset 23 (27/09) KO, la ricerca prova l\'offset 24 e piazza al 28/09', r2.data, '2026-09-28');
+    check('F1.3 mensile: piazzata=true al primo giorno buono, stessa funzione condivisa del Caso 1', r2.piazzata, true);
+
+    // Caso 3 — nessun giorno della finestra è piazzabile, per ENTRAMBE le modalità: la ricerca esaurisce tutta
+    // la finestra [min,max] senza mai piazzare, e la finestra cade nel mese generato (non "non ancora dovuta") ->
+    // oltreMese deve restare false (l'anomalia "nessun giorno disponibile" è quella corretta, non il silenzio
+    // normale di "progetto non ancora dovuto questo mese").
+    const rNessunQ = simulaRicercaFinestra(sandbox, '2026-09-04', 'quindicinale', '2026-09', new Set(), () => false);
+    check('F1.3 quindicinale: nessun giorno della finestra piazzabile -> piazzata=false', rNessunQ.piazzata, false);
+    check('F1.3 quindicinale: nessun giorno piazzabile ma la finestra è nel mese generato -> oltreMese=false (anomalia corretta)', rNessunQ.oltreMese, false);
+    const rNessunM = simulaRicercaFinestra(sandbox, '2026-09-04', 'mensile', '2026-09', new Set(), () => false);
+    check('F1.3 mensile: nessun giorno della finestra piazzabile -> piazzata=false', rNessunM.piazzata, false);
+    check('F1.3 mensile: nessun giorno piazzabile ma la finestra è nel mese generato -> oltreMese=false (anomalia corretta)', rNessunM.oltreMese, false);
+
+    // Caso 5 — caso-limite: lo slittamento dell'offset 16 (chiusura il 17/09) lo spingerebbe al 18/09, un giorno
+    // FUORI dalla finestra quindicinale [12,16] (distanza 17). Prima di F1.3 la vecchia tentaProssimaLezioneDistanza
+    // avrebbe piazzato comunque quel giorno fuori finestra ("per non saltare la lezione") — F1.3 lo esclude invece
+    // esplicitamente (finestraOk lo scarta) e, non essendoci altri offset piazzabili in questo scenario (isPiazzabile
+    // sempre falso, per isolare la sola verifica del confine), la ricerca deve concludersi SENZA MAI restituire una
+    // data fuori dalla finestra — mai '2026-09-18', mai una distanza >16.
+    const chiusura16 = new Set(['2026-09-17']);
+    const rLimite = simulaRicercaFinestra(sandbox, '2026-09-04', 'quindicinale', '2026-09', chiusura16, () => false);
+    check('F1.3 caso-limite: lo slittamento dell\'offset 16 sforerebbe max (18/09, distanza 17) -> scartato, mai piazzato lì', rLimite.data, null);
+    check('F1.3 caso-limite: nessuna data restituita supera mai la finestra (nessun "piazza comunque fuori finestra" residuo)', rLimite.piazzata, false);
   }
 
   // calcStrettezza — Ciclo F.1 (mode-aware: settimanale invariata, quindicinale/mensile con frequenza equivalente nominale)
